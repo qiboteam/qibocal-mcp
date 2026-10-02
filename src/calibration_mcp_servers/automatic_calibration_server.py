@@ -285,6 +285,45 @@ def platform_architecture(platform_name: str) -> dict[str, Any]:
 
 
 #######################################################################
+# Resource-reading tools
+#
+# The resources above are only reachable via the MCP `resources/read` protocol,
+# which some clients (e.g. the Copilot CLI) do not expose as callable functions.
+# These tools mirror the same resources so the data can be read directly.
+#######################################################################
+
+
+@mcp.tool()
+def read_protocol_catalog(filename: str) -> str:
+    """Read a protocol catalog markdown file for calibration planning.
+
+    Exposes the same data as the `qibocal://protocol-catalog/{filename}`
+    resource as a directly callable tool.
+    """
+    return protocol_catalog(filename)
+
+
+@mcp.tool()
+def read_calibration_report(report_path: str) -> str:
+    """Read a run's HTML report with fit plots and results for visual review.
+
+    Exposes the same data as the `qibocal://calibration-report?path={report_path}`
+    resource as a directly callable tool.
+    """
+    return calibration_report(report_path)
+
+
+@mcp.tool()
+def get_platform_architecture(platform_name: str) -> dict[str, Any]:
+    """Describe the QPU architecture.
+
+    Exposes the same data as the `qibocal://protocol-platform-analysis-{platform_name}`
+    resource as a directly callable tool.
+    """
+    return platform_architecture(platform_name)
+
+
+#######################################################################
 # Tools
 #######################################################################
 

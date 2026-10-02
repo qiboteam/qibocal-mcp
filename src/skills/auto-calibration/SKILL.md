@@ -23,16 +23,18 @@ closed with `abort_calibration`.
 | Tool | Purpose |
 |------|---------|
 | `start_calibration(parent_folder, targets, platform, partition?)` | Start one session. `partition` selects the Slurm partition for every subsequent `run_protocol` (via `sbatch --wait --time=01:00:00`); omit to run locally. Returns the session `data_folder` and the session-local `working_platform` path. |
-| `platform_architecture()` | Parse the platform `parameters.json`: qubit names, connectivity topology, flux-tunable qubits, couplers. Call BEFORE planning the strategy. |
+| `get_platform_architecture(platform_name)` | Parse the platform `parameters.json`: qubit names, connectivity topology, flux-tunable qubits, couplers. Call BEFORE planning the strategy. |
+| `read_protocol_catalog(filename)` | Read a protocol catalog markdown file (see the Resource-reading tools section). |
+| `read_calibration_report(report_path)` | Read a run's HTML report (fit plots + serialized results) for visual review. |
 | `run_protocol(operation, parameters, targets?)` | Run one protocol in parallel across the selected targets. `targets` must be a non-empty subset of the session targets; omit to use all. Always set ALL protocol parameters, including optional ones. |
 | `accept_step_platform(accepted_qubits)` | Promote updates for the listed qubits from the latest step to the session platform; updates for all other qubits in that step are discarded. Pass an empty list to keep the previous platform. |
 | `manually_overwrite_qubits(manual_overwritten_qubits, operation)` | Force the next `run_protocol` to repeat `operation` for exactly the given qubits with focused parameters (used after a manual platform estimate). |
 | `finish_calibration()` | Close the session, accepting the latest step platform, and return a summary. |
 | `abort_calibration()` | Close the session without accepting the latest step; step data is preserved. |
 
-## Resources
+## Resource-reading tools
 
-- `qibocal://protocol-catalog/{filename}` — the protocol catalog markdown files.
+- `read_protocol_catalog(filename)` — the protocol catalog markdown files.
   Read the file for the phase you are about to run:
   - `Resonator_Characterization.md` (Phase 1)
   - `Qubit_Characterization.md` (Phase 2)
@@ -42,9 +44,9 @@ closed with `abort_calibration`.
   - `SingleQubit_RB.md` (Phase 6)
   - `PROTOCOL_CATALOG.md` (full reference of every protocol, its parameters,
     and the "Platform update fields" table used for manual estimates)
-- `qibocal://calibration-report?path={report_path}` — the run's HTML report
+- `read_calibration_report(report_path)` — the run's HTML report
   (fit plots + serialized results) for visual review. Pass the step's
-  `output_folder` as the `path` query parameter.
+  `output_folder` as the `report_path` argument.
 
 ## Core principles
 
@@ -101,7 +103,7 @@ the global Qibolab platform.
 
 ### Step 1 — Understand the QPU architecture
 
-Call `platform_architecture` **before** thinking about the strategy. It parses
+Call `get_platform_architecture` **before** thinking about the strategy. It parses
 the platform's `parameters.json` and reports:
 - the qubit names and count,
 - the connectivity topology (which qubits are connected, from the two-qubit
@@ -115,7 +117,7 @@ protocols for qubits, resonators, and gates.
 
 ### Architecture-dependent protocols are mandatory
 
-Use `platform_architecture` and the session platform configuration to identify
+Use `get_platform_architecture` and the session platform configuration to identify
 the hardware features, operating modes, and relationships present in the QPU.
 Before choosing the phase sequence, map each relevant feature to its supported
 protocols and the targets, channels, or connected components those protocols
@@ -128,7 +130,7 @@ list.
 - Likewise, if the architecture includes couplers or connected qubit pairs,
   identify and run the supported, goal-relevant protocols for those components.
 - Apply the same reasoning to every other relevant architecture feature. Use
-  `qibocal://protocol-catalog/PROTOCOL_CATALOG.md` and the phase-specific
+  `read_protocol_catalog("PROTOCOL_CATALOG.md")` and the phase-specific
   catalogs to find supported protocols; do not infer protocol names or omit a
   calibration merely because it is not listed among a phase's typical examples.
 
@@ -166,7 +168,7 @@ complete.
   parameters as a reference but **do not trust them** — they must be verified and
   potentially updated through the calibration process.
 - **Incremental** (the user specifies a starting protocol or phase):
-  1. Call `platform_architecture` to understand the QPU.
+  1. Call `get_platform_architecture` to understand the QPU.
   2. If the user names a protocol, repeat its **entire containing phase**:
      run that phase's applicable protocols, including architecture-dependent
      ones that have not yet been calibrated. Do not infer an earlier phase.
@@ -195,7 +197,7 @@ trusted baseline data; revisit them only under the conditions above.
 **For the following phases you must follow this GOLDEN RULE**:
 For each protocol:
 1. Call `run_protocol` with the full parameter set and the relevant `targets`.
-2. Open the step's report via `qibocal://calibration-report?path={output_folder}`
+2. Open the step's report via `read_calibration_report({output_folder})`
    and judge per qubit whether the fitted curve matches the measured signal and
    physical expectation.
 3. Evaluate each qubit independently. Accept only qubits whose feature is clearly
@@ -212,7 +214,7 @@ For each protocol:
 
 ### Step 3 — Phase 1: Resonator characterization
 
-Read `qibocal://protocol-catalog/Resonator_Characterization.md` for detailed
+Read `read_protocol_catalog("Resonator_Characterization.md")` for detailed
 instructions and protocol parameters.
 
 Goal: find the resonator (readout) frequency and the readout amplitude for each
@@ -231,7 +233,7 @@ Typical protocols (see the markdown for the exact list and parameters):
 
 ### Step 4 — Phase 2: Qubit characterization
 
-Read `qibocal://protocol-catalog/Qubit_Characterization.md`.
+Read `read_protocol_catalog("Qubit_Characterization.md")`.
 
 Goal: find the qubit (drive) frequency and, for flux-tunable qubits, the flux
 sweetspot.
@@ -254,7 +256,7 @@ Oscillator rules (see below)** before moving to the next phase.
 
 ### Step 5 — Phase 3: Signal experiments
 
-Read `qibocal://protocol-catalog/Signal_Experiments.md`.
+Read `read_protocol_catalog("Signal_Experiments.md")`.
 
 Goal: calibrate the drive pulse (Rabi) and define state classifiers.
 
@@ -273,7 +275,7 @@ Typical protocols:
 
 ### Step 6 — Phase 4: Single-qubit gate optimization
 
-Read `qibocal://protocol-catalog/SingleQubit_Experiments.md`.
+Read `read_protocol_catalog("SingleQubit_Experiments.md")`.
 
 Goal: optimize single-qubit gate fidelity.
 
@@ -290,7 +292,7 @@ Typical protocols:
 
 ### Step 7 — Phase 5: Readout optimization
 
-Read `qibocal://protocol-catalog/Readout_Experiments.md`.
+Read `read_protocol_catalog("Readout_Experiments.md")`.
 
 Goal: optimize the assignment (readout) fidelity.
 **If not explicitly stated, the default goal for assignment fidelity is at least a 88% for each qubit:**
@@ -312,7 +314,7 @@ protocols.
 
 ### Step 8 — Phase 6: Single-qubit randomized benchmarking
 
-Read `qibocal://protocol-catalog/SingleQubit_RB.md`.
+Read `read_protocol_catalog("SingleQubit_RB.md")`.
 
 Goal: measure the single-qubit gate fidelity via randomized benchmarking.
 **If not explicitly stated, the default goal for single-qubit gate fidelity is at least a 99% for each qubit:**
@@ -384,7 +386,7 @@ with a reasonable guess and refine as needed. The sweep range, though, must not
 be excessive.
 
 After each run, open the step report using
-`qibocal://calibration-report?path={output_folder}` and judge each target
+`read_calibration_report({output_folder})` and judge each target
 individually. **Be very critical in your assessment:** the data should be clearly
 interpretable and support a very reliable fit. Inspect the measured trace, fitted
 curve, residual behavior, fit convergence, and whether the result is physically
@@ -409,7 +411,7 @@ plausible. A serialized fit result alone is not evidence of fit quality.
   2. Estimate the quantity from the raw signal (peak position, oscillation
      period, etc.) for the rejected qubit.
   3. Look up the **Platform update fields** table for the protocol you just ran
-     in `qibocal://protocol-catalog/PROTOCOL_CATALOG.md`. Do not guess a path
+     in `read_protocol_catalog("PROTOCOL_CATALOG.md")`. Do not guess a path
      from scratch: pick the row whose field matches the quantity you estimated.
      Then read the path to modify carefully:
      - If the path starts with `parameters`, edit the platform's

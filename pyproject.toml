@@ -29,7 +29,9 @@ dependencies = [
   "plotly>=7.0.0,<8.0.0",
   "skops>=0.14.0,<0.15.0",
   "pyyaml>=6.0.0,<7.0.0",
-  "fastmcp>=4.0.5,<5.0.0",
+  # Limiting FastMCP to this range for compatibility with older MCP clients 
+  # (copilot CLI does not support 2026-07-28 protocol but 2025-11-25)
+  "fastmcp>=4.0.0,<4.0.10",
 ]
 
 [project.urls]
