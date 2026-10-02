@@ -24,6 +24,7 @@ closed with `abort_calibration`.
 |------|---------|
 | `start_calibration(parent_folder, targets, platform, partition?)` | Start one session. `partition` selects the Slurm partition for every subsequent `run_protocol` (via `sbatch --wait --time=01:00:00`); omit to run locally. Returns the session `data_folder` and the session-local `working_platform` path. |
 | `get_platform_architecture(platform_name)` | Parse the platform `parameters.json`: qubit names, connectivity topology, flux-tunable qubits, couplers. Call BEFORE planning the strategy. |
+| `read_platform_files()` | Read the session's last saved platform `calibration.json` and `parameters.json` (the session-local platform updated by `accept_step_platform`). Returns the parsed `calibration` and `parameters` together with the session `platform` name and `platform_path`. Use this whenever you need to consult the session platform files. |
 | `read_protocol_catalog(filename)` | Read a protocol catalog markdown file (see the Resource-reading tools section). |
 | `read_calibration_report(report_path)` | Read a run's HTML report (fit plots + serialized results) for visual review. |
 | `run_protocol(operation, parameters, targets?)` | Run one protocol in parallel across the selected targets. `targets` must be a non-empty subset of the session targets; omit to use all. Always set ALL protocol parameters, including optional ones. |
@@ -57,6 +58,14 @@ closed with `abort_calibration`.
   `source /home/users/lorenzo.ballerio/qibocal-mcp-servers/.venv/bin/activate`.
   This ensures all subprocesses run with the correct Python interpreter and
   dependencies. Never call any tool without first activating the venv.
+- **Platform-files golden rule — consult the session platform via
+  `read_platform_files()`.** Everytime you need to consult the session platform
+  files (`parameters.json` and/or `calibration.json`) — to pick sweep ranges, to
+  apply the Local Oscillator rules, or to make a manual platform estimate — call
+  `read_platform_files()` to read the session-local platform (the one updated by
+  `accept_step_platform`) instead of reading the files directly from disk. It
+  returns the parsed `calibration` and `parameters` together with the session
+  `platform` name and `platform_path`.
 - **Autonomy.** Do not ask for approval at every step; run autonomously between
   `start_calibration` and `finish_calibration`/`abort_calibration`.
 - **Parallel by design.** All protocol executions are parallel: one runcard and
@@ -352,7 +361,7 @@ derived as `IF = channel frequency - LO frequency`.
 Rules to follow, in particular for the qubit drive LOs (`<qubit>/drive_lo`):
 
 - **After accepting every spectroscopy protocol (both 1D and 2D)**, read the
-  session platform's `parameters.json` and compute
+  session platform's `parameters.json` (via `read_platform_files()`) and compute
   `|IF| = |<qubit>/drive frequency - <qubit>/drive_lo frequency|`, also
   considering the full sweep range of the protocol about to be run.
 - If the LO is too close to the qubit frequency (roughly `|IF| < 10 MHz`, or the

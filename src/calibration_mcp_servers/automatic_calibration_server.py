@@ -4,7 +4,6 @@ import json
 import shutil
 from dataclasses import dataclass, field
 from html import escape
-import os
 from pathlib import Path
 from typing import Any
 
@@ -14,6 +13,7 @@ from qibolab.platform import locate_platform
 from calibration_mcp_servers.utils import (
     make_output_path,
     make_runcard,
+    read_platform_json,
     return_content,
     run_qq,
     update_qq,
@@ -59,11 +59,12 @@ class CalibrationSession:
         self.session_platform_path = self.path / self.session_platform_name
 
         # copy the source platform to the session-local platform path
-        source_platform_path = Path(locate_platform(self.platform_name)).resolve()
+        source_platform_path = locate_platform(self.platform_name).resolve()
         shutil.copytree(source_platform_path, self.session_platform_path)
 
-    
-    def update_session_platform(self, new_platform_path: Path, skip_qubits: list[Any] | None = None) -> None:
+    def update_session_platform(
+        self, new_platform_path: Path, skip_qubits: list[Any] | None = None
+    ) -> None:
         """Replace the session-local platform with an updated version.
 
         Update the session-local platform from the given folder, optionally
@@ -71,9 +72,9 @@ class CalibrationSession:
         registry is left unchanged.
         """
         update_qq(
-            data_path=new_platform_path, 
-            platform_path=self.session_platform_path, 
-            skip_qubits=skip_qubits
+            data_path=new_platform_path,
+            platform_path=self.session_platform_path,
+            skip_qubits=skip_qubits,
         )
 
 
@@ -96,7 +97,9 @@ def _close_session(*, accept_latest_platform: bool) -> dict[str, Any] | None:
     try:
         if accept_latest_platform:
             try:
-                assert session.latest_step_folder and session.latest_step_folder.is_dir(), "Latest step folder is not available or is not a directory."
+                assert (
+                    session.latest_step_folder and session.latest_step_folder.is_dir()
+                ), "Latest step folder is not available or is not a directory."
                 session.update_session_platform(session.latest_step_folder)
             except AssertionError as e:
                 print(f"Failed to update session platform: {e}")
@@ -119,7 +122,7 @@ def _analyze_platform_architecture(platform_name: str) -> dict[str, Any]:
     `configs`), and which couplers are present (flux channels named
     `coupler_*`).
     """
-    parameters_path = Path(locate_platform(platform_name)) / "parameters.json"
+    parameters_path = locate_platform(platform_name) / "parameters.json"
     parameters = json.loads(parameters_path.read_text(encoding="utf-8"))
 
     configs = parameters.get("configs", {})
@@ -187,7 +190,7 @@ def _run_targets(
             }
         ],
         targets=targets,
-        platform=session.platform_name,
+        platform=session.session_platform_name,
         update=True,
     )
     runcard_path = write_runcard(runcard, output_dir=output_path)
@@ -261,13 +264,13 @@ def calibration_report(report_path: str) -> str:
 @mcp.tool()
 def read_protocol_catalog(filename: str) -> dict[str, str]:
     """Read a protocol catalog markdown file for calibration planning."""
-    return {'catalog': Path(__file__).with_name(filename).read_text(encoding="utf-8")}
+    return {"catalog": Path(__file__).with_name(filename).read_text(encoding="utf-8")}
 
 
 @mcp.tool()
 def read_calibration_report(report_path: str) -> dict[str, str]:
     """Read a run's HTML report with fit plots and results for visual review."""
-    return {'report': calibration_report(report_path)}
+    return {"report": calibration_report(report_path)}
 
 
 @mcp.tool()
@@ -282,6 +285,23 @@ def get_platform_architecture(platform_name: str) -> dict[str, Any]:
     `coupler_*`).
     """
     return _analyze_platform_architecture(platform_name)
+
+
+@mcp.tool()
+def read_platform_files() -> dict[str, Any]:
+    """Read the session's last saved platform `calibration.json` and `parameters.json`.
+
+    Returns the parsed contents of both files from the session-local platform
+    (the one updated by `accept_step_platform`) so the current calibrated
+    values and the platform definition can be inspected together.
+    """
+    try:
+        session = _session()
+        platform_path = session.session_platform_path
+        return {"platform": session.platform_name} | read_platform_json(platform_path)
+    except FileNotFoundError as e:
+        _close_session(accept_latest_platform=False)
+        raise FileNotFoundError(f"Failed to read platform files: {e}")
 
 
 @mcp.tool()
@@ -407,8 +427,7 @@ def accept_step_platform(accepted_qubits: list[Any]) -> dict[str, Any]:
         ]
 
         session.update_session_platform(
-            new_platform_path=step_path, 
-            skip_qubits=skipped_qubits
+            new_platform_path=step_path, skip_qubits=skipped_qubits
         )
 
         return {
@@ -423,20 +442,24 @@ def accept_step_platform(accepted_qubits: list[Any]) -> dict[str, Any]:
 
 
 @mcp.tool()
-def manually_overwrite_qubits(manual_overwritten_qubits: list[Any], operation: str) -> dict[str, Any]:
+def manually_overwrite_qubits(
+    manual_overwritten_qubits: list[Any], operation: str
+) -> dict[str, Any]:
     """Manually overwrite specific qubits for a given experiment."""
     try:
         session = _session()
 
         assert (
-            session.latest_step_folder and 
-            session.latest_step_folder.is_dir() and
-            session.latest_step_targets and
-            session.latest_operation
+            session.latest_step_folder
+            and session.latest_step_folder.is_dir()
+            and session.latest_step_targets
+            and session.latest_operation
         ), "No step has been run yet."
 
         assert set(manual_overwritten_qubits) <= set(session.latest_step_targets)
-        assert session.latest_operation == operation, "The provided operation does not match the latest recorded operation."
+        assert session.latest_operation == operation, (
+            "The provided operation does not match the latest recorded operation."
+        )
 
         session.manual_override_operation = operation
         session.manual_override_targets = manual_overwritten_qubits

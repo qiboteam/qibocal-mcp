@@ -4,17 +4,19 @@ from pathlib import Path
 from typing import Any
 
 from fastmcp import FastMCP
+from qibocal.cli.fit import fit
+from qibocal.cli.report import report
+from qibolab.platform import locate_platform
 
 from calibration_mcp_servers.utils import (
     make_output_path,
     make_runcard,
+    read_platform_json,
     return_content,
     run_qq,
     update_qq,
     write_runcard,
 )
-from qibocal.cli.fit import fit
-from qibocal.cli.report import report
 
 mcp = FastMCP("qibocal-assistant")
 
@@ -63,7 +65,18 @@ call `update_platform` with the returned output folder.
 @mcp.tool()
 def read_protocol_catalog() -> dict[str, str]:
     """Return the supported protocol catalog for acquisition planning."""
-    return {'catalog': Path(__file__).with_name("PROTOCOL_CATALOG.md").read_text(encoding="utf-8")}
+    return {
+        "catalog": Path(__file__)
+        .with_name("PROTOCOL_CATALOG.md")
+        .read_text(encoding="utf-8")
+    }
+
+
+@mcp.tool()
+def read_platform_configuration(platform_name: str) -> dict[str, Any]:
+    """Return the supported protocol catalog for acquisition planning."""
+    platform_path = locate_platform(name=platform_name)
+    return {"platform_name": platform_name} | read_platform_json(platform_path)
 
 
 @mcp.tool()

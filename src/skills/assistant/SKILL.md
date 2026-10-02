@@ -52,6 +52,7 @@ than choosing an acquisition or modifying a platform speculatively.
 | Tool | Purpose |
 | --- | --- |
 | `read_protocol_catalog()` | Return the supported operations, parameter names and types, defaults, and platform fields updated by each protocol. |
+| `read_platform_configuration(platform_name)` | Return the platform's `parameters.json` and `calibration.json` contents, so the agent can inspect the current platform definition and calibrated values. |
 | `acquire_experiments(experiments, parent_folder?, platform?, targets?, backend?, update?, partition?)` | Run, fit, and report one or more experiments in a newly created output folder. |
 | `generate_fit(data_folder, output_folder?, update?, force?)` | Fit or refit data in an existing qibocal output folder. |
 | `generate_report(data_folder)` | Generate `index.html` and protocol reports for an existing output folder. |
@@ -92,6 +93,14 @@ either explicitly or by clearly naming an experiment to run.
 
 - The catalog is the source of truth. Never invent operation names, parameter
   names, types, defaults, or update effects.
+- **Golden rule for `read_platform_configuration`:** call it only when planning
+  an acquisition (i.e., before `acquire_experiments`) and only when the agent
+  must infer parameter values — either because the user explicitly asked to
+  base the experiment on the current platform state, or because the user left
+  the freedom to choose the experiment parameters itself. Never call it for
+  offline operations (`generate_fit`, `generate_report`, `update_platform`);
+  those operate on an existing output folder and do not need the platform
+  definition.
 - Set all catalog parameters, not only required parameters. If a required value
   cannot be inferred safely from the request or platform context, ask the user
   for it before acquisition.

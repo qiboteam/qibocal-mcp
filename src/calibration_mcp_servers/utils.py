@@ -1,6 +1,6 @@
 """Shared adapters for qibocal MCP servers."""
 
-import os
+import json
 import subprocess
 import sys
 from dataclasses import asdict
@@ -9,7 +9,6 @@ from pathlib import Path
 from typing import Any
 
 import yaml
-
 from qibocal.auto.runcard import Runcard
 from qibocal.auto.task import Action
 
@@ -103,10 +102,12 @@ def run_qq(
         "-f",
         "--update" if update else "--no-update",
     ]
-    environment = None
     if platform_path is not None:
-        environment = os.environ.copy()
-        environment["QIBOLAB_PLATFORMS"] = str(platform_path.resolve())
+        # command for changing the QIBOLAB_PLATFORMS environment variable in the subprocess
+        platform_command = [f"QIBOLAB_PLATFORMS={platform_path.resolve()}", "&&"]
+        qq_command = platform_command + qq_command
+        # adding the command in the qq_command list to specify the new platform
+        qq_command += ["--platform", "new_platform"]
 
     if partition is None:
         command = qq_command
@@ -119,7 +120,6 @@ def run_qq(
 
     process = subprocess.run(
         command,
-        env=environment,
         capture_output=True,
         text=True,
         check=False,
@@ -133,10 +133,10 @@ def run_qq(
 
 
 def update_qq(
-    data_path: Path, 
+    data_path: Path,
     platform_path: Path | None = None,
     skip_qubits: list[Any] | None = None,
-    ) -> str:
+) -> str:
     """Run ``qq update`` as a subprocess and check its exit status.
 
     Arguments:
@@ -149,14 +149,13 @@ def update_qq(
     if skip_qubits:
         command += [arg for q in skip_qubits for arg in ("--skip-qubits", str(q))]
 
-    environment = None
     if platform_path is not None:
-        environment = os.environ.copy()
-        environment["QIBOLAB_PLATFORMS"] = str(platform_path.resolve())
+        # command for changing the QIBOLAB_PLATFORMS environment variable in the subprocess
+        platform_command = [f"QIBOLAB_PLATFORMS={platform_path.resolve()}", "&&"]
+        command = platform_command + command
 
     process = subprocess.run(
         command,
-        env=environment,
         capture_output=True,
         text=True,
         check=False,
@@ -172,3 +171,16 @@ def update_qq(
 def return_content(output_folder: str | Path) -> dict[str, str]:
     """Return a stable, JSON-compatible MCP response."""
     return {"output_folder": str(Path(output_folder).resolve())}
+
+
+def read_platform_json(platform_path: Path) -> dict[str, Any]:
+    """Read and parse a JSON file from a platform's folder."""
+    calibration_path = platform_path / "calibration.json"
+    parameters_path = platform_path / "parameters.json"
+    if not calibration_path.is_file() or not parameters_path.is_file:
+        raise FileNotFoundError("Platform files not found.")
+    return {
+        "platform_path": str(platform_path.resolve()),
+        "calibration": json.loads(calibration_path.read_text(encoding="utf-8")),
+        "parameters": json.loads(parameters_path.read_text(encoding="utf-8")),
+    }
