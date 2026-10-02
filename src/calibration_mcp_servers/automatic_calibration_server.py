@@ -205,27 +205,11 @@ def _run_targets(
     return return_content(output_path)
 
 
-#######################################################################
-# Resources
-#######################################################################
-
-
-@mcp.resource("qibocal://protocol-catalog/{filename}")
-def protocol_catalog(filename: str) -> str:
-    """Return the supported protocol catalog for calibration planning."""
-    return Path(__file__).with_name(filename).read_text(encoding="utf-8")
-
-
-@mcp.resource(
-    "qibocal://calibration-report?path={report_path}",
-    mime_type="text/html",
-)
 def calibration_report(report_path: str) -> str:
     """Render a run's HTML report with fit plots and results for visual review.
 
     The report path is supplied as the `path` query parameter in the resource URI.
     The existing HTML plots and serialized results are exposed for visual review.
-    This resource does not regenerate the report or use PNG artifacts.
     """
     path = Path(report_path).expanduser().resolve()
     report_html_path = path / "index.html"
@@ -269,8 +253,25 @@ def calibration_report(report_path: str) -> str:
     return f"{report_html}{review_styles}{review_section}"
 
 
-@mcp.resource("qibocal://protocol-platform-analysis-{platform_name}")
-def platform_architecture(platform_name: str) -> dict[str, Any]:
+#######################################################################
+# Tools
+#######################################################################
+
+
+@mcp.tool()
+def read_protocol_catalog(filename: str) -> dict[str, str]:
+    """Read a protocol catalog markdown file for calibration planning."""
+    return {'catalog': Path(__file__).with_name(filename).read_text(encoding="utf-8")}
+
+
+@mcp.tool()
+def read_calibration_report(report_path: str) -> dict[str, str]:
+    """Read a run's HTML report with fit plots and results for visual review."""
+    return {'report': calibration_report(report_path)}
+
+
+@mcp.tool()
+def get_platform_architecture(platform_name: str) -> dict[str, Any]:
     """Describe the QPU architecture.
 
     Call this BEFORE starting the calibration. It parses the
@@ -281,51 +282,6 @@ def platform_architecture(platform_name: str) -> dict[str, Any]:
     `coupler_*`).
     """
     return _analyze_platform_architecture(platform_name)
-
-
-
-#######################################################################
-# Resource-reading tools
-#
-# The resources above are only reachable via the MCP `resources/read` protocol,
-# which some clients (e.g. the Copilot CLI) do not expose as callable functions.
-# These tools mirror the same resources so the data can be read directly.
-#######################################################################
-
-
-@mcp.tool()
-def read_protocol_catalog(filename: str) -> str:
-    """Read a protocol catalog markdown file for calibration planning.
-
-    Exposes the same data as the `qibocal://protocol-catalog/{filename}`
-    resource as a directly callable tool.
-    """
-    return protocol_catalog(filename)
-
-
-@mcp.tool()
-def read_calibration_report(report_path: str) -> str:
-    """Read a run's HTML report with fit plots and results for visual review.
-
-    Exposes the same data as the `qibocal://calibration-report?path={report_path}`
-    resource as a directly callable tool.
-    """
-    return calibration_report(report_path)
-
-
-@mcp.tool()
-def get_platform_architecture(platform_name: str) -> dict[str, Any]:
-    """Describe the QPU architecture.
-
-    Exposes the same data as the `qibocal://protocol-platform-analysis-{platform_name}`
-    resource as a directly callable tool.
-    """
-    return platform_architecture(platform_name)
-
-
-#######################################################################
-# Tools
-#######################################################################
 
 
 @mcp.tool()

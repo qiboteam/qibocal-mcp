@@ -56,27 +56,14 @@ call `update_platform` with the returned output folder.
 
 
 #######################################################################
-# Resource-reading tools
-#
-# The resource above is only reachable via the MCP `resources/read` protocol,
-# which some clients (e.g. the Copilot CLI) do not expose as callable functions.
-# This tool mirrors the same resource so the data can be read directly.
+# Tools
 #######################################################################
 
 
 @mcp.tool()
-def read_protocol_catalog() -> str:
-    """Read the supported protocol catalog for acquisition planning.
-
-    Exposes the same data as the `qibocal://protocol-catalog` resource as a
-    directly callable tool.
-    """
-    return protocol_catalog()
-
-
-#######################################################################
-# Tools definitions
-#######################################################################
+def read_protocol_catalog() -> dict[str, str]:
+    """Return the supported protocol catalog for acquisition planning."""
+    return {'catalog': Path(__file__).with_name("PROTOCOL_CATALOG.md").read_text(encoding="utf-8")}
 
 
 @mcp.tool()
@@ -108,10 +95,14 @@ def generate_report(data_folder: str) -> dict[str, str]:
 @mcp.tool()
 def update_platform(
     data_folder: str,
+    skip_qubits: list[Any] | None = None,
 ) -> dict[str, str]:
-    """Apply the updated platform from a qibocal output folder."""
+    """Apply the updated platform from a qibocal output folder.
+
+    Optionally skip specific qubits whose updates should not be applied.
+    """
     data_folder_path = Path(data_folder)
-    update_qq(data_folder_path)
+    update_qq(data_folder_path, skip_qubits=skip_qubits)
     return return_content(data_folder_path)
 
 
