@@ -63,14 +63,14 @@ class CalibrationSession:
         shutil.copytree(source_platform_path, self.session_platform_path)
 
     
-    async def update_session_platform(self, new_platform_path: Path, skip_qubits: list[Any] | None = None) -> None:
+    def update_session_platform(self, new_platform_path: Path, skip_qubits: list[Any] | None = None) -> None:
         """Replace the session-local platform with an updated version.
 
         Update the session-local platform from the given folder, optionally
         excluding the qubits listed in `skip_qubits`. The real platform
         registry is left unchanged.
         """
-        await update_qq(
+        update_qq(
             data_path=new_platform_path, 
             platform_path=self.session_platform_path, 
             skip_qubits=skip_qubits
@@ -94,7 +94,13 @@ def _close_session(*, accept_latest_platform: bool) -> dict[str, Any] | None:
         return None
 
     try:
-        # run function for updating session platform
+        if accept_latest_platform:
+            try:
+                assert session.latest_step_folder and session.latest_step_folder.is_dir(), "Latest step folder is not available or is not a directory."
+                session.update_session_platform(session.latest_step_folder)
+            except AssertionError as e:
+                print(f"Failed to update session platform: {e}")
+
         return {
             "data_folder": str(session.path.resolve()),
             "platform": session.platform_name,
@@ -162,7 +168,7 @@ def _analyze_platform_architecture(platform_name: str) -> dict[str, Any]:
     }
 
 
-async def _run_targets(
+def _run_targets(
     session: CalibrationSession,
     step_id: int,
     operation: str,
@@ -186,7 +192,7 @@ async def _run_targets(
     )
     runcard_path = write_runcard(runcard, output_dir=output_path)
     try:
-        await run_qq(
+        run_qq(
             runcard_path,
             output_path,
             update=True,
@@ -284,7 +290,7 @@ def platform_architecture(platform_name: str) -> dict[str, Any]:
 
 
 @mcp.tool()
-async def start_calibration(
+def start_calibration(
     parent_folder: str,
     targets: list[Any],
     platform: str,
@@ -316,7 +322,7 @@ async def start_calibration(
 
 
 @mcp.tool()
-async def run_protocol(
+def run_protocol(
     operation: str,
     parameters: dict[str, Any],
     targets: list[Any] | None = None,
@@ -347,7 +353,7 @@ async def run_protocol(
         targets_str = "-".join(str(target) for target in step_targets)
 
         step_path = session.path / f"{step_id}-{operation}-qubits-{targets_str}"
-        run = await _run_targets(
+        run = _run_targets(
             session, step_id, operation, parameters, step_targets, step_path
         )
 
@@ -373,7 +379,7 @@ async def run_protocol(
 
 
 @mcp.tool()
-async def accept_step_platform(accepted_qubits: list[Any]) -> dict[str, Any]:
+def accept_step_platform(accepted_qubits: list[Any]) -> dict[str, Any]:
     """Promote successful qubit updates to the next calibration iteration.
 
     After visually checking each qubit's HTML report plot, pass only the qubits
@@ -405,7 +411,7 @@ async def accept_step_platform(accepted_qubits: list[Any]) -> dict[str, Any]:
             qubit for qubit in step_targets if qubit not in accepted_qubits
         ]
 
-        await session.update_session_platform(
+        session.update_session_platform(
             new_platform_path=step_path, 
             skip_qubits=skipped_qubits
         )
@@ -422,7 +428,7 @@ async def accept_step_platform(accepted_qubits: list[Any]) -> dict[str, Any]:
 
 
 @mcp.tool()
-async def manually_overwrite_qubits(manual_overwritten_qubits: list[Any], operation: str) -> dict[str, Any]:
+def manually_overwrite_qubits(manual_overwritten_qubits: list[Any], operation: str) -> dict[str, Any]:
     """Manually overwrite specific qubits for a given experiment."""
     try:
         session = _session()
@@ -450,7 +456,7 @@ async def manually_overwrite_qubits(manual_overwritten_qubits: list[Any], operat
 
 
 @mcp.tool()
-async def abort_calibration() -> dict[str, Any]:
+def abort_calibration() -> dict[str, Any]:
     """Abort the active session without accepting the latest step platform."""
     if _active_session is None:
         return {"error": "No calibration is active. Call start_calibration first."}
@@ -458,7 +464,7 @@ async def abort_calibration() -> dict[str, Any]:
 
 
 @mcp.tool()
-async def finish_calibration() -> dict[str, Any]:
+def finish_calibration() -> dict[str, Any]:
     """Close the session and return a summary of its steps."""
     if _active_session is None:
         return {"error": "No calibration is active. Call start_calibration first."}

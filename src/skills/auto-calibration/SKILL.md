@@ -52,7 +52,7 @@ closed with `abort_calibration`.
   tool call (including `start_calibration`, `run_protocol`,
   `accept_step_platform`, `finish_calibration`, etc.), the agent **must**
   activate the project virtual environment by sourcing its absolute path:
-  `source /home/users/lorenzo.ballerio/qibocal-mcp-servers/.venv/.venv/bin/activate`.
+  `source /home/users/lorenzo.ballerio/qibocal-mcp-servers/.venv/bin/activate`.
   This ensures all subprocesses run with the correct Python interpreter and
   dependencies. Never call any tool without first activating the venv.
 - **Autonomy.** Do not ask for approval at every step; run autonomously between

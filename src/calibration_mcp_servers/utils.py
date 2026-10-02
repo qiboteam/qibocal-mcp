@@ -1,7 +1,7 @@
 """Shared adapters for qibocal MCP servers."""
 
-import asyncio
 import os
+import subprocess
 import sys
 from dataclasses import asdict
 from datetime import datetime
@@ -75,7 +75,7 @@ def _qq_executable() -> str:
     return str(qq)
 
 
-async def run_qq(
+def run_qq(
     runcard_path: Path,
     output_path: Path,
     update: bool,
@@ -117,22 +117,22 @@ async def run_qq(
             f"--partition={partition}",
         ] + qq_command
 
-    process = await asyncio.create_subprocess_exec(
-        *command,
+    process = subprocess.run(
+        command,
         env=environment,
-        stdout=asyncio.subprocess.PIPE,
-        stderr=asyncio.subprocess.PIPE,
+        capture_output=True,
+        text=True,
+        check=False,
     )
-    stdout, stderr = await process.communicate()
     if process.returncode != 0:
         raise RuntimeError(
             f"'{' '.join(command)}' failed with exit code {process.returncode}:\n"
-            f"{stderr.decode()}"
+            f"{process.stderr}"
         )
-    return stdout.decode()
+    return process.stdout
 
 
-async def update_qq(
+def update_qq(
     data_path: Path, 
     platform_path: Path | None = None,
     skip_qubits: list[Any] | None = None,
@@ -154,19 +154,19 @@ async def update_qq(
         environment = os.environ.copy()
         environment["QIBOLAB_PLATFORMS"] = str(platform_path.resolve())
 
-    process = await asyncio.create_subprocess_exec(
-        *command,
+    process = subprocess.run(
+        command,
         env=environment,
-        stdout=asyncio.subprocess.PIPE,
-        stderr=asyncio.subprocess.PIPE,
+        capture_output=True,
+        text=True,
+        check=False,
     )
-    stdout, stderr = await process.communicate()
     if process.returncode != 0:
         raise RuntimeError(
             f"'{' '.join(command)}' failed with exit code {process.returncode}:\n"
-            f"{stderr.decode()}"
+            f"{process.stderr}"
         )
-    return stdout.decode()
+    return process.stdout
 
 
 def return_content(output_folder: str | Path) -> dict[str, str]:

@@ -61,7 +61,7 @@ call `update_platform` with the returned output folder.
 
 
 @mcp.tool()
-async def generate_fit(
+def generate_fit(
     data_folder: str,
     output_folder: str | None = None,
     update: bool = False,
@@ -87,17 +87,17 @@ def generate_report(data_folder: str) -> dict[str, str]:
 
 
 @mcp.tool()
-async def update_platform(
+def update_platform(
     data_folder: str,
 ) -> dict[str, str]:
     """Apply the updated platform from a qibocal output folder."""
     data_folder_path = Path(data_folder)
-    await update_qq(data_folder_path)
+    update_qq(data_folder_path)
     return return_content(data_folder_path)
 
 
 @mcp.tool()
-async def acquire_experiments(
+def acquire_experiments(
     experiments: list[dict[str, Any]],
     parent_folder: str | None = None,
     platform: str = "mock",
@@ -122,7 +122,7 @@ async def acquire_experiments(
     runcard = make_runcard(experiments, targets, platform, backend, update=update)
     runcard_path = write_runcard(runcard, path)
     try:
-        await run_qq(runcard_path, path, update, partition)
+        run_qq(runcard_path, path, update, partition)
     finally:
         runcard_path.unlink(missing_ok=True)
     response: dict[str, Any] = {**return_content(path)}
