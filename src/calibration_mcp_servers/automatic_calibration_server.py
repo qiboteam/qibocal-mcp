@@ -343,54 +343,48 @@ def run_protocol(
     targets: list[Any] | None = None,
 ) -> dict[str, Any]:
     """Run one protocol in parallel across the selected targets."""
-    try:
-        session = _session()
+    session = _session()
 
-        if session.manual_override_operation is not None:
-            requested_targets = list(session.targets if targets is None else targets)
-            if operation != session.manual_override_operation or set(
-                requested_targets
-            ) != set(session.manual_override_targets):
-                return {
-                    "error": (
-                        "A manual platform estimate requires the next run to repeat "
-                        f"{session.manual_override_operation!r} for exactly "
-                        f"{session.manual_override_targets!r} with focused parameters."
-                    ),
-                    "required_operation": session.manual_override_operation,
-                    "required_targets": session.manual_override_targets,
-                }
-
-        step_id = session.step_counter
-        session.step_counter += 1
-
-        step_targets = list(session.targets if targets is None else targets)
-        targets_str = "-".join(str(target) for target in step_targets)
-
-        step_path = session.path / f"{step_id}-{operation}-qubits-{targets_str}"
-        run = _run_targets(
-            session, step_id, operation, parameters, step_targets, step_path
-        )
-
-        run.update(
-            {
-                "operation": operation,
-                "step_id": step_id,
-                "targets": step_targets,
-                "session_platform": str(session.session_platform_path.absolute()),
+    if session.manual_override_operation is not None:
+        requested_targets = list(session.targets if targets is None else targets)
+        if operation != session.manual_override_operation or set(
+            requested_targets
+        ) != set(session.manual_override_targets):
+            return {
+                "error": (
+                    "A manual platform estimate requires the next run to repeat "
+                    f"{session.manual_override_operation!r} for exactly "
+                    f"{session.manual_override_targets!r} with focused parameters."
+                ),
+                "required_operation": session.manual_override_operation,
+                "required_targets": session.manual_override_targets,
             }
-        )
 
-        session.latest_step_folder = step_path
-        session.latest_step_targets = step_targets
-        session.latest_operation = operation
-        session.manual_override_operation = None
-        session.manual_override_targets = []
+    step_id = session.step_counter
+    session.step_counter += 1
 
-        return run
-    except BaseException:
-        _close_session(accept_latest_platform=True)
-        raise
+    step_targets = list(session.targets if targets is None else targets)
+    targets_str = "-".join(str(target) for target in step_targets)
+
+    step_path = session.path / f"{step_id}-{operation}-qubits-{targets_str}"
+    run = _run_targets(session, step_id, operation, parameters, step_targets, step_path)
+
+    run.update(
+        {
+            "operation": operation,
+            "step_id": step_id,
+            "targets": step_targets,
+            "session_platform": str(session.session_platform_path.absolute()),
+        }
+    )
+
+    session.latest_step_folder = step_path
+    session.latest_step_targets = step_targets
+    session.latest_operation = operation
+    session.manual_override_operation = None
+    session.manual_override_targets = []
+
+    return run
 
 
 @mcp.tool()
@@ -401,44 +395,38 @@ def accept_step_platform(accepted_qubits: list[Any]) -> dict[str, Any]:
     whose fits match the measured signal and physical expectation. Updates for all
     other qubits in the latest step are discarded.
     """
-    try:
-        session = _session()
+    session = _session()
 
-        step_path = session.latest_step_folder
-        if step_path is None:
-            return {"error": "No step has been run yet."}
-        step_targets = session.latest_step_targets
-        if step_targets is None:
-            return {"error": "The latest step has no recorded targets."}
+    step_path = session.latest_step_folder
+    if step_path is None:
+        return {"error": "No step has been run yet."}
+    step_targets = session.latest_step_targets
+    if step_targets is None:
+        return {"error": "The latest step has no recorded targets."}
 
-        unknown_qubits = set(accepted_qubits) - set(step_targets)
-        if unknown_qubits:
-            return {
-                "error": f"Accepted qubits were not part of the latest step: {sorted(unknown_qubits, key=str)}"
-            }
-
-        if not (step_path / "new_platform").exists():
-            return {
-                "error": f"No updated platform was produced in {step_path}; missing platform folder."
-            }
-
-        skipped_qubits = [
-            qubit for qubit in step_targets if qubit not in accepted_qubits
-        ]
-
-        session.update_session_platform(
-            new_platform_path=step_path, skip_qubits=skipped_qubits
-        )
-
+    unknown_qubits = set(accepted_qubits) - set(step_targets)
+    if unknown_qubits:
         return {
-            "source_step": str(step_path.absolute()),
-            "platform": session.platform_name,
-            "accepted_qubits": accepted_qubits,
-            "skipped_qubits": skipped_qubits,
+            "error": f"Accepted qubits were not part of the latest step: {sorted(unknown_qubits, key=str)}"
         }
-    except BaseException:
-        _close_session(accept_latest_platform=False)
-        raise
+
+    if not (step_path / "new_platform").exists():
+        return {
+            "error": f"No updated platform was produced in {step_path}; missing platform folder."
+        }
+
+    skipped_qubits = [qubit for qubit in step_targets if qubit not in accepted_qubits]
+
+    session.update_session_platform(
+        new_platform_path=step_path, skip_qubits=skipped_qubits
+    )
+
+    return {
+        "source_step": str(step_path.absolute()),
+        "platform": session.platform_name,
+        "accepted_qubits": accepted_qubits,
+        "skipped_qubits": skipped_qubits,
+    }
 
 
 @mcp.tool()
@@ -446,31 +434,27 @@ def manually_overwrite_qubits(
     manual_overwritten_qubits: list[Any], operation: str
 ) -> dict[str, Any]:
     """Manually overwrite specific qubits for a given experiment."""
-    try:
-        session = _session()
+    session = _session()
 
-        assert (
-            session.latest_step_folder
-            and session.latest_step_folder.is_dir()
-            and session.latest_step_targets
-            and session.latest_operation
-        ), "No step has been run yet."
+    assert (
+        session.latest_step_folder
+        and session.latest_step_folder.is_dir()
+        and session.latest_step_targets
+        and session.latest_operation
+    ), "No step has been run yet."
 
-        assert set(manual_overwritten_qubits) <= set(session.latest_step_targets)
-        assert session.latest_operation == operation, (
-            "The provided operation does not match the latest recorded operation."
-        )
+    assert set(manual_overwritten_qubits) <= set(session.latest_step_targets)
+    assert session.latest_operation == operation, (
+        "The provided operation does not match the latest recorded operation."
+    )
 
-        session.manual_override_operation = operation
-        session.manual_override_targets = manual_overwritten_qubits
+    session.manual_override_operation = operation
+    session.manual_override_targets = manual_overwritten_qubits
 
-        return {
-            "operation": operation,
-            "manually_overwritten_qubits": manual_overwritten_qubits,
-        }
-    except BaseException:
-        _close_session(accept_latest_platform=False)
-        raise
+    return {
+        "operation": operation,
+        "manually_overwritten_qubits": manual_overwritten_qubits,
+    }
 
 
 @mcp.tool()
