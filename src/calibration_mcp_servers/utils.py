@@ -102,12 +102,6 @@ def run_qq(
         "-f",
         "--update" if update else "--no-update",
     ]
-    if platform_path is not None:
-        # command for changing the QIBOLAB_PLATFORMS environment variable in the subprocess
-        platform_command = [f"QIBOLAB_PLATFORMS={platform_path.resolve()}", "&&"]
-        qq_command = platform_command + qq_command
-        # adding the command in the qq_command list to specify the new platform
-        qq_command += ["--platform", "new_platform"]
 
     if partition is None:
         command = qq_command
@@ -117,6 +111,13 @@ def run_qq(
             "--time=01:00:00",
             f"--partition={partition}",
         ] + qq_command
+
+    if platform_path is not None:
+        # command for changing the QIBOLAB_PLATFORMS environment variable in the subprocess
+        platform_command = [f"QIBOLAB_PLATFORMS={platform_path.resolve()}", "&&"]
+        command = platform_command + command
+        # adding the command in the qq_command list to specify the new platform
+        command += ["--platform", "new_platform"]
 
     process = subprocess.run(
         command,
