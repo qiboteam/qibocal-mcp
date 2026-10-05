@@ -59,7 +59,7 @@ class CalibrationSession:
         self.session_platform_path = self.path / self.session_platform_name
 
         # copy the source platform to the session-local platform path
-        source_platform_path = locate_platform(self.platform_name).resolve()
+        source_platform_path = locate_platform(self.platform_name).absolute()
         shutil.copytree(source_platform_path, self.session_platform_path)
 
     def update_session_platform(
@@ -105,10 +105,10 @@ def _close_session(*, accept_latest_platform: bool) -> dict[str, Any] | None:
                 print(f"Failed to update session platform: {e}")
 
         return {
-            "data_folder": str(session.path.resolve()),
+            "data_folder": str(session.path.absolute()),
             "platform": session.platform_name,
             "step_counter": session.step_counter,
-            "session_platform": str(session.session_platform_path.resolve()),
+            "session_platform": str(session.session_platform_path.absolute()),
         }
     finally:
         _active_session = None
@@ -158,7 +158,7 @@ def _analyze_platform_architecture(platform_name: str) -> dict[str, Any]:
 
     return {
         "platform": platform_name,
-        "parameters_file": str(parameters_path.resolve()),
+        "parameters_file": str(parameters_path.absolute()),
         "qubits": qubit_names,
         "nqubits": len(qubit_names),
         "topology": {
@@ -214,7 +214,7 @@ def calibration_report(report_path: str) -> str:
     The report path is supplied as the `path` query parameter in the resource URI.
     The existing HTML plots and serialized results are exposed for visual review.
     """
-    path = Path(report_path).expanduser().resolve()
+    path = Path(report_path).expanduser().absolute()
     report_html_path = path / "index.html"
     if not path.is_dir() or not report_html_path.is_file():
         raise FileNotFoundError(
@@ -329,10 +329,10 @@ def start_calibration(
         partition=partition,
     )
     return {
-        "data_folder": str(path.resolve()),
+        "data_folder": str(path.absolute()),
         "targets": targets,
         "platform": platform,
-        "working_platform": str(_active_session.session_platform_path.resolve()),
+        "working_platform": str(_active_session.session_platform_path.absolute()),
     }
 
 
@@ -377,7 +377,7 @@ def run_protocol(
                 "operation": operation,
                 "step_id": step_id,
                 "targets": step_targets,
-                "session_platform": str(session.session_platform_path.resolve()),
+                "session_platform": str(session.session_platform_path.absolute()),
             }
         )
 
@@ -431,7 +431,7 @@ def accept_step_platform(accepted_qubits: list[Any]) -> dict[str, Any]:
         )
 
         return {
-            "source_step": str(step_path.resolve()),
+            "source_step": str(step_path.absolute()),
             "platform": session.platform_name,
             "accepted_qubits": accepted_qubits,
             "skipped_qubits": skipped_qubits,

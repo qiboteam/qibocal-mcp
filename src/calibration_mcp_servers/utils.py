@@ -20,8 +20,8 @@ def make_output_path(parent_folder: str | Path, platform: str) -> Path:
     path = (
         Path(parent_folder)
         / platform
-        / now.strftime("%Y%m%d")
-        / now.strftime("%H:%M:%S")
+        / now.strftime("%Y-%m-%d")
+        / now.strftime("%H.%M.%S")
     )
     path.mkdir(parents=True)
     return path
@@ -104,6 +104,13 @@ def run_qq(
         "--update" if update else "--no-update",
     ]
 
+    absolute_platform_path = None
+    env = os.environ.copy()
+    if platform_path is not None:
+        absolute_platform_path = str(platform_path.absolute())
+        env["QIBOLAB_PLATFORMS"] = absolute_platform_path
+        qq_command += ["--platform", "new_platform"]
+
     if partition is None:
         command = qq_command
     else:
@@ -111,14 +118,10 @@ def run_qq(
             "srun",
             "--time=01:00:00",
             f"--partition={partition}",
-        ] + qq_command
-
-    env = os.environ.copy()
-    if platform_path is not None:
-        # set the QIBOLAB_PLATFORMS environment variable in the subprocess
-        env["QIBOLAB_PLATFORMS"] = str(platform_path.resolve())
-        # adding the command in the qq_command list to specify the new platform
-        command += ["--platform", "new_platform"]
+        ]
+        if platform_path is not None:
+            command += ["env", f"QIBOLAB_PLATFORMS={absolute_platform_path}"]
+        command += qq_command
 
     process = subprocess.run(
         command,
@@ -147,7 +150,7 @@ def update_qq(
         - platform_path: Optional path to the qibolab platform file; when
           provided, ``QIBOLAB_PLATFORMS`` is set in the subprocess environment.
     """
-    command = [_qq_executable(), "update", str(data_path.resolve())]
+    command = [_qq_executable(), "update", str(data_path.absolute())]
 
     if skip_qubits:
         command += [arg for q in skip_qubits for arg in ("--skip-qubits", str(q))]
@@ -155,7 +158,7 @@ def update_qq(
     env = os.environ.copy()
     if platform_path is not None:
         # set the QIBOLAB_PLATFORMS environment variable in the subprocess
-        env["QIBOLAB_PLATFORMS"] = str(platform_path.resolve())
+        env["QIBOLAB_PLATFORMS"] = str(platform_path.absolute())
 
     process = subprocess.run(
         command,
@@ -174,7 +177,7 @@ def update_qq(
 
 def return_content(output_folder: str | Path) -> dict[str, str]:
     """Return a stable, JSON-compatible MCP response."""
-    return {"output_folder": str(Path(output_folder).resolve())}
+    return {"output_folder": str(Path(output_folder).absolute())}
 
 
 def read_platform_json(platform_path: Path) -> dict[str, Any]:
@@ -184,7 +187,7 @@ def read_platform_json(platform_path: Path) -> dict[str, Any]:
     if not calibration_path.is_file() or not parameters_path.is_file:
         raise FileNotFoundError("Platform files not found.")
     return {
-        "platform_path": str(platform_path.resolve()),
+        "platform_path": str(platform_path.absolute()),
         "calibration": json.loads(calibration_path.read_text(encoding="utf-8")),
         "parameters": json.loads(parameters_path.read_text(encoding="utf-8")),
     }
