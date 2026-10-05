@@ -1,6 +1,7 @@
 """Shared adapters for qibocal MCP servers."""
 
 import json
+import os
 import subprocess
 import sys
 from dataclasses import asdict
@@ -112,10 +113,10 @@ def run_qq(
             f"--partition={partition}",
         ] + qq_command
 
+    env = os.environ.copy()
     if platform_path is not None:
-        # command for changing the QIBOLAB_PLATFORMS environment variable in the subprocess
-        platform_command = [f"QIBOLAB_PLATFORMS={platform_path.resolve()}", "&&"]
-        command = platform_command + command
+        # set the QIBOLAB_PLATFORMS environment variable in the subprocess
+        env["QIBOLAB_PLATFORMS"] = str(platform_path.resolve())
         # adding the command in the qq_command list to specify the new platform
         command += ["--platform", "new_platform"]
 
@@ -124,6 +125,7 @@ def run_qq(
         capture_output=True,
         text=True,
         check=False,
+        env=env,
     )
     if process.returncode != 0:
         raise RuntimeError(
@@ -150,16 +152,17 @@ def update_qq(
     if skip_qubits:
         command += [arg for q in skip_qubits for arg in ("--skip-qubits", str(q))]
 
+    env = os.environ.copy()
     if platform_path is not None:
-        # command for changing the QIBOLAB_PLATFORMS environment variable in the subprocess
-        platform_command = [f"QIBOLAB_PLATFORMS={platform_path.resolve()}", "&&"]
-        command = platform_command + command
+        # set the QIBOLAB_PLATFORMS environment variable in the subprocess
+        env["QIBOLAB_PLATFORMS"] = str(platform_path.resolve())
 
     process = subprocess.run(
         command,
         capture_output=True,
         text=True,
         check=False,
+        env=env,
     )
     if process.returncode != 0:
         raise RuntimeError(
