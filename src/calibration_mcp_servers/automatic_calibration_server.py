@@ -73,7 +73,7 @@ class CalibrationSession:
         """
         update_qq(
             data_path=new_platform_path,
-            platform_path=self.session_platform_path,
+            platform_path=self.path,
             skip_qubits=skip_qubits,
         )
 
