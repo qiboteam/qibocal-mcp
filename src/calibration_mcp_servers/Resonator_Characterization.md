@@ -36,6 +36,18 @@ Description: Data acquisition for Punchout over amplitude.
 | `max_amp` | `float` | yes | Maximum amplitude. |
 | `step_amp` | `float` | yes | Step amplitude. |
 
+**Power-sweep and shared-LO guidance**
+
+- Repeat `resonator_punchout` at different input amplitudes when needed to
+	confirm the punchout and characterize its power dependence.
+- `resonator_punchout_attenuation` sweeps LO attenuation. Identify every target
+	in the calibration session whose probe channel uses the same LO. After
+	changing shared LO power or attenuation, rerun the punchout at suitable
+	settings and confirm that each affected target's resonator remains clearly
+	visible and resolvable. An in-range IF alone does not guarantee a visible
+	punchout. If any affected punchout is lost or unclear, adjust the setup and
+	repeat the relevant experiments before accepting the calibration.
+
 **Platform update fields**
 
 | Field | Description |

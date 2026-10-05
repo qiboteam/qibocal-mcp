@@ -72,6 +72,15 @@ closed with `abort_calibration`.
   one Slurm job for the selected targets, never a sequential loop.
 - **One protocol at a time.** Call `run_protocol` for a single protocol, review
   the fit, then decide the next step.
+- **Calibration-graph golden rule — use evidence-driven feedback loops.** The
+  phase sequence is the default progression, not a strictly linear path. While
+  working within a phase, evaluate whether repeating a different or previously
+  run protocol in that same phase is necessary to improve or validate the
+  calibration. If results show that an earlier dependency needs correction,
+  return to the relevant previous phase, run only the necessary experiments
+  there, then resume forward progression. Do not run experiments from later
+  phases ahead of the current phase, and do not revisit earlier phases without
+  evidence that doing so is needed.
 - **Set ALL parameters.** For every protocol, set every parameter, including the
   optional ones, using the catalog as the source of truth for names, types, and
   defaults.
@@ -81,9 +90,21 @@ closed with `abort_calibration`.
 - **`update=true`** only when that protocol's successful fit should be applied to
   the platform for subsequent steps. The platform is NOT published to the Qibolab
   registry during a step.
-- **Be critical when judging fits.** The data must be clearly interpretable and
-  support a very reliable fit. A serialized fit result alone does not establish fit
-  quality — visually compare each measured trace with its fitted model.
+- **Fail closed when judging fits.** Treat every fit as failed by default. Accept
+  it only after affirmative evidence shows that the data and fit are very good:
+  first confirm the experiment's resolution is sufficient to resolve the signal
+  by inspecting sweep spacing and the number of measured points across the
+  feature. If needed, calculate spacing from the sweep range and number of points
+  for a uniform sweep, or use adjacent axis values for a nonuniform sweep, and
+  compare it with the feature width. Then verify that the raw signal is clear,
+  the fitted model tracks it, residuals show no meaningful structure, the fit
+  converged reliably, and the result is physically plausible. If any check is
+  inconclusive or lacks supporting evidence, immediately discard that result;
+  do not hesitate or advance as if it were calibrated. Repeat or refine the same
+  experiment, choose another applicable protocol in the same phase, or, when an
+  earlier dependency may be responsible, step back to the relevant previous
+  phase under the calibration-graph golden rule. A successful optimizer status
+  or serialized result alone is never sufficient evidence of fit quality.
 - **Accept before refining.** If at least one qubit is accepted, you **must**
   call `accept_step_platform` to accept the current step before proceeding with
   further refinements.
@@ -157,7 +178,9 @@ prescribed phase order even if existing platform values look calibrated. In
   sweetspots are already calibrated, begin with signal experiments after qubit
   characterization.
 
-Do not infer a different starting point or move backward to earlier phases.
+Do not infer a different starting point. The selected starting point controls
+the planned progression; evidence from results may still justify revisiting an
+earlier phase under the calibration-graph golden rule.
 After handling the user-selected starting point, check downstream phases for
 missing, stale, or unverified calibration data. If any is found, fall back to
 the **earliest downstream phase with a gap** and continue forward from there,
@@ -192,7 +215,8 @@ complete.
       because their phase is reached. Revisit them only if requested or if a new
       result invalidates their assumptions.
     5. Treat calibration data from phases before the selected starting point as
-      trusted and leave those phases unchanged.
+      trusted and leave those phases unchanged unless results in the active
+      session show that an earlier calibration assumption must be corrected.
     6. If the user has not identified a starting protocol or phase, ask for the
      desired starting point rather than inferring one from the platform state.
 
@@ -200,7 +224,9 @@ In both modes, adapt the strategy dynamically: if a fit is poor, revise
 parameters or use an alternative protocol to improve it. In the active
 calibration scope, do not mark an attempted step complete until its fit is
 trustworthy. In incremental mode, previously calibrated downstream phases are
-trusted baseline data; revisit them only under the conditions above.
+trusted baseline data; revisit them only when requested or when new results
+invalidate their assumptions. Apply the calibration-graph golden rule when
+deciding whether a same-phase repeat or a return to a previous phase is needed.
 
 
 **For the following phases you must follow this GOLDEN RULE**:
@@ -209,15 +235,18 @@ For each protocol:
 2. Open the step's report via `read_calibration_report({output_folder})`
    and judge per qubit whether the fitted curve matches the measured signal and
    physical expectation.
-3. Evaluate each qubit independently. Accept only qubits whose feature is clearly
-  resolved and whose fit is trustworthy; reject qubits whose feature is unclear,
-  whose fit does not converge, or whose result is physically implausible.
+3. Evaluate each qubit independently and fail closed: the default is to reject
+   its fit. Accept it only when the report provides clear, affirmative evidence
+   that the feature is resolved and the fit is very good. If there is any
+   uncertainty, missing evidence, or unreliable convergence, discard the result
+   immediately; do not hesitate or mark it complete.
 4. Call `accept_step_platform` with the accepted qubits (pass an empty list if
   none are trustworthy). If some targets were rejected, run a focused refinement
-  for those targets, changing range or resolution or trying a suitable
-  alternative protocol. Continue until their fits are trustworthy or the
-  calibration must be aborted. Do not leave rejected targets behind or mark
-  their phase complete without a trustworthy result.
+  for those targets, changing range or resolution, trying another suitable
+  protocol in the same phase, or stepping back to a relevant previous phase if
+  an earlier dependency needs correction. Continue until their fits are
+  trustworthy or the calibration must be aborted. Do not leave rejected targets
+  behind or mark their phase complete without a trustworthy result.
 5. Before a manual platform estimate for rejected qubits, accept the current
   step for any accepted qubits. Then follow the manual-estimate procedure below.
 
@@ -233,8 +262,8 @@ Typical protocols (see the markdown for the exact list and parameters):
 - `resonator_spectroscopy` — coarse-to-fine sweep of the readout frequency to
   locate the resonator peak. Prefer a 2D protocol when possible.
 - `resonator_punchout` / `resonator_punchout_attenuation` — 2D sweep (frequency
-  × amplitude or frequency × attenuation) to resolve the resonator peak and set
-  the readout amplitude.
+  × amplitude or attenuation) to resolve the resonator peak and set the readout
+  amplitude. Follow the phase catalog's power-sweep and shared-LO checks.
 - `resonator_flux` — for flux-tunable qubits, map the resonator frequency vs
   flux bias to find the sweetspot and set the flux offset.
 
@@ -250,9 +279,8 @@ sweetspot.
 Typical protocols:
 - `qubit_spectroscopy` — sweep the drive frequency to locate the qubit
   transition. Use a 2D protocol when possible.
-- `qubit_power_spectroscopy` — 2D sweep (frequency × drive amplitude) to confirm
-  a peak is a qubit (the peak grows with drive power) and to resolve the
-  transition.
+- `qubit_power_spectroscopy` — 2D sweep (frequency × drive amplitude) to
+  identify transitions; follow the phase catalog's drive-power guidance.
 - `qubit_flux` — for flux-tunable qubits, map the qubit frequency vs flux bias
   to find the sweetspot and set the flux offset.
 - `qubit_spectroscopy_ef` — for qutrit work, find the 1→2 transition and the
@@ -396,20 +424,30 @@ be excessive.
 
 After each run, open the step report using
 `read_calibration_report({output_folder})` and judge each target
-individually. **Be very critical in your assessment:** the data should be clearly
-interpretable and support a very reliable fit. Inspect the measured trace, fitted
-curve, residual behavior, fit convergence, and whether the result is physically
-plausible. A serialized fit result alone is not evidence of fit quality.
+individually. **Assume the fit failed unless the report proves otherwise. Be very
+critical and check these in order:**
+1. **Resolution and signal clarity first.** Confirm the sweep samples the feature
+  densely enough to resolve its shape and locate it reliably, and that the raw
+  signal clearly distinguishes it from noise or background structure. If
+  necessary, calculate the spacing for a uniform sweep as `(maximum - minimum)
+  / (number of points - 1)`; for a nonuniform sweep, use the actual adjacent
+  axis values. Compare the spacing with the observed feature width and check
+  how many samples cover it. If the feature is undersampled or unclear, reject
+  the result and refine the sweep before assessing or trusting the fit.
+2. Verify that the fitted curve tracks the measured signal across the full trace;
+  inspect residuals for structure and confirm reliable fit convergence.
+3. Check that the fitted result is physically plausible and precise enough for
+  the calibration goal.
 
-- If a qubit's peak/feature is **clearly resolved** and the fit converges well,
-  accept that qubit for the current step. If every target is accepted, proceed
-  to the next planned step.
-- If a feature is **barely visible**, the fit is noisy, or the peak position is
-  uncertain, reject that qubit for the current step, then **repeat the same
-  protocol** for that qubit with slightly finer resolution (smaller step or a
-  narrower range centered on the coarse peak).
-- If a feature is **missing entirely**, reject that qubit for the current step,
-  widen the range, and re-run for that qubit.
+Accept only when every check has affirmative evidence of a very good fit. A
+serialized fit result, an optimizer success flag, or the mere presence of a
+plotted curve is not proof. If any check is inconclusive, treat the experiment as
+failed and discard it immediately. Do not hesitate to restart: repeat the same
+experiment with justified changes to range or resolution, use another suitable
+protocol in the same phase, or step back to a previous phase if an earlier
+dependency may be responsible. The following manual-estimate procedure is only
+for a failed fit when the raw signal still makes the quantity unmistakable; it
+does not make the failed fit acceptable and must be followed by a rerun.
 - If the **fit is poor** (e.g., the Lorentzian/sine model does not converge, or
   the fitted value is unphysical) but you can **confidently read the quantity
   directly from the raw signal** (e.g., the peak is visually obvious even though

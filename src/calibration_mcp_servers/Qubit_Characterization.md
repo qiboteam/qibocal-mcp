@@ -13,6 +13,12 @@ Source: `src/qibocal/protocols/qubit_spectroscopies/qubit_power_spectroscopy.py`
 
 Description: Perform a qubit spectroscopy experiment with different amplitudes. For high amplitude it should be possible to see more peaks: corresponding to the (0-2)/2 frequency and the 1-2. This experiment can be used also to test if a peak is a qubit: if it is, the peak will get larger while increasing the power of the drive.
 
+**Drive-power guidance:** If a transition is unclear or needs confirmation,
+repeat the experiment with different input drive powers (drive amplitudes). Review
+the signal at each power: a qubit transition should become more prominent as
+drive power increases, and higher-power data may reveal additional transitions.
+Do not accept an ambiguous feature solely because it appears in one power sweep.
+
 | Parameter | Type | Required | Description |
 | --- | --- | --- | --- |
 | `frequency` | `RangeLike | None` | no | Frequencies for the sweep [Hz]. |
