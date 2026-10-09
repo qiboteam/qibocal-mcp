@@ -23,14 +23,16 @@ Common runtime options
    * - ``--platform NAME``
      - Platform name, required at runtime unless provided by the own section.
    * - ``--output PATH``
-     - Output directory; defaults to ``runs``.
+     - Output directory; defaults to the agent name for named agents,
+       ``runs`` otherwise.
    * - ``--platforms PATH``
      - Explicit ``QIBOLAB_PLATFORMS`` path list, searched before managed
        repositories; when unset, inherited host paths follow repository roots.
    * - ``--venv NAME_OR_PATH``
-     - Managed environment on the execution host. Unset for local/standalone
-       execution; SSH agents default to ``qibocal-mcp`` without an explicit
-       server interpreter.
+     - Managed environment on the execution host. Named agents default to
+       their name unless a server interpreter is explicit. Unnamed local and
+       standalone execution leave it unset; unnamed SSH agents default to
+       ``qibocal-mcp`` without an explicit server interpreter.
    * - ``--platform-repo REPOSITORY``
      - Repeatable trusted repository URL, Git SSH source or deployment-host
        local source, optionally ``#ref=REF&subdirectory=PATH``. Replaces the
@@ -46,7 +48,8 @@ Common runtime options
        Not supported by the Pydantic AI agent.
    * - ``--workdir PATH``
      - Server: SLURM worker directory, default current directory.
-       Agent: server launch directory, default unset.
+       Agent: server launch directory, default agent name for named agents,
+       unset otherwise.
    * - ``--slurm-arg VALUE``
      - Repeatable scheduling options; replaces the configured list and
        requires an effective partition.
@@ -54,10 +57,12 @@ Common runtime options
 Use ``--slurm-arg=--account=ACCOUNT`` for dashed values. Do not redirect
 stdio, change task count or detach jobs through extra scheduling options.
 
-``--venv`` accepts a name, absolute path or ``./``/``../`` path and expands
-``~`` on the execution host. Named environments use that host's
+``--venv`` accepts a name or path and expands ``~`` on the execution host.
+All relative environment paths, including ``./``/``../``, use that host's
 ``$XDG_CACHE_HOME/qibocal/agent/envs`` or ``~/.cache/qibocal/agent/envs``.
-Other existing path options remain literal. Repository fragments must have
+Configured relative ``output`` and ``workdir`` values similarly use the host's
+``qibocal/agent/runs`` and ``qibocal/agent/work`` cache folders. Explicit CLI
+output/workdir overrides retain current-directory semantics. Repository fragments must have
 URL-encoded values as needed; quote arguments containing ``&``.
 Cached clones are reused without automatic pull/fetch/reset; pin a commit for
 reproducibility. Without a managed environment, repository/dependency options

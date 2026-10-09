@@ -29,9 +29,12 @@ class DeploymentSettings:
     server_python: str | None = None
     timeout: float = 3600
     report_rendering: str = "server"
+    directories: dict[str, str] = field(default_factory=dict)
 
     def __post_init__(self) -> None:
         for item in fields(self):
+            if item.name == "directories":
+                continue
             value = getattr(self, item.name)
             if value is not None:
                 validate_value(f"agent.{item.name}", value)
@@ -80,7 +83,7 @@ def launch_for(settings: DeploymentSettings) -> ServerLaunch:
     venv = settings.venv
     if settings.ssh and settings.server_python is None and venv is None:
         venv = "qibocal-mcp"
-    if venv is not None or settings.platform_repo or settings.dependency:
+    if venv is not None or settings.platform_repo or settings.dependency or settings.directories:
         options = {
             "venv": venv,
             "python": python,
@@ -90,6 +93,8 @@ def launch_for(settings: DeploymentSettings) -> ServerLaunch:
             "dependency": settings.dependency,
         }
         request = {"options": options}
+        if settings.directories:
+            options["directories"] = settings.directories
         if venv is not None:
             request["source"] = source_payload()
         bootstrap = Path(__file__).with_name("environment.py").read_text(encoding="utf-8")
@@ -98,7 +103,7 @@ def launch_for(settings: DeploymentSettings) -> ServerLaunch:
         command += ["--platforms", settings.platforms]
     if settings.ssh:
         remote = "exec " + shlex.join(command)
-        if settings.workdir is not None:
+        if settings.workdir is not None and "workdir" not in settings.directories:
             remote = f"cd {shlex.quote(settings.workdir)} && {remote}"
         return ServerLaunch(
             command="ssh",
@@ -111,7 +116,8 @@ def launch_for(settings: DeploymentSettings) -> ServerLaunch:
         )
     return ServerLaunch(
         command=command[0], args=command[1:],
-        env=dict(os.environ), cwd=settings.workdir,
+        env=dict(os.environ),
+        cwd=settings.workdir if "workdir" not in settings.directories else None,
     )
 
 

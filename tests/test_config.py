@@ -4,13 +4,14 @@ import contextlib
 import io
 import json
 import os
+import shlex
 import sys
 import tempfile
 import unittest
 from pathlib import Path
 from unittest.mock import AsyncMock, Mock, patch
 
-from qibocal_mcp import agent, config, server
+from qibocal_mcp import agent, config, environment, server
 
 
 class ConfigTests(unittest.TestCase):
@@ -105,11 +106,14 @@ class ConfigTests(unittest.TestCase):
             self.assertEqual(args.platform, "local-qpu")
             self.assertIsNone(args.ssh)
             self.assertEqual(args.objective, "Inspect only; stop on errors")
+            self.assertEqual((args.output, args.workdir, args.venv), ("local", "local", "local"))
+            self.assertEqual(args.directories, {"output": "local", "workdir": "local"})
             agent.main(["remote", "--output", "explicit-runs", "Explicit inspect only"])
             args = run.call_args.args[0]
             self.assertEqual(args.ssh, "node")
             self.assertEqual(args.objective, "Explicit inspect only")
             self.assertEqual(args.output, "explicit-runs")
+            self.assertEqual(args.directories, {"workdir": "remote"})
             self.assertIn("--no-config", agent.transport_for(args).args[-1])
         self.assert_cli_error(lambda: agent.main(["unknown"]), "Unknown agent: unknown")
         self.assert_cli_error(
@@ -269,7 +273,9 @@ class ConfigTests(unittest.TestCase):
         instance = Mock()
         with patch("qibocal_mcp.server.create_server", return_value=instance) as create:
             server.main([])
-            create.assert_called_with("configured", output=Path("configured-runs"))
+            create.assert_called_with(
+                "configured", output=environment.cache_home() / "runs/configured-runs"
+            )
             instance.run.assert_called_with(transport="stdio", show_banner=False)
             server.main(["--platform", "explicit", "--output", "explicit-runs"])
             create.assert_called_with("explicit", output=Path("explicit-runs"))
@@ -437,7 +443,6 @@ class ConfigTests(unittest.TestCase):
 
     def test_deployment_errors_are_checked_before_startup(self):
         for key, value in (
-            ("agent.venv", "not/a/name"),
             ("agent.platform_repo", '["repo#subdirectory=../outside"]'),
             ("server.platform_repo", '"not an array"'),
             ("agent.dependency", '["--target=/elsewhere"]'),
@@ -460,6 +465,59 @@ class ConfigTests(unittest.TestCase):
                 "cannot be combined",
             )
         launch.assert_not_called()
+
+    def test_configured_directories_are_carried_to_the_execution_host(self):
+        config.save_config({"agents": {"lab": {
+            "platform": "qpu", "model": "test", "ssh": "node",
+            "venv": "nested/env", "workdir": "./project", "output": "nested/runs",
+        }}})
+        with patch("qibocal_mcp.agent.run", new_callable=AsyncMock) as run:
+            agent.main(["lab", "Inspect"])
+        args = run.call_args.args[0]
+        self.assertEqual(args.venv, "nested/env")
+        self.assertEqual(args.directories, {
+            "output": "nested/runs", "workdir": "./project",
+        })
+        transport = agent.transport_for(args)
+        tokens = shlex.split(transport.args[-1])
+        self.assertEqual(tokens[:3], ["exec", "python3", "-c"])
+        request = json.loads(tokens[4])
+        self.assertEqual(request["options"]["directories"], args.directories)
+        self.assertEqual(request["options"]["venv"], "nested/env")
+        self.assertNotIn(str(Path.home()), json.dumps(request["options"]))
+        self.assertEqual(config.load_config()["agents"]["lab"]["output"], "nested/runs")
+
+    def test_named_agent_explicit_interpreter_bypasses_default_environment(self):
+        config.save_config({"agents": {"lab": {
+            "platform": "qpu", "model": "test", "server_python": "/existing/python",
+        }}})
+        with patch("qibocal_mcp.agent.run", new_callable=AsyncMock) as run:
+            agent.main(["lab", "Inspect"])
+        args = run.call_args.args[0]
+        self.assertIsNone(args.venv)
+        transport = agent.transport_for(args)
+        request = json.loads(transport.args[2])
+        self.assertIsNone(request["options"]["venv"])
+        self.assertNotIn("source", request)
+        self.assertIsNone(transport.cwd)
+
+    def test_configured_server_directories_use_xdg_cache_and_cli_overrides_do_not(self):
+        config.save_config({"server": {
+            "platform": "qpu", "partition": "queue",
+            "output": "nested/runs", "workdir": "project",
+        }})
+        with (
+            patch.dict(os.environ, {"XDG_CACHE_HOME": str(self.directory / "cache")}),
+            patch("qibocal_mcp.slurm.create_slurm_server") as create,
+        ):
+            server.main([])
+            root = (self.directory / "cache/qibocal/agent").resolve()
+            self.assertEqual(create.call_args.kwargs["output"], root / "runs/nested/runs")
+            self.assertEqual(create.call_args.kwargs["workdir"], root / "work/project")
+            self.assertTrue((root / "work/project").is_dir())
+            server.main(["--output", "cli-runs", "--workdir", "cli-work"])
+            self.assertEqual(create.call_args.kwargs["output"], Path("cli-runs"))
+            self.assertEqual(create.call_args.kwargs["workdir"], Path("cli-work"))
 
     def test_standalone_managed_server_reexec_preserves_resolved_settings(self):
         with (

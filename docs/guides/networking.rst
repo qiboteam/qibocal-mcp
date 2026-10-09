@@ -104,7 +104,7 @@ There is no automatic node-local staging or compute-node provisioning. Chrome
 and system instrument drivers must exist on compute nodes as well; Python driver
 packages can be installed with ``--dependency``.
 
-An SSH agent without explicit ``--server-python`` provisions and reuses a
+An unnamed SSH agent without explicit ``--server-python`` provisions and reuses a
 managed environment, default name ``qibocal-mcp``; ``--venv NAME_OR_PATH``
 selects another. The remote bootstrap needs ``python3`` 3.12/3.13, Git and
 ``pip``/``ensurepip``, ``uv`` or external ``pip>=22.3``. It transfers this
@@ -118,8 +118,9 @@ Managed environments are POSIX-only. Provisioning locks protect installation,
 not active server sessions: use separate environments for concurrent deployments
 with differing source or dependency settings.
 
-Locally, an agent without ``--venv`` or ``--server-python`` uses its current
-interpreter. A standalone gateway also manages an environment only when
+Locally, an unnamed agent without ``venv`` or ``server_python`` uses its current
+interpreter. Named agents default to a managed environment with their name,
+locally and remotely. A standalone gateway manages an environment only when
 ``--venv`` is supplied. Explicit ``--server-python`` bypasses automatic
 environment/core-server installation and must already contain the server;
 it cannot coexist with ``--venv``. Repository/dependency options in an
@@ -134,9 +135,12 @@ into both gateway and worker interpreters; both must already contain the server.
 
 ``--workdir`` on the agent sets the server launch directory (remotely for SSH).
 On the standalone server it sets the SLURM worker's working directory.
-Relative paths are interpreted against the execution host's current directory,
-not the configuration file's location. Existing path settings remain literal;
-only ``--venv`` expands ``~`` on the execution host. Local repository source
+Configured relative ``output`` and ``workdir`` paths use the execution host's
+``qibocal/agent/runs`` and ``qibocal/agent/work`` cache folders. Relative ``venv``
+paths use ``qibocal/agent/envs``. Named agents default to their name in each
+folder. All three configured directories expand ``~`` on the execution host.
+Explicit CLI output/workdir overrides retain current-directory semantics.
+Local repository source
 paths also refer to the deployment host. See :doc:`configuration` for repository
 fragments, clone reuse without automatic updates and dependency reconciliation.
 

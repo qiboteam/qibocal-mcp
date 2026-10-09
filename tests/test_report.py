@@ -271,10 +271,14 @@ class ReportConfigTests(unittest.TestCase):
                 venv="reports", port=8123, remote_port=9000,
             ))
             report.main(["local"])
-            run.assert_called_with(report.ReportSettings(output="local-runs"))
+            run.assert_called_with(report.ReportSettings(
+                output="local-runs", workdir="local", venv="local",
+                directories={"output": "local-runs", "workdir": "local"},
+            ))
             report.main(["remote", "--output", "explicit", "--port", "8124"])
             self.assertEqual(run.call_args.args[0].output, "explicit")
             self.assertEqual(run.call_args.args[0].port, 8124)
+            self.assertEqual(run.call_args.args[0].directories, {})
         with contextlib.redirect_stderr(io.StringIO()), self.assertRaises(SystemExit):
             report.main(["unknown"])
 
@@ -283,6 +287,20 @@ class ReportConfigTests(unittest.TestCase):
             for value in ("0", "65536"):
                 with self.subTest(option=option, value=value), self.assertRaises(SystemExit):
                     self.parse(["--no-config", option, value])
+
+    def test_named_report_defaults_match_agent_directories(self):
+        config.save_config({"agents": {"lab": {"ssh": "remote-host"}}})
+        with patch.object(report, "run") as run:
+            report.main(["lab"])
+        settings = run.call_args.args[0]
+        self.assertEqual((settings.output, settings.workdir, settings.venv), ("lab", "lab", "lab"))
+        launch = report.launch_for(settings)
+        tokens = shlex.split(launch.args[-1])
+        self.assertEqual(tokens[:3], ["exec", "python3", "-c"])
+        request = json.loads(tokens[4])
+        self.assertEqual(request["options"]["directories"], {
+            "output": "lab", "workdir": "lab",
+        })
 
     def test_distinct_remote_port_requires_ssh(self):
         with self.assertRaises(SystemExit):
@@ -296,6 +314,8 @@ class ReportConfigTests(unittest.TestCase):
         args = self.parse(["--output", "cli-runs"])
         self.assertEqual(args.output, "cli-runs")
         self.assertEqual(args.venv, "report-env")
+        self.assertEqual(args.directories, {})
+        self.assertEqual(self.parse().directories, {"output": "report-runs"})
         self.assertEqual(self.parse(["--no-config"]).output, "runs")
 
     def test_explicit_config_and_missing_file(self):

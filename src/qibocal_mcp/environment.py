@@ -36,13 +36,32 @@ def cache_home() -> Path:
     return root / "qibocal/agent"
 
 
+def directory_path(value: str, folder: str) -> Path:
+    """Resolve configured directories in the execution host's cache namespace."""
+    if not value.strip():
+        raise DeploymentError("Directory paths must be nonempty")
+    path = Path(value).expanduser()
+    return (path if path.is_absolute() else cache_home() / folder / path).resolve()
+
+
 def environment_path(value: str) -> Path:
-    """Keep named environments separate from Qibocal Report's notebook cache."""
-    if value.startswith(("/", "./", "../", "~")):
-        return Path(value).expanduser().resolve()
-    if not value.strip() or "/" in value or value in {".", ".."}:
-        raise DeploymentError("Use a simple --venv name or an explicit environment path")
-    return cache_home() / "envs" / value
+    """Keep relative environments separate from Qibocal Report's notebook cache."""
+    return directory_path(value, "envs")
+
+
+def prepare_directories(options: dict, arguments: list[str], *, report: bool = False) -> None:
+    """Resolve locations before changing cwd or provisioning on the target host."""
+    directories = options.get("directories", {})
+    output = directories.get("output")
+    workdir = directories.get("workdir")
+    if output is not None:
+        index = 0 if report else arguments.index("--output") + 1
+        arguments[index] = str(directory_path(output, "runs"))
+    if workdir is not None:
+        directory = directory_path(workdir, "work")
+        if not Path(workdir).expanduser().is_absolute():
+            directory.mkdir(parents=True, exist_ok=True)
+        os.chdir(directory)
 
 
 def repository_spec(value: str) -> tuple[str, str | None, str]:
@@ -580,6 +599,7 @@ def provision(options: dict, payload: str | None = None) -> tuple[str, dict[str,
 def launch(
     options: dict, server_arguments: list[str], payload: str | None = None
 ) -> None:
+    prepare_directories(options, server_arguments)
     worker_python = options.get("worker_python")
     if worker_python is not None and worker_python != options.get("python"):
         provision({**options, "python": worker_python}, payload)
@@ -611,6 +631,7 @@ def provision_report(options: dict) -> tuple[str, dict[str, str]]:
 
 def launch_report(options: dict, report_arguments: list[str]) -> None:
     """Provision and replace the bootstrap with qibocal-report."""
+    prepare_directories(options, report_arguments, report=True)
     directory = Path(report_arguments[0]).resolve()
     directory.mkdir(parents=True, exist_ok=True)
     python, env = provision_report(options)

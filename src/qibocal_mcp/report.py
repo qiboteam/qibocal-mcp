@@ -10,7 +10,7 @@ import subprocess
 import sys
 import threading
 import time
-from dataclasses import dataclass, fields
+from dataclasses import dataclass, field, fields
 from pathlib import Path
 from typing import TextIO
 from urllib.error import HTTPError, URLError
@@ -31,11 +31,14 @@ class ReportSettings:
     venv: str = "qibocal-report"
     port: int = 8000
     remote_port: int | None = None
+    directories: dict[str, str] = field(default_factory=dict)
 
     def __post_init__(self) -> None:
         if self.remote_port is None:
             object.__setattr__(self, "remote_port", self.port)
         for item in fields(self):
+            if item.name == "directories":
+                continue
             value = getattr(self, item.name)
             if value is not None:
                 validate_value(f"report.{item.name}", value)
@@ -47,6 +50,7 @@ class ReportSettings:
         return cls(**{
             item.name: getattr(args, item.name)
             for item in fields(cls)
+            if hasattr(args, item.name)
         })
 
 
@@ -57,6 +61,8 @@ def launch_for(settings: ReportSettings) -> ServerLaunch:
         "application": "report",
         "options": {"venv": settings.venv},
     }
+    if settings.directories:
+        request["options"]["directories"] = settings.directories
     if settings.ssh:
         request["options"]["notify_ready"] = settings.remote_port
     python = "python3" if settings.ssh else sys.executable
@@ -67,7 +73,7 @@ def launch_for(settings: ReportSettings) -> ServerLaunch:
     ]
     if settings.ssh:
         remote = "exec " + shlex.join(command)
-        if settings.workdir is not None:
+        if settings.workdir is not None and "workdir" not in settings.directories:
             remote = f"cd {shlex.quote(settings.workdir)} && {remote}"
         return ServerLaunch(
             command="ssh",
@@ -85,7 +91,8 @@ def launch_for(settings: ReportSettings) -> ServerLaunch:
         )
     return ServerLaunch(
         command=command[0], args=command[1:],
-        env=dict(os.environ), cwd=settings.workdir,
+        env=dict(os.environ),
+        cwd=settings.workdir if "workdir" not in settings.directories else None,
     )
 
 

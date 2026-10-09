@@ -270,6 +270,17 @@ def parse_settings(
                 "output": "runs", "ssh": None, "workdir": None,
                 "venv": None, "port": 8000, "remote_port": None,
             }
+        if selected_name is not None:
+            defaults |= {
+                "output": selected_name, "workdir": selected_name,
+                "venv": (
+                    None
+                    if section == "agent" and (
+                        "server_python" in section_defaults or hasattr(args, "server_python")
+                    )
+                    else selected_name
+                ),
+            }
         inherited = {}
         if section == "report":
             inherited = {
@@ -278,6 +289,14 @@ def parse_settings(
                 if name in {"output", "ssh", "workdir", "venv"}
             }
         values = defaults | inherited | section_defaults | vars(args)
+        configured = inherited | section_defaults
+        values["directories"] = {
+            name: values[name]
+            for name in ("output", "workdir")
+            if name not in vars(args) and (
+                name in configured or selected_name is not None
+            ) and not Path(values[name]).is_absolute()
+        }
         if section == "agent":
             values["objective_from_cli"] = hasattr(args, "objective")
         if section == "report":
@@ -313,6 +332,19 @@ def parse_settings(
                 interpreter in section_defaults or interpreter in vars(args)
             ):
                 parser.error(f"--venv cannot be combined with --{interpreter.replace('_', '-')}")
+        if section == "server":
+            from .environment import directory_path
+
+            for name, value in values["directories"].items():
+                directory = directory_path(value, "runs" if name == "output" else "work")
+                if name == "workdir" and values["partition"] is not None:
+                    if not Path(value).expanduser().is_absolute():
+                        try:
+                            directory.mkdir(parents=True, exist_ok=True)
+                        except OSError as error:
+                            raise ConfigError(f"Could not create workdir {directory}: {error}") from error
+                values[name] = str(directory)
+            values["directories"] = {}
     except ConfigError as error:
         parser.error(str(error))
     return argparse.Namespace(**values)

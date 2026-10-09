@@ -63,6 +63,11 @@ Then `qibocal-copilot myremote` and `qibocal-report-server myremote` need no
 deployment flags. For `qibocal-agent myremote`, also save a Pydantic AI `model`
 and an operator-approved bounded `objective`; an objective after the name
 overrides the saved one. Credentials remain in the environment.
+
+Relative configured `venv`, `workdir` and `output` paths use the execution host's
+`$XDG_CACHE_HOME/qibocal/agent/{envs,work,runs}/` folders (`~/.cache` when unset).
+Omitted directories use the selected agent's name; absolute paths remain unchanged.
+An explicit server interpreter bypasses the default managed environment.
 Manage settings with, for example,
 `qibocal-mcp-config set agents.myremote.output /shared/calibration/runs`.
 

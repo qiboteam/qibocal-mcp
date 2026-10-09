@@ -37,11 +37,77 @@ class EnvironmentTests(unittest.TestCase):
             environment.environment_path("lab"),
             self.directory / "qibocal/agent/envs/lab",
         )
-        self.assertEqual(environment.environment_path("./lab"), Path.cwd() / "lab")
+        for value in ("./lab", "relative/lab", "../lab", "."):
+            self.assertEqual(
+                environment.environment_path(value),
+                (self.directory / "qibocal/agent/envs" / value).resolve(),
+            )
         self.assertEqual(environment.environment_path("~/lab"), Path.home() / "lab")
-        for value in ("", " ", ".", "..", "relative/lab"):
+        self.assertEqual(environment.environment_path("/shared/lab"), Path("/shared/lab"))
+        for value in ("", " "):
             with self.subTest(value=value), self.assertRaises(environment.DeploymentError):
                 environment.environment_path(value)
+
+    def test_directories_are_resolved_on_the_execution_host_before_chdir(self):
+        options = {"directories": {
+            "output": "nested/my-agent", "workdir": "my-agent",
+        }}
+        root = self.directory / "qibocal/agent"
+        for report in (False, True):
+            with self.subTest(report=report):
+                arguments = ["old-output"] if report else ["--output", "old-output"]
+                with patch.object(environment.os, "chdir") as chdir:
+                    environment.prepare_directories(options, arguments, report=report)
+                self.assertEqual(arguments[-1], str(root / "runs/nested/my-agent"))
+                chdir.assert_called_once_with(root / "work/my-agent")
+                self.assertTrue((root / "work/my-agent").is_dir())
+
+    def test_absolute_and_home_directories_are_not_rebased(self):
+        for value, expected in (
+            ("/shared/runs", Path("/shared/runs")),
+            ("~/runs", Path.home() / "runs"),
+        ):
+            with self.subTest(value=value):
+                self.assertEqual(environment.directory_path(value, "runs"), expected)
+        with patch.object(environment.os, "chdir") as chdir:
+            arguments = ["--output", "cli-runs"]
+            environment.prepare_directories({}, arguments)
+        self.assertEqual(arguments, ["--output", "cli-runs"])
+        chdir.assert_not_called()
+
+    def test_launch_passes_resolved_output_to_server_and_prepares_workdir(self):
+        options = self.options(directories={"output": "lab", "workdir": "lab"})
+        root = self.directory / "qibocal/agent"
+        with (
+            patch.object(environment.os, "chdir") as chdir,
+            patch.object(environment, "provision", return_value=("/server/python", {})),
+            patch.object(environment.os, "execvpe") as execute,
+        ):
+            environment.launch(options, ["--no-config", "--output", "lab"])
+        chdir.assert_called_once_with(root / "work/lab")
+        execute.assert_called_once_with(
+            "/server/python",
+            ["/server/python", "-m", "qibocal_mcp.server",
+             "--no-config", "--output", str(root / "runs/lab")],
+            {},
+        )
+
+    def test_report_launch_uses_same_resolved_output_and_workdir(self):
+        root = self.directory / "qibocal/agent"
+        with (
+            patch.object(environment.os, "chdir") as chdir,
+            patch.object(environment, "provision_report", return_value=("/report/python", {})),
+            patch.object(environment.os, "execvpe") as execute,
+        ):
+            environment.launch_report(
+                {"venv": "lab", "directories": {"output": "lab", "workdir": "lab"}},
+                ["lab", "--host", "127.0.0.1", "--port", "8000"],
+            )
+        chdir.assert_called_once_with(root / "work/lab")
+        self.assertEqual(execute.call_args.args[1][-5:], [
+            str(root / "runs/lab"), "--host", "127.0.0.1", "--port", "8000",
+        ])
+        self.assertTrue((root / "runs/lab").is_dir())
 
     def test_cache_default_and_empty_xdg_use_agent_namespace(self):
         with (
@@ -50,6 +116,11 @@ class EnvironmentTests(unittest.TestCase):
             patch.dict(os.environ, {"HOME": str(self.directory)}),
         ):
             self.assertEqual(environment.cache_home(), self.directory / ".cache/qibocal/agent")
+            for folder in ("envs", "work", "runs"):
+                self.assertEqual(
+                    environment.directory_path("lab", folder),
+                    self.directory / ".cache/qibocal/agent" / folder / "lab",
+                )
 
     def test_repository_fragments_and_validation(self):
         self.assertEqual(

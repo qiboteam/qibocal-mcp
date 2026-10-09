@@ -118,15 +118,17 @@ Every setting is optional in the file. Calibration commands require
      - Unset; required at runtime. Installed platform name.
    * - ``output``
      - Nonempty string
-     - ``runs``. Artifact output directory.
+     - Agent name for named entries; ``runs`` for unnamed invocations.
+       Artifact output directory.
    * - ``platforms``
      - Nonempty string
      - Unset; inherits execution-host ``QIBOLAB_PLATFORMS`` after any managed
        repository roots. Explicit path lists take precedence over those roots.
    * - ``venv``
      - Nonempty string
-     - Unset; managed environment name or path. SSH agents without explicit
-       ``server_python`` use the managed name ``qibocal-mcp`` by default.
+     - Agent name for named entries unless ``server_python`` is explicit.
+       Unnamed invocations leave it unset; unnamed SSH agents without explicit
+       ``server_python`` default to ``qibocal-mcp``.
    * - ``platform_repo``
      - JSON array of nonempty strings
      - ``[]``. Trusted platform repositories, in lookup order.
@@ -143,8 +145,8 @@ Every setting is optional in the file. Calibration commands require
        agent rejects this mode. Only the rendering host needs Chrome.
    * - ``workdir``
      - Nonempty string
-     - Server: current directory for SLURM workers. Agent: unset, so no
-       working-directory override.
+     - Agent name for named entries. Unnamed server: current directory for
+       SLURM workers. Unnamed agent: no working-directory override.
    * - ``slurm_arg``
      - JSON array of nonempty strings
      - ``[]``. Additional ``srun`` options; a nonempty list requires an
@@ -230,17 +232,20 @@ The ``report`` section accepts only:
      - Built-in default and meaning
    * - ``output``
      - Nonempty string
-     - ``runs``. Directory to serve; created if absent.
+     - Agent name for named entries; ``runs`` otherwise.
+       Directory to serve; created if absent.
    * - ``ssh``
      - Nonempty string
      - Unset; local execution. Otherwise SSH host/alias containing the reports.
    * - ``workdir``
      - Nonempty string
-     - Unset; working directory on the report host, as for the agent.
+     - Agent name for named entries; unset otherwise.
+       Working directory on the report host, as for the agent.
    * - ``venv``
      - Nonempty string
-     - ``qibocal-report``. Always-managed environment on the report host.
-       Explicit agent environments are inherited; implicit agent defaults are not.
+     - Agent name for named entries; ``qibocal-report`` otherwise.
+       Always-managed environment on the report host.
+       Explicit agent environments are inherited.
    * - ``port``
      - JSON integer, 1 through 65535
      - ``8000``. Local port used in the frontend registration URL.
@@ -316,11 +321,40 @@ Copilot's implicit ``skill`` and ``sql`` utilities in an already-running session
 Execution-host paths and environment selection
 ----------------------------------------------
 
-Existing path settings are literal, not expanded or rebased relative to the
-JSON file. In particular, ``~`` and environment-variable strings in ``output``,
-``workdir``, ``platforms`` and executable settings are not expanded.
-Relative ``output`` and ``workdir`` paths use the execution host's current
-working directory; remote paths are interpreted remotely.
+Relative configured directories are resolved under the execution host's cache
+root, independently of the JSON file's location or current working directory:
+
+.. list-table::
+   :header-rows: 1
+   :widths: 20 80
+
+   * - Setting
+     - Base directory
+   * - ``venv``
+     - ``$XDG_CACHE_HOME/qibocal/agent/envs/``
+   * - ``workdir``
+     - ``$XDG_CACHE_HOME/qibocal/agent/work/``
+   * - ``output``
+     - ``$XDG_CACHE_HOME/qibocal/agent/runs/``
+
+Unset or empty ``XDG_CACHE_HOME`` falls back to ``~/.cache``. Nested relative
+paths, including ``./`` and ``../``, are resolved against these bases.
+For a named agent ``lab``, omitted directories default to ``lab``:
+``~/.cache/qibocal/agent/envs/lab``, ``~/.cache/qibocal/agent/work/lab``
+and ``~/.cache/qibocal/agent/runs/lab``. The report command uses the same
+locations unless overridden. An explicit ``server_python`` suppresses the
+implicit managed agent environment.
+
+Absolute paths are not rebased, and ``~`` expands on the execution host,
+including remotely. SSH uses the remote host's home and cache environment,
+not the client's. Relative managed workdirs are created before launching.
+Stored values remain unchanged; configuration management does not create runtime
+directories.
+
+Explicit CLI ``--output`` and ``--workdir`` retain their current-directory
+semantics and override configured paths. Unnamed invocations retain their
+existing omitted-directory defaults. ``platforms`` and executable settings
+remain literal; environment-variable strings are not expanded in path values.
 The agent's working-directory override determines where its server is launched.
 The standalone server's ``workdir`` controls its SLURM worker directory,
 not a directory change for direct execution.
@@ -328,15 +362,14 @@ not a directory change for direct execution.
 Prefer absolute shared paths for SSH/SLURM. A Python executable setting should
 name an executable, not a shell command such as ``uv run python``.
 
-``venv`` is the exception: it expands ``~`` on the execution host. A simple
-name selects ``$XDG_CACHE_HOME/qibocal/agent/envs/NAME``, falling back to
-``~/.cache/qibocal/agent/envs/NAME`` for unset/empty ``XDG_CACHE_HOME``. An absolute
-path or a path starting ``./`` or ``../`` selects that host's explicit location.
-It does not access Qibocal notebook environments under ``qibocal/envs``.
+``--venv`` also resolves all relative paths under the environment cache base
+and expands ``~`` on the execution host. It does not access Qibocal notebook
+environments under ``qibocal/envs``.
 
-SSH agents without explicit ``server_python`` provision the named
-``qibocal-mcp`` environment even when ``venv`` is unset. Local agents and
-standalone servers manage environments only with an effective ``venv``.
+Unnamed SSH agents without explicit ``server_python`` provision the named
+``qibocal-mcp`` environment even when ``venv`` is unset. Named agents default
+to their own managed environment locally and remotely. Standalone servers
+and unnamed local agents manage environments only with an effective ``venv``.
 ``agent.server_python`` and ``agent.venv`` are mutually exclusive, as are
 ``server.worker_python`` and ``server.venv``; this avoids split environments.
 An explicit server interpreter must already contain the server. Repository and

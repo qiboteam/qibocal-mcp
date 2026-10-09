@@ -79,15 +79,17 @@ repository formats, dependency discovery and persistent defaults.
 Managed execution environments
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-An SSH agent launch without ``--server-python`` provisions a managed environment
+An unnamed SSH agent launch without ``--server-python`` provisions a managed environment
 named ``qibocal-mcp`` by default. Use ``--venv NAME_OR_PATH`` to choose another
-environment. Local agent launches manage an environment only when ``--venv``
-is supplied; otherwise they use an existing interpreter.
+environment. Unnamed local agent launches manage an environment only when
+``venv`` is supplied; otherwise they use an existing interpreter. Named agents
+default to an environment with the agent's name, locally and remotely.
 
 Named environments live on the execution host under
 ``$XDG_CACHE_HOME/qibocal/agent/envs/NAME`` or, when unset/empty,
-``~/.cache/qibocal/agent/envs/NAME``. Absolute paths, ``./`` and ``../`` paths are
-resolved on that host; ``--venv`` also expands ``~`` there, including remotely.
+``~/.cache/qibocal/agent/envs/NAME``. All relative paths, including ``./`` and
+``../``, resolve against this environment cache directory. Absolute paths are
+not rebased; ``--venv`` also expands ``~`` on that host, including remotely.
 These environments are separate from Qibocal notebook environments:
 ``qibocal/envs`` is not used or modified.
 Managed deployment requires POSIX. An existing environment must contain

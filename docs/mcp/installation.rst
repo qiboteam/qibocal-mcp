@@ -54,8 +54,9 @@ managed environment for standalone launches, including launches over SSH.
 
 Named environments live on the execution host under
 ``$XDG_CACHE_HOME/qibocal/agent/envs/NAME`` or ``~/.cache/qibocal/agent/envs/NAME``.
-Absolute paths, ``./`` and ``../`` paths are resolved on that host; ``--venv``
-also expands ``~`` there. Managed deployment requires POSIX, Python 3.12/3.13,
+All relative paths, including ``./`` and ``../``, resolve against this
+environment cache directory. Absolute paths are not rebased; ``--venv``
+also expands ``~`` on that host. Managed deployment requires POSIX, Python 3.12/3.13,
 Git, and ``pip``/``ensurepip``, ``uv`` or external ``pip>=22.3``.
 Environments are reused and dependencies reconciled when source or dependency
 state changes. Installation is additive; removed configured dependencies
