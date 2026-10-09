@@ -23,7 +23,9 @@ Run these commands from a checkout of this repository:
 ``uv sync`` alone installs the server. Only the machine running the agent
 needs ``--extra agent`` and model credentials. The optional agent extra
 includes the OpenAI provider; install other Pydantic AI provider extras
-yourself if you select a different provider.
+yourself if you select a different provider. The same extra also supports
+GitHub Copilot subscriptions and OpenWebUI's OpenAI-compatible API;
+see :doc:`guides/model-providers` for authentication and launch commands.
 
 Alternatively, ``devenv shell`` configures Python 3.12 and syncs all extras,
 following Qibolab's Python/uv setup. Chrome must still be available for image

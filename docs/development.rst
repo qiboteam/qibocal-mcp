@@ -6,6 +6,7 @@ Source layout
 
 * ``src/qibocal_mcp/server.py``: direct platform server and runtime entry point.
 * ``src/qibocal_mcp/agent.py``: model instructions, local/SSH transport and loop.
+* ``src/qibocal_mcp/models.py``: native Copilot and OpenWebUI model selection.
 * ``src/qibocal_mcp/slurm.py``: gateway serialization, dispatch and accepted-state
   handoff.
 * ``src/qibocal_mcp/worker.py``: one internal operation per allocation, with

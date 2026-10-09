@@ -63,6 +63,7 @@ qibocal-agent
 .. code-block:: text
 
    qibocal-agent [--config FILE | --no-config] [--model MODEL]
+                 [--model-base-url URL]
                  [--platform NAME] [--output PATH] [--platforms PATH]
                  [--ssh HOST] [--partition NAME]
                  [--server-python EXECUTABLE] [--workdir PATH]
@@ -77,6 +78,11 @@ qibocal-agent
    * - ``--model MODEL``
      - Required at runtime unless configured in ``agent.model``.
        A vision-capable Pydantic AI model identifier, e.g. ``openai:gpt-4.1``.
+       Also accepts ``github-copilot:MODEL_ID`` and ``openwebui:MODEL_ID``.
+   * - ``--model-base-url URL``
+     - Endpoint override for OpenWebUI or Copilot; can be stored in
+       ``agent.model_base_url``. OpenWebUI URLs include ``/api``.
+       See :doc:`../guides/model-providers` for credentials and precedence.
    * - ``--ssh HOST``
      - SSH host/alias for the access node. Unset launches locally.
    * - ``--server-python EXECUTABLE``

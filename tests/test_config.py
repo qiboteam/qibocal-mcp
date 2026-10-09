@@ -291,7 +291,27 @@ class ConfigTests(unittest.TestCase):
         self.assertEqual(args.timeout, 3600)
         self.assertEqual(args.slurm_arg, [])
         self.assertIsNone(args.workdir)
+        self.assertIsNone(args.model_base_url)
         self.assertEqual(agent.transport_for(args).command, sys.executable)
+
+    def test_model_endpoint_configuration_and_cli_precedence(self):
+        self.command("set", "agent.platform", "qpu")
+        self.command("set", "agent.model", "openwebui:custom-model")
+        self.command("set", "agent.model_base_url", "http://localhost:3000/api")
+        self.assertEqual(
+            self.command("get", "agent.model_base_url"), "http://localhost:3000/api"
+        )
+        with patch("qibocal_mcp.agent.run", new_callable=AsyncMock) as run:
+            agent.main(["Inspect"])
+            self.assertEqual(run.call_args.args[0].model_base_url, "http://localhost:3000/api")
+            agent.main(["--model-base-url", "https://explicit.example/api", "Inspect"])
+            self.assertEqual(run.call_args.args[0].model_base_url, "https://explicit.example/api")
+        self.assert_cli_error(
+            lambda: self.command("set", "agent.model_base_url", ""), "nonempty string"
+        )
+        self.assert_cli_error(
+            lambda: self.command("set", "agent.api_key", "not-a-key"), "Unknown setting"
+        )
 
     def test_effective_partition_required_and_timeout_finite(self):
         config.save_config(

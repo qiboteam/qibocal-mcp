@@ -8,6 +8,7 @@ These pages explain execution, persistent settings and operational boundaries.
 
    architecture
    configuration
+   model-providers
    networking
    safety
    artifacts

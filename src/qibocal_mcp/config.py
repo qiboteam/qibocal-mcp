@@ -25,6 +25,7 @@ FIELDS = {
     "agent": {
         **COMMON_FIELDS,
         "model": str,
+        "model_base_url": str,
         "ssh": str,
         "server_python": str,
         "timeout": float,
@@ -158,7 +159,10 @@ def parse_settings(
         if section == "server":
             defaults.update(worker_python=sys.executable, workdir=str(Path.cwd()))
         else:
-            defaults.update(model=None, ssh=None, server_python=None, timeout=3600)
+            defaults.update(
+                model=None, model_base_url=None, ssh=None, server_python=None,
+                timeout=3600,
+            )
         values = defaults | data.get(section, {}) | vars(args)
         for name in FIELDS[section]:
             if values[name] is not None:

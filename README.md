@@ -44,6 +44,29 @@ Replace the platform and target with your own and verify the limits are safe.
 Persistent defaults can be managed with `uv run qibocal-mcp-config`; objectives
 and API keys are never stored in that configuration.
 
+### Copilot subscriptions and OpenWebUI
+
+The same agent extra supports both providers:
+
+```sh
+# Copilot: reuse an existing GitHub CLI OAuth login with Copilot access.
+export GITHUB_COPILOT_API_KEY="$(gh auth token)"
+uv run qibocal-agent --model github-copilot:claude-haiku-4.5 \
+  --platform YOUR_PLATFORM "YOUR_BOUNDED_OBJECTIVE"
+
+# OpenWebUI: use its API key and an exact model ID from /api/models.
+export OPENWEBUI_API_KEY=...
+uv run qibocal-agent --model openwebui:YOUR_MODEL_ID \
+  --model-base-url http://localhost:3000/api \
+  --platform YOUR_PLATFORM "YOUR_BOUNDED_OBJECTIVE"
+```
+
+Choose a vision- and tool-capable model. Copilot model availability depends on
+your subscription; its native adapter requires Chat Completions support.
+OpenWebUI uses Chat Completions explicitly, not OpenAI's Responses API.
+See the [model-provider guide](docs/guides/model-providers.rst) for credentials,
+model discovery, endpoint defaults and persistent configuration.
+
 ## Documentation
 
 Start at [docs/index.rst](docs/index.rst) for installation, practical tutorials,

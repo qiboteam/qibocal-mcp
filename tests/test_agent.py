@@ -5,9 +5,11 @@ import os
 import shlex
 import sys
 import unittest
-from unittest.mock import patch
+from unittest.mock import AsyncMock, Mock, patch
 
-from qibocal_mcp.agent import transport_for
+from pydantic_ai.exceptions import UserError
+
+from qibocal_mcp.agent import run, transport_for
 
 
 class TransportTests(unittest.TestCase):
@@ -63,3 +65,41 @@ class TransportTests(unittest.TestCase):
         )
         self.assertEqual(transport.cwd, "relative/project")
         self.assertNotIn("--workdir", transport.args)
+
+
+class AgentProviderTests(unittest.IsolatedAsyncioTestCase):
+    async def test_missing_credentials_do_not_launch_hardware_server(self):
+        args = argparse.Namespace(
+            model="openwebui:model", model_base_url="http://localhost:3000/api"
+        )
+        with patch.dict(os.environ, {}, clear=True), patch("qibocal_mcp.agent.Client") as client:
+            with self.assertRaisesRegex(UserError, "OPENWEBUI_API_KEY"):
+                await run(args)
+        client.assert_not_called()
+
+    async def test_resolved_model_is_passed_to_calibration_agent(self):
+        args = argparse.Namespace(
+            model="openwebui:model", model_base_url="http://localhost:3000/api",
+            timeout=60, objective="Inspect without acquiring",
+        )
+        client = AsyncMock()
+        client.read_resource.return_value = [Mock(text="platform context")]
+        calibration = AsyncMock()
+        calibration.run.return_value = Mock(output="No updates.")
+        model = Mock()
+        with (
+            patch("qibocal_mcp.agent.resolve_model", return_value=model) as resolve,
+            patch("qibocal_mcp.agent.transport_for"),
+            patch("qibocal_mcp.agent.Client") as create_client,
+            patch("qibocal_mcp.agent.Agent", return_value=calibration) as create_agent,
+            patch("qibocal_mcp.agent.MCPToolset") as toolset,
+            patch("builtins.print") as output,
+        ):
+            create_client.return_value.__aenter__.return_value = client
+            await run(args)
+        resolve.assert_called_once_with(args.model, base_url=args.model_base_url)
+        self.assertIs(create_agent.call_args.args[0], model)
+        self.assertIn("platform context", create_agent.call_args.kwargs["instructions"])
+        toolset.assert_called_once_with(client)
+        calibration.run.assert_awaited_once_with(args.objective)
+        output.assert_called_once_with("No updates.")

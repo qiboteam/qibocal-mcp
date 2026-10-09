@@ -9,9 +9,11 @@ import sys
 from fastmcp import Client
 from fastmcp.client.transports import StdioTransport
 from pydantic_ai import Agent
+from pydantic_ai.exceptions import UserError
 from pydantic_ai.mcp import MCPToolset
 
 from .config import parse_settings
+from .models import resolve_model
 
 
 INSTRUCTIONS = """You are a quantum calibration agent.
@@ -74,12 +76,13 @@ def transport_for(args: argparse.Namespace) -> StdioTransport:
 
 async def run(args):
     """Keep one direct server or gateway alive for the entire calibration."""
+    model = resolve_model(args.model, base_url=args.model_base_url)
     async with Client(
         transport_for(args), timeout=args.timeout, init_timeout=args.timeout
     ) as client:
         context = await client.read_resource("qibocal://context")
         agent = Agent(
-            args.model,
+            model,
             instructions=INSTRUCTIONS + "\nQibocal context:\n" + context[0].text,
             toolsets=[MCPToolset(client)],
         )
@@ -94,7 +97,13 @@ def main(argv: list[str] | None = None):
         description=__doc__, argument_default=argparse.SUPPRESS
     )
     parser.add_argument("objective", help="Calibration goal, limits and stopping criteria")
-    parser.add_argument("--model", help="Pydantic AI model identifier")
+    parser.add_argument(
+        "--model",
+        help="Pydantic AI model identifier, github-copilot:ID or openwebui:ID",
+    )
+    parser.add_argument(
+        "--model-base-url", help="OpenWebUI API base URL or Copilot endpoint override"
+    )
     parser.add_argument("--platform")
     parser.add_argument("--output")
     parser.add_argument("--ssh", help="SSH host/alias for the access node")
@@ -110,7 +119,10 @@ def main(argv: list[str] | None = None):
         help="Seconds per operation, including queue wait",
     )
     args = parse_settings(parser, "agent", argv)
-    asyncio.run(run(args))
+    try:
+        asyncio.run(run(args))
+    except UserError as error:
+        parser.error(str(error))
 
 
 if __name__ == "__main__":

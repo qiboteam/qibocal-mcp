@@ -77,7 +77,12 @@ must be supplied by configuration or CLI at runtime.
      - Current Python interpreter; interpreter used by SLURM workers.
    * - ``agent.model``
      - Nonempty string
-     - Unset; required at runtime. Pydantic AI model identifier.
+     - Unset; required at runtime. Pydantic AI model identifier or
+       ``openwebui:MODEL_ID``; see :doc:`model-providers`.
+   * - ``agent.model_base_url``
+     - Nonempty string
+     - Unset; endpoint override for ``openwebui:`` or ``github-copilot:``.
+       OpenWebUI URLs include ``/api``. No credentials in URLs.
    * - ``agent.ssh``
      - Nonempty string
      - Unset; SSH host/alias when provided.
