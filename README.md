@@ -164,6 +164,14 @@ work as for the agent. Without configuration it serves `runs` locally, installin
 the report package in a dedicated managed environment named `qibocal-report`.
 No platform, model or hardware dependencies are required by this command.
 
+Both direct and SLURM execution collect a standard Qibocal report under
+`OUTPUT/sessions/<session_id>/`: `meta.json`, `history.json`, the initial
+`platform/`, current `new_platform/`, and one `data/<protocol>-<iteration>/`
+folder per execution. Protocol folders also retain individual Plotly HTML
+figures, images and `run.json`. MCP responses include `report_folder` and the
+per-execution `folder`. Figures and HTML tables come directly from the protocol
+report callback; the bridge does not render a full report-page template.
+
 For remote reports, it starts the server on the SSH host and opens a private
 local port forward:
 

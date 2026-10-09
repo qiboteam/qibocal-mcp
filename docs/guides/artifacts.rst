@@ -4,33 +4,57 @@ Artifacts and report inspection
 Where files live
 ----------------
 
-Direct execution writes ``OUTPUT/<run_id>/``; with default settings this is
-``runs/<run_id>/``. Queued execution isolates each gateway session under
-``OUTPUT/sessions/<session_id>/<run_id>/``.
+Both direct and queued execution collect one standard Qibocal report per MCP
+session under ``OUTPUT/sessions/<session_id>/``. With default settings this is
+``runs/sessions/<session_id>/``. Each execution has a dedicated
+``data/<protocol>-<iteration>/`` directory; repeated protocols get new iterations
+rather than overwriting earlier runs. Discovery alone does not create a report.
 
 With SSH, these paths are on the cluster, not on the laptop. Results and images
 return over MCP, but copying the remaining files is a separate operation.
-Use the returned ``folder`` or final agent summary rather than guessing IDs.
+Use the returned ``folder`` (protocol artifacts) and ``report_folder`` (whole
+session report), or final agent summary, rather than guessing IDs.
 
-A run directory contains, depending on protocol support and execution success:
+A session report contains, depending on protocol support and execution success:
 
 .. code-block:: text
 
-   <run_id>/
-     run.json
-     ... protocol data files ...
-     ... fitted results files, if present ...
-     report-0-0.html
-     report-0-0.png
-     ... more target/figure report files, if present ...
-     platform/                 # after a successful accepted update
-       parameters.json
-       calibration.json
+   <session_id>/
+     meta.json
+     history.json
+     platform/                 # initial session platform, never overwritten
+     new_platform/             # current session platform
+     data/
+       <protocol>-0/
+         action.yml
+         run.json
+         ... protocol data files ...
+         ... fitted results files, if present ...
+         report-0-0.html
+         report-0-0.png
+         ... more target/figure report files, if present ...
+         platform/             # immutable snapshot after an accepted update
+           parameters.json
+           calibration.json
+       <protocol>-1/
+         ...
+
+``meta.json`` records Qibocal/backend versions, the start time, the latest
+successful operation's end time, accumulated targets and per-execution acquisition
+and fit timings. ``history.json`` retains execution order across protocols and
+iterations, including across fresh SLURM workers. Each ``action.yml`` records
+the protocol, targets and resolved parameters, including platform defaults;
+its update flag becomes true only after an accepted update.
+``new_platform/`` initially matches ``platform/`` and is refreshed as successful
+executions and accepted updates change the live session state.
+Serve ``OUTPUT`` with ``qibocal-report-server`` to discover these session reports.
 
 Data and fitted-result filenames are owned by the pinned Qibocal protocol and
 serializer; they are not a single universal schema. Report indices enumerate
 targets and figures, not necessarily the target's literal qubit ID.
-HTML reports are interactive Plotly output. PNGs are exported at
+The bridge consumes ``Protocol.report`` output through ``Executor.report``:
+Plotly figures and HTML tables, not a full Qibocal HTML report-page template.
+Saved HTML files are individual interactive Plotly figures. PNGs are exported at
 1200 by 700 pixels using Kaleido/Chrome.
 With native Copilot's ``--report-rendering client``, the execution host saves
 ``report-I-J.json`` instead of PNGs alongside the HTML reports. Plotly figures
@@ -43,6 +67,7 @@ Run metadata
 ``run.json`` and the structured execution response include:
 
 * ``run_id``, ``platform`` and ``slurm_job_id`` (possibly null).
+* ``session_id`` and ``report_folder`` for the shared Qibocal report.
 * ``protocol``, submitted ``parameters`` and selected ``targets``.
 * ``folder`` on the execution host.
 * Serialized fitted ``results``, or null when absent.
@@ -97,7 +122,10 @@ Snapshots and retention
 -----------------------
 
 An accepted update saves both Qibolab parameters and Qibocal calibration under
-the run's ``platform/`` directory. It changes the live direct-mode platform
+the run's ``platform/`` directory and refreshes the session's ``new_platform/``.
+The immutable run snapshot, rather than the mutable session snapshot, is used
+for queued accepted-state handoff, so a failed later update cannot overwrite
+the previously accepted snapshot. An update changes the live direct-mode platform
 or becomes the accepted state for subsequent queued jobs. It does not
 overwrite source files in ``QIBOLAB_PLATFORMS``.
 

@@ -83,8 +83,10 @@ synthetic data must never be treated as proof of successful hardware calibration
 -------------------------------
 
 Look for a final summary naming the protocols, run IDs, updates, artifact paths
-and remaining uncertainty. Inspect ``runs/<run_id>/run.json``, report HTML/PNG
-files and any saved ``platform/`` snapshot. The image returned over MCP is
+and remaining uncertainty. Use the returned ``folder`` to inspect ``run.json``,
+report HTML/PNG files and any saved per-run ``platform/`` snapshot. The shared
+report lives at ``runs/sessions/<session_id>/``; its ``new_platform/`` holds
+the current session state. The image returned over MCP is
 real report content for the execution; a path alone is not required to view it.
 
 An accepted update affects the live platform for subsequent acquisitions and

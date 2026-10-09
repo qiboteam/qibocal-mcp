@@ -44,6 +44,7 @@ class SlurmTests(unittest.IsolatedAsyncioTestCase):
                 result = await run(
                     "synthetic", output=Path(command[command.index("--output") + 1]),
                     snapshot=None, request=json.loads(request), report_rendering="client",
+                    session_id=command[command.index("--session-id") + 1],
                 )
                 self.assertTrue(any(item.type == "resource" for item in result.content))
                 return result.model_dump_json(by_alias=True).encode(), b""
@@ -109,6 +110,7 @@ class SlurmTests(unittest.IsolatedAsyncioTestCase):
                         output=output,
                         snapshot=snapshot,
                         request=json.loads(request),
+                        session_id=command[command.index("--session-id") + 1],
                     )
                 except ToolError as error:
                     process.returncode = 1
@@ -160,10 +162,12 @@ class SlurmTests(unittest.IsolatedAsyncioTestCase):
                 )
                 self.assertTrue(any(c.type == "image" for c in result.content))
                 run_id = result.structured_content["run_id"]
+                report_folder = Path(result.structured_content["report_folder"])
+                original_stats = json.loads((report_folder / "meta.json").read_text())["stats"]
                 self.assertIsNone(
                     platforms[-1].calibration.single_qubits[0].qubit.frequency_01
                 )
-                await client.call_tool("update_platform", {"run_id": run_id})
+                accepted = await client.call_tool("update_platform", {"run_id": run_id})
                 self.assertEqual(len(platforms), 4)
                 rejected = await client.call_tool(
                     "execute_protocol",
@@ -179,6 +183,10 @@ class SlurmTests(unittest.IsolatedAsyncioTestCase):
                 self.assertEqual(len(platforms), 5)
                 self.assertTrue(all("--snapshot" not in cmd for cmd in commands[:4]))
                 self.assertIn("--snapshot", commands[4])
+                self.assertEqual(
+                    commands[4][commands[4].index("--snapshot") + 1],
+                    accepted.structured_content["snapshot"],
+                )
                 for command in commands:
                     self.assertEqual(command[0], "srun")
                     self.assertIn("--partition=qpu", command)
@@ -205,13 +213,40 @@ class SlurmTests(unittest.IsolatedAsyncioTestCase):
                         )
                 with self.assertRaisesRegex(ToolError, "update attempted"):
                     await client.call_tool("update_platform", {"run_id": rejected_id})
-                await client.call_tool(
+                third = await client.call_tool(
                     "execute_protocol",
                     {"protocol": "synthetic", "parameters": {"value": 7e9}, "targets": [0]},
                 )
                 self.assertEqual(
                     platforms[-1].calibration.single_qubits[0].qubit.frequency_01, 5e9
                 )
+                self.assertEqual(
+                    json.loads((report_folder / "history.json").read_text()),
+                    ["synthetic-0", "synthetic-1", "synthetic-2"],
+                )
+                meta = json.loads((report_folder / "meta.json").read_text())
+                self.assertEqual(meta["stats"]["synthetic-0"], original_stats["synthetic-0"])
+                self.assertEqual(len(meta["stats"]), 3)
+                initial = Calibration.model_validate_json(
+                    (report_folder / "platform" / "calibration.json").read_text()
+                )
+                latest = Calibration.model_validate_json(
+                    (report_folder / "new_platform" / "calibration.json").read_text()
+                )
+                self.assertIsNone(initial.single_qubits[0].qubit.frequency_01)
+                self.assertEqual(latest.single_qubits[0].qubit.frequency_01, 5e9)
+                self.assertEqual(len(set(cmd[cmd.index("--session-id") + 1] for cmd in commands)), 1)
+                await client.call_tool("update_platform", {
+                    "run_id": third.structured_content["run_id"],
+                })
+                latest = Calibration.model_validate_json(
+                    (report_folder / "new_platform" / "calibration.json").read_text()
+                )
+                previous = Calibration.model_validate_json(
+                    (Path(accepted.structured_content["snapshot"]) / "calibration.json").read_text()
+                )
+                self.assertEqual(latest.single_qubits[0].qubit.frequency_01, 7e9)
+                self.assertEqual(previous.single_qubits[0].qubit.frequency_01, 5e9)
 
     def jobs(self):
         return SlurmJobs(

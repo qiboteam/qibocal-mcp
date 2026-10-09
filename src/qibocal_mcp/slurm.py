@@ -27,7 +27,8 @@ class SlurmJobs:
         report_rendering: str = "server",
     ):
         self.platform = platform
-        self.output = output.resolve() / "sessions" / uuid4().hex
+        self.session_id = uuid4().hex
+        self.output = output.resolve() / "sessions" / self.session_id
         self.command = [
             "srun",
             *slurm_args,
@@ -41,7 +42,8 @@ class SlurmJobs:
             python,
             "-m", "qibocal_mcp.worker",
             "--platform", platform,
-            "--output", str(self.output),
+            "--output", str(output.resolve()),
+            "--session-id", self.session_id,
         ]
         if report_rendering not in {"server", "client"}:
             raise ValueError("report_rendering must be server or client")

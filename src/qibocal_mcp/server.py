@@ -21,6 +21,7 @@ from qibocal.auto.task import Completed, Targets
 from qibocal.calibration.calibration import Calibration
 from qibocal.protocols import PROTOCOLS
 
+from .artifacts import SessionReport
 from .config import add_deployment_arguments, parse_settings
 from .calibration import REPORT_FIGURE_MIME_TYPE
 
@@ -32,6 +33,7 @@ def create_server(
     snapshot: Path | None = None,
     restore_runs: bool = False,
     report_rendering: str = "server",
+    session_id: str | None = None,
 ) -> FastMCP:
     """Create one server; execution handles live only for its lifetime."""
     if report_rendering not in {"server", "client"}:
@@ -46,6 +48,17 @@ def create_server(
     updated_runs: set[str] = set()
     lock = asyncio.Lock()
     output = output.resolve()
+    session_id = uuid4().hex if session_id is None else UUID(session_id).hex
+    report_folder = output / "sessions" / session_id
+    session_report: SessionReport | None = None
+
+    def report_for(executor: Executor) -> SessionReport:
+        nonlocal session_report
+        if session_report is None:
+            session_report = SessionReport(
+                report_folder, platform_name, executor.platform, protocols
+            )
+        return session_report
 
     @asynccontextmanager
     async def lifespan(server):
@@ -85,6 +98,8 @@ def create_server(
         return json.dumps(
             {
                 "platform": platform_name,
+                "session_id": session_id,
+                "report_folder": str(report_folder),
                 "qubits": list(executor.platform.qubits),
                 "protocols": {
                     name: {
@@ -135,15 +150,15 @@ def create_server(
             executor = ctx.lifespan_context["executor"]
             with redirect_stdout(sys.stderr):
                 bound = protocols[protocol](**parameters)
+                report = report_for(executor)
                 completed = executor(bound, targets=selected)
                 run_id = uuid4().hex
-                folder = output / run_id
-                folder.mkdir(parents=True)
-                completed.data.save(folder)
-                if completed.results is not None:
-                    completed.results.save(folder)
+                completed = report.add(completed, protocol, parameters, selected)
+                folder = completed.path
                 metadata = {
                     "run_id": run_id,
+                    "session_id": session_id,
+                    "report_folder": str(report_folder),
                     "platform": platform_name,
                     "slurm_job_id": os.environ.get("SLURM_JOB_ID"),
                     "protocol": protocol,
@@ -162,6 +177,7 @@ def create_server(
                 (folder / "run.json").write_text(
                     json.dumps(metadata, indent=2), encoding="utf-8"
                 )
+                report.save(executor.platform)
                 content: list[ContentBlock] = [
                     TextContent(type="text", text=json.dumps(metadata))
                 ]
@@ -208,23 +224,23 @@ def create_server(
         """Apply an inspected run's fitted results using Executor.update().
 
         Updates the live platform used by subsequent executions and writes a
-        platform snapshot under the run folder. Does not overwrite the source
-        platform in QIBOLAB_PLATFORMS. A run's update can be attempted only once.
+        snapshot under the run folder and the session's new_platform directory.
+        Does not overwrite the source platform in QIBOLAB_PLATFORMS.
+        A run's update can be attempted only once.
         """
         async with lock:
+            executor = ctx.lifespan_context["executor"]
             if run_id not in completed_runs and restore_runs:
                 if UUID(run_id).hex != run_id:
                     raise ValueError("Invalid run_id")
-                folder = output / run_id
+                completed = report_for(executor).find_run(run_id)
+                folder = completed.path
                 metadata = json.loads(
                     (folder / "run.json").read_text(encoding="utf-8")
                 )
                 if metadata["platform"] != platform_name:
                     raise ValueError("Run belongs to a different platform")
-                bound = protocols[metadata["protocol"]](**metadata["parameters"])
-                completed_runs[run_id] = Completed(
-                    path=folder, bound=bound, _targets=metadata["targets"]
-                )
+                completed_runs[run_id] = completed
                 if metadata["update_started"]:
                     updated_runs.add(run_id)
             if run_id not in completed_runs:
@@ -236,17 +252,19 @@ def create_server(
                 raise ValueError("Run has no fitted results")
             if completed.bound is None or completed.bound.protocol.update is None:
                 raise ValueError("Protocol does not support updating")
-            executor = ctx.lifespan_context["executor"]
             with redirect_stdout(sys.stderr):
-                path = output / run_id / "run.json"
+                path = completed.path / "run.json"
                 metadata = json.loads(path.read_text(encoding="utf-8"))
                 metadata["update_started"] = True
                 path.write_text(json.dumps(metadata, indent=2), encoding="utf-8")
                 updated_runs.add(run_id)
                 executor.update(completed)
-                snapshot = output / run_id / "platform"
+                snapshot = completed.path / "platform"
                 snapshot.mkdir()
                 executor.platform.dump(snapshot)
+                report_for(executor).save(executor.platform)
+                completed.task.action.update = True
+                completed.dump_parameters()
                 metadata["updated"] = True
                 path.write_text(json.dumps(metadata, indent=2), encoding="utf-8")
             return {"run_id": run_id, "updated": True, "snapshot": str(snapshot)}

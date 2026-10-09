@@ -18,6 +18,8 @@ protocol, target or parameter.
 Its text content is a JSON object containing:
 
 * ``platform``: selected platform name.
+* ``session_id`` and ``report_folder``: session identifier and execution-host
+  path for the shared report, created on the first execution.
 * ``qubits``: platform qubit IDs.
 * ``protocols``: built-in protocol names mapped to ``parameters`` (the
   parameter class source, including definitions/units), ``two_qubit_gates``
@@ -85,7 +87,8 @@ those fitted settings. Acquisition itself may still alter hardware state.
 The response contains structured metadata plus text/image content:
 
 * ``run_id``, platform, job ID, protocol, submitted parameters, targets and
-  execution-host ``folder``.
+  execution-host ``folder`` for this protocol execution.
+* ``session_id`` and ``report_folder`` for the shared standard Qibocal report.
 * Serialized fitted ``results`` when present, ``supports_update``, and
   initial ``updated``/``update_started`` flags.
 * Text containing metadata and per-target report tables.
@@ -94,6 +97,8 @@ The response contains structured metadata plus text/image content:
 See :doc:`../guides/artifacts` for on-disk output. Some protocols lack results
 or reports. In queued mode, each call is a fresh job that restores the latest
 accepted platform snapshot and releases the allocation when done.
+Report content comes directly from the protocol callback through
+``Executor.report``; the bridge does not render a full report-page template.
 
 update_platform(run_id)
 -----------------------
@@ -108,6 +113,7 @@ session:
 The tool requires fitted results and an update-capable protocol, then calls
 ``Executor.update(completed)`` explicitly. It updates the live platform and
 saves a snapshot without overwriting the source platform definition.
+It also refreshes the session report's ``new_platform/`` and metadata.
 It returns ``run_id``, ``updated`` and the snapshot path; the queued gateway
 forwards the worker response.
 

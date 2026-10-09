@@ -44,6 +44,9 @@ With no partition, the server creates and connects one calibration platform
 when its MCP session starts. It disconnects when the session ends.
 Calls are serialized. An accepted update changes the live platform used by
 subsequent acquisitions and saves a snapshot under that run's output directory.
+All executions share a standard Qibocal report under
+``OUTPUT/sessions/<session_id>/`` with separate protocol/iteration folders.
+Accepted updates also refresh the report's ``new_platform/``.
 
 .. figure:: ../_images/local-workflow.svg
    :alt: An objective and platform context guide acquisition. The returned fit, table and image are inspected before an explicit update or rejection; follow-up acquisitions depend on the remaining budget.
@@ -56,6 +59,8 @@ Queued mode
 -----------
 
 With a partition, the server becomes a hardware-free access-node gateway.
+Every worker receives the gateway's session ID and incrementally loads and
+extends the same report, preserving execution order and timings.
 The gateway serializes operations and launches ``srun`` workers:
 
 1. Reading ``qibocal://context`` or calling ``get_calibration_context`` launches

@@ -18,6 +18,8 @@ Source layout
   tool schemas for the session.
 * ``src/qibocal_mcp/models.py``: native Copilot and OpenWebUI model selection.
 * ``src/qibocal_mcp/server.py``: direct platform server and runtime entry point.
+* ``src/qibocal_mcp/artifacts.py``: incremental task-backed Qibocal report storage
+  shared by direct execution and successive SLURM workers.
 * ``src/qibocal_mcp/slurm.py``: gateway serialization, dispatch and accepted-state
   handoff.
 * ``src/qibocal_mcp/worker.py``: one internal operation per allocation, with

@@ -194,12 +194,14 @@ see :doc:`../guides/configuration`.
 
 Images and results return over MCP and can be inspected on the laptop.
 Artifacts remain under
-``OUTPUT/sessions/<session_id>/<run_id>/`` on the cluster. Copying the remaining
-files is a separate operation, for example:
+``OUTPUT/sessions/<session_id>/data/<protocol>-<iteration>/`` on the cluster.
+All executions share the session's standard Qibocal report.
+Copying the whole session retains metadata, execution order and platform state;
+for example:
 
 .. code-block:: sh
 
-   scp -r ACCESS_NODE:/shared/calibration-runs/sessions/SESSION_ID/RUN_ID ./retained-run
+   scp -r ACCESS_NODE:/shared/calibration-runs/sessions/SESSION_ID ./retained-report
 
 Use the actual IDs and follow your site's data handling policy. Do not retry
 failed acquisitions or partially applied updates blindly. Timeout/cancellation
