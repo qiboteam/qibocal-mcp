@@ -1,6 +1,13 @@
 Model providers
 ===============
 
+This page configures the **Pydantic AI** ``qibocal-agent`` and reusable Python
+API, not the native Copilot CLI integration. For ``qibocal-copilot``, install
+only the core package and Copilot CLI, authenticate through Copilot and pass
+native model options after ``--``, for example ``-- --model MODEL_ID``.
+The generated profile has no fixed model and ignores ``agent.model`` and
+``agent.model_base_url``. See :doc:`../agent/copilot`.
+
 Install the ``agent`` extra for all providers below:
 
 .. code-block:: sh
@@ -14,8 +21,8 @@ belong in the environment, never objectives or ``qibocal-mcp.json``.
 These options configure the model connection, not the MCP server's transport.
 Local and SSH/SLURM hardware execution work with either provider.
 
-GitHub Copilot subscription
---------------------------
+GitHub Copilot subscription via Pydantic AI
+-------------------------------------------
 
 The project uses Pydantic AI's native ``GitHubCopilotModel`` and
 ``GitHubCopilotProvider``, not GitHub Models or a third-party proxy. Supply
@@ -114,7 +121,7 @@ See `OpenWebUI's API documentation
 model discovery and deployment details.
 
 Other Pydantic AI providers
---------------------------
+---------------------------
 
 Existing native identifiers such as ``openai:gpt-4.1`` remain supported
 unchanged, with their provider's usual environment settings. For example,

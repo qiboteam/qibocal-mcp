@@ -8,7 +8,7 @@ and path semantics are detailed in :doc:`../guides/configuration`.
 Common runtime options
 ----------------------
 
-Both ``qibocal-agent`` and ``qibocal-mcp`` accept:
+``qibocal-agent``, ``qibocal-copilot`` and ``qibocal-mcp`` accept:
 
 .. list-table::
    :header-rows: 1
@@ -61,6 +61,39 @@ intentionally modify the selected existing interpreter. Use ``--venv`` for
 isolation and trusted sources only. See :doc:`../guides/configuration` for
 lookup precedence, dependency discovery and cache/reconciliation semantics.
 
+Shared agent deployment options
+-------------------------------
+
+Both ``qibocal-agent`` and ``qibocal-copilot`` additionally accept:
+
+.. list-table::
+   :header-rows: 1
+   :widths: 30 70
+
+   * - Option
+     - Meaning
+   * - ``--ssh HOST``
+     - SSH host/alias for the access node. Unset launches locally.
+   * - ``--server-python EXECUTABLE``
+     - Externally managed server interpreter, already containing the server.
+       Bypasses automatic environment/core-server installation; cannot coexist
+       with ``--venv``. If unset, uses the current interpreter locally unless
+       ``--venv`` is supplied, or a managed environment with SSH. Remote paths
+       are interpreted remotely.
+   * - ``--timeout SECONDS``
+     - Positive finite number, default 3600. Per-operation timeout including
+       queue wait; not an entire-session budget. Copilot additionally requires
+       0.001 through 2147483.647 seconds, inclusive; its adapter converts to
+       milliseconds within Node's integer timeout limit.
+
+Both read deployment defaults from the ``agent`` section, own their MCP
+subprocess and supply resolved settings with ``--no-config``.
+Neither exposes ``--worker-python``; queued workers use the server interpreter.
+SSH managed bootstrap transfers the launching installation's server source and
+metadata (from a checkout or installed distribution), not configuration or model
+keys; target-host configuration is not read. Managed environments check
+dependencies and import the server before launch.
+
 qibocal-agent
 -------------
 
@@ -75,7 +108,7 @@ qibocal-agent
                  [--server-python EXECUTABLE] [--workdir PATH]
                  [--slurm-arg VALUE ...] [--timeout SECONDS] OBJECTIVE
 
-.. list-table:: Agent-only options and argument
+.. list-table:: Pydantic AI options and argument
    :header-rows: 1
    :widths: 30 70
 
@@ -89,29 +122,66 @@ qibocal-agent
      - Endpoint override for OpenWebUI or Copilot; can be stored in
        ``agent.model_base_url``. OpenWebUI URLs include ``/api``.
        See :doc:`../guides/model-providers` for credentials and precedence.
-   * - ``--ssh HOST``
-     - SSH host/alias for the access node. Unset launches locally.
-   * - ``--server-python EXECUTABLE``
-     - Externally managed server interpreter, already containing the server.
-       Bypasses automatic environment/core-server installation; cannot coexist
-       with ``--venv``. If unset, uses the current interpreter locally unless
-       ``--venv`` is supplied, or a managed environment with SSH. Remote paths
-       are interpreted remotely.
-   * - ``--timeout SECONDS``
-     - Positive finite number, default 3600. Per-operation timeout including
-       queue wait; not an entire-session budget.
    * - ``OBJECTIVE``
      - Required positional calibration goal, hardware limits, execution budget
        and stopping criteria. Cannot be stored in configuration.
 
-The agent owns one server subprocess and supplies resolved settings with
-``--no-config``. It has no ``--worker-python`` option; queued workers use the
-server interpreter. Model credentials remain in environment/provider settings.
-The provider is resolved before deployment or hardware access. SSH managed
-bootstrap transfers the launching installation's server source and metadata
-(from a checkout or installed distribution), not configuration or model keys;
-target-host configuration is not read. Managed environments check dependencies
-and import the server before launch.
+This remains a one-shot CLI. Model credentials remain in environment/provider
+settings; the provider is resolved before deployment or hardware access.
+For reusable multi-turn sessions, see :doc:`../agent/index`.
+
+qibocal-copilot
+---------------
+
+.. code-block:: text
+
+   qibocal-copilot [--config FILE | --no-config]
+                   [--platform NAME] [--output PATH] [--platforms PATH]
+                   [--venv NAME_OR_PATH] [--platform-repo REPOSITORY ...]
+                   [--dependency REQUIREMENT ...]
+                   [--ssh HOST] [--partition NAME]
+                   [--server-python EXECUTABLE] [--workdir PATH]
+                   [--slurm-arg VALUE ...] [--timeout SECONDS]
+                   [--export-plugin DIRECTORY] [OBJECTIVE]
+                   [-- COPILOT_OPTIONS ...]
+
+An optional ``OBJECTIVE`` starts an interactive Copilot session (``-i``);
+omitting it starts a blank session. Pass native options only after ``--``,
+for example ``-- --model MODEL_ID``. Native options cannot replace the selected
+profile, plugin directory or interactive execution mode, or override tool
+availability through ``--available-tools`` or ``--excluded-tools``.
+There are no wrapper ``--model`` or ``--model-base-url`` flags, and
+``agent.model``/``agent.model_base_url`` are not required or used.
+Copilot owns login, subscription and model selection.
+
+The default launch generates a transient plugin and runs:
+
+.. code-block:: sh
+
+   copilot --plugin-dir PATH \
+     --agent qibocal-calibration:qibocal-calibration \
+     --disable-builtin-mcps --excluded-tools=skill,sql
+
+The profile picker displays the short name ``qibocal-calibration``.
+It neither installs a plugin nor changes global settings or grants blanket
+automatic permissions.
+Tool restriction requires the profile and both session flags. Selecting an
+exported profile in an already-running session without those flags can expose
+Copilot's implicit ``skill`` and ``sql`` utilities despite the allowlist.
+
+``--export-plugin DIRECTORY`` writes a persistent plugin to a new directory,
+refuses existing targets and prints a launch command. It cannot be combined
+with an objective or native options. Export needs no login, hardware access or
+Copilot binary. Use the printed command, which includes the required session
+flags. Exported files snapshot deployment/defaults and use runtime
+environment ``${NAME}`` references, not secret values. Recorded names exclude
+model-provider credential/configuration prefixes and GitHub authentication tokens,
+but preserve ``COPILOT_MCP_*`` driver variables. Names must remain defined at
+launch; missing names cause a clear relay error. Keep the exporting
+installation's interpreter and package available, and re-export after deployment,
+policy or forwarded
+environment-name set changes.
+See :doc:`../agent/copilot` for installation, permissions and resume boundaries.
 
 qibocal-mcp
 -----------

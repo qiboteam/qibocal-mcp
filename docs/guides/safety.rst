@@ -8,12 +8,35 @@ This is a single-platform draft for a trusted agent, not a production hardware
 safety layer. Natural-language limits and budgets guide the model but are not
 enforced instrument interlocks or a deterministic workflow engine.
 Use site-approved hardware protections, exclusive access and operator oversight.
+Both integrations retain their existing permission behavior: the Pydantic AI
+agent's defaults and Copilot's native permissions. No new safety or approval
+gate or blanket automatic permission allowance is added. Copilot's generated
+tool restrictions and the shared instructions do not enforce hardware bounds.
+Native tool restriction requires the generated profile and the launch command's
+``--disable-builtin-mcps --excluded-tools=skill,sql`` flags. Selecting an exported
+profile in an already-running session without these flags can expose Copilot's
+implicit ``skill`` and ``sql`` utilities.
 
 Put explicit amplitude/frequency limits, shot limits, an execution budget and
 stopping criteria in every objective. Choose a vision-capable model and require
 inspection of the actual tables and images. There is no built-in fit acceptance
 threshold. Never treat synthetic/mock data as evidence of a successful
 hardware calibration.
+The selected model and client must support report images. Pydantic AI consumes
+inline MCP images; native Copilot stages returned PNG bytes locally for
+``view`` because tested adapters drop inline MCP images. If an image cannot
+actually be inspected, stop rather than accepting an update from text alone.
+Staging or a successful viewer call does not by itself prove that the model
+received image pixels. Remote artifact paths are not local files; native
+staging does not make the remaining remote filesystem accessible.
+``view`` is a general file/image reader whose report-only use is guided by
+instructions, not enforced. Native path permissions remain in effect; the proxy
+does not enforce approval or evidence checks. See :doc:`../agent/copilot`.
+
+Discovery is not necessarily hardware-free. Direct-mode startup connects the
+platform; reading ``qibocal://context`` or calling ``get_calibration_context``
+in queued mode launches a compute job that connects hardware. Establish
+operator-approved bounds before discovery, including in a blank Copilot session.
 
 Acquisition versus fitted updates
 ---------------------------------
@@ -62,9 +85,11 @@ confirm job state through site tools before starting recovery or another run.
 Session and artifact boundaries
 -------------------------------
 
-Run handles expire when the direct server or gateway exits. Resuming a complete
-agent session is unsupported. Saved files are retained evidence, not a way to
-call ``update_platform`` in a fresh session.
+Run handles expire when the direct server or gateway exits. Copilot may resume
+conversation history, but does not preserve the old MCP session or run handles.
+Saved files are retained evidence, not a way to call ``update_platform`` in a
+fresh session. A persistent exported plugin provides stable configuration, not
+restored execution state.
 
 The latest *accepted* snapshot is handed to subsequent queued jobs; rejected
 fits are not promoted. This is not rollback protection against acquisition-side

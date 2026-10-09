@@ -5,7 +5,7 @@ Transport and session
 ---------------------
 
 The server and queued gateway expose the same stdio interface, with exactly
-two tools and one resource. Calls are serialized. Run handles belong to the
+three tools and one resource. Calls are serialized. Run handles belong to the
 current server/gateway session and cannot be reused after it exits.
 Errors are exposed as MCP errors; failed acquisitions and updates are not
 safe to retry blindly. See :doc:`../guides/safety`.
@@ -13,7 +13,8 @@ safe to retry blindly. See :doc:`../guides/safety`.
 qibocal://context
 -----------------
 
-Read this resource before choosing a protocol, target or parameter.
+Read this resource or call ``get_calibration_context`` before choosing a
+protocol, target or parameter.
 Its text content is a JSON object containing:
 
 * ``platform``: selected platform name.
@@ -25,7 +26,21 @@ Its text content is a JSON object containing:
   ``relaxation_time`` (ns). Omit either to use platform defaults.
 
 Protocol parameters are not a fixed universal schema; consult the installed
-context. In queued mode, reading this resource submits a discovery job.
+context. Discovery may connect to hardware; in queued mode, reading this
+resource submits a discovery job and may wait for a queue allocation.
+
+get_calibration_context()
+-------------------------
+
+This tool takes no arguments and returns exactly the same JSON text as
+``qibocal://context``. It provides discovery for clients using tools rather
+than resources, without executing a calibration protocol or applying fitted
+updates. Choose protocols, targets and parameters from this context before
+calling ``execute_protocol``.
+
+The tool uses the same discovery path as the resource. It may connect to
+hardware, and each call in queued mode submits a discovery job that may wait
+for an allocation.
 
 execute_protocol(protocol, parameters, targets)
 -----------------------------------------------

@@ -1,0 +1,219 @@
+Interactive calibration with Copilot
+====================================
+
+``qibocal-copilot`` opens an interactive GitHub Copilot CLI session with a
+generated Qibocal calibration profile. It shares calibration policy and
+deployment with the Pydantic AI agent, but Copilot owns conversation history,
+login, subscription and model selection. No Pydantic AI extra is required,
+and model API calls remain outside the MCP server.
+
+Minimal installation and first session
+--------------------------------------
+
+Install GitHub Copilot CLI separately and make ``copilot`` available on ``PATH``.
+Use a version supporting ``--plugin-dir``, ``--agent``, interactive objectives,
+``--disable-builtin-mcps`` and ``--excluded-tools``.
+Authenticate through Copilot under your site's
+subscription and data policy. From this checkout:
+
+.. code-block:: sh
+
+   uv sync
+   uv run qibocal-copilot --platform YOUR_PLATFORM \
+     "Calibrate qubit 0's drive frequency using spectroscopy. Sweep no wider
+      than 20 MHz, use drive amplitude at most 0.1 and at most 100 shots.
+      Run at most two protocols. Inspect plots before accepting an update.
+      Stop on errors or insufficient evidence."
+
+The same execution-host prerequisites apply: Python 3.12/3.13, Chrome, a working
+Qibolab platform and instrument drivers. Assume ``QIBOLAB_PLATFORMS`` is already
+configured; see :doc:`../installation` for advanced deployment. Replace the
+target and illustrative bounds with operator-approved values, confirm exclusive
+instrument access and read :doc:`../guides/safety`.
+
+An optional positional objective starts Copilot in interactive mode (``-i``),
+not a one-shot prompt. Omit it to start a blank session:
+
+.. code-block:: sh
+
+   uv run qibocal-copilot --platform YOUR_PLATFORM
+
+Establish approved bounds before discovery, acquisition or updates. Discovery
+is not necessarily hardware-free: a direct server connects its platform, and
+queued discovery launches a compute job that connects hardware.
+
+Native options and deployment defaults
+--------------------------------------
+
+Pass native Copilot options after ``--``:
+
+.. code-block:: sh
+
+   uv run qibocal-copilot --platform YOUR_PLATFORM \
+     "YOUR_BOUNDED_OBJECTIVE" -- --model MODEL_ID
+
+Use the exact model ID available to your Copilot subscription, not a Pydantic AI
+provider prefix. Choose an image- and tool-capable Copilot model. The native
+integration stages report PNGs locally for Copilot's ``view`` tool because the
+tested OpenAI/Anthropic adapters drop inline MCP image content.
+Image delivery depends on the selected model/client; successful file staging or
+a viewer call alone does not establish that the model received the pixels.
+The native viewer is not a provider-independent guarantee: the offline BYOK
+Anthropic adapter also omitted viewed pixels despite reporting success.
+Pixel delivery through a Copilot subscription model must be confirmed for the
+selected client/model. If rendered pixels are absent, stop and ask the operator
+to attach the report images to the conversation, or use the Pydantic AI path.
+Do not claim visual inspection or accept an update from text alone.
+
+The wrapper reads the existing ``agent`` configuration section and accepts
+the same hardware/deployment options as ``qibocal-agent``: platform, output,
+platform paths, managed environments, repositories, dependencies, SSH, SLURM,
+server interpreter, working directory and per-operation timeout.
+The timeout defaults to 3600 seconds. Copilot's adapter accepts only 0.001
+through 2147483.647 seconds, inclusive, and converts seconds to milliseconds
+within Node's integer timeout limit. This constraint is native-Copilot-only;
+the timeout still includes queue waiting and is not an entire-session budget.
+``agent.model`` and ``agent.model_base_url`` are neither required nor used.
+Configure models and login through Copilot instead. There is no new
+``copilot`` configuration section; see :doc:`../guides/configuration` and
+:doc:`../reference/cli`.
+
+For example, after satisfying the shared-storage and authentication requirements
+in :doc:`../tutorials/ssh-slurm`:
+
+.. code-block:: sh
+
+   uv run qibocal-copilot --platform YOUR_PLATFORM \
+     --ssh ACCESS_NODE --partition PARTITION \
+     --venv /shared/YOUR_USER/qibocal-mcp/env \
+     --workdir /shared/calibration-work --output /shared/calibration-runs \
+     "YOUR_BOUNDED_OBJECTIVE"
+
+Native options cannot replace the selected profile, plugin directory or
+interactive launch with another agent or execution mode, or override tool
+availability using ``--available-tools`` or ``--excluded-tools``.
+No blanket automatic permission allowance is added.
+
+Generated profile and permissions
+---------------------------------
+
+Each normal wrapper launch renders a transient plugin from the package's
+shared calibration policy and resolved deployment settings, then launches:
+
+.. code-block:: sh
+
+   copilot --plugin-dir PATH \
+     --agent qibocal-calibration:qibocal-calibration \
+     --disable-builtin-mcps --excluded-tools=skill,sql
+
+Direct launch uses the qualified plugin/profile ID
+``qibocal-calibration:qibocal-calibration``. Copilot's profile picker displays
+the short profile name, ``qibocal-calibration``.
+
+The generated profile allowlist names Qibocal's
+``get_calibration_context``, ``execute_protocol`` and ``update_platform``,
+plus Copilot's ``view`` and ``ask_user`` for normal interactive sessions.
+``view`` is a general file/image reader; instructions limit its use to staged
+report PNGs, but this is **not an enforced image-only restriction**.
+The profile does not pin a model. The discovery tool aliases the
+``qibocal://context`` resource for clients without resource support.
+
+The restriction relies on the launch command **as well as** the profile:
+``--disable-builtin-mcps`` disables built-in MCP servers and
+``--excluded-tools=skill,sql`` excludes Copilot's implicitly injected utilities.
+Selecting an exported profile in an already-running session without these
+session flags can expose ``skill`` and ``sql`` despite the profile allowlist.
+Use the export's printed launch command rather than selecting the profile alone.
+
+The wrapper does not install the plugin, duplicate policy in your repository,
+or change global Copilot settings. Copilot's native permission behavior remains
+in effect; Pydantic AI retains its existing default behavior. Neither integration
+adds a new safety or approval gate. Tool restrictions and model instructions
+are not a hardware safety layer; operator-approved bounds, oversight and
+site interlocks remain necessary.
+
+Inspecting report images
+------------------------
+
+A native-only FastMCP proxy keeps one upstream MCP client connected for the
+session, preserving upstream tool schemas, original content and metadata.
+Returned PNG bytes arrive over MCP and are staged on the **client host**:
+
+.. code-block:: text
+
+   $XDG_CACHE_HOME/qibocal-mcp/copilot-reports/<session>/<call>/report-N.png
+
+When ``XDG_CACHE_HOME`` is unset or empty, the root is
+``~/.cache/qibocal-mcp/copilot-reports``. The proxy adds
+``copilot_report_images`` (a local path list) and ``inspection_required`` to
+both text and structured response metadata. Inspect those PNGs using ``view``
+before deciding whether evidence supports an update.
+
+This works the same way for local, SSH and SLURM execution: it stages returned
+MCP bytes, not remote filesystem downloads, and requires no shell tool access.
+Original remote artifact paths remain remote. The Pydantic AI integration
+continues to consume original inline MCP images unchanged.
+
+PNG-containing folders are private (mode ``0700``). Staged artifacts persist for
+inspection; there is no automatic cache cleanup. Delete selected session
+directories after use according to your site's retention policy.
+Copilot's native path permissions can still prompt for ``view`` access; the
+wrapper adds neither ``--add-dir`` nor blanket permissions.
+The proxy marks inspection as required but does not enforce evidence checks or
+approval. Stop if an image-capable model or usable viewer is unavailable.
+
+Persistent plugin export
+------------------------
+
+Export a plugin to a **new** directory without starting a session:
+
+.. code-block:: sh
+
+   uv run qibocal-copilot --platform YOUR_PLATFORM \
+     --export-plugin ./qibocal-plugin
+   copilot --plugin-dir ./qibocal-plugin \
+     --agent qibocal-calibration:qibocal-calibration \
+     --disable-builtin-mcps --excluded-tools=skill,sql
+
+Export refuses an existing target. It requires no Copilot binary, login or
+hardware connection, and prints a launch command; it does not install anything.
+The printed command is authoritative and includes the required session-level
+tool exclusions.
+Do not combine export with an objective or native Copilot arguments. Standard
+deployment/configuration validation still applies.
+
+The exported plugin snapshots the policy and resolved deployment/defaults.
+The wrapper records environment variable **names** from the rendering
+environment, excluding model-provider credential/configuration prefixes and
+GitHub authentication tokens, but preserving ``COPILOT_MCP_*`` driver variables.
+Plugin entries use runtime ``${NAME}`` references, not secret values.
+Those recorded names must
+still be defined in the later launch environment; the server relay reports a
+clear error if a required name is missing. Referenced values are passed
+literally, including values containing ``${literal}``.
+Export does not create a credential store or a portable copy of your environment.
+Required driver keys remain runtime references; their values are not copied
+into generated files.
+Keep credentials out of objectives, paths, repository URLs and dependency
+arguments, which become part of the deployment snapshot.
+
+The exporting installation's interpreter path and package must remain available.
+Re-export to a new directory when deployment, defaults, policy or the set of
+environment variable names to forward changes. Values of already recorded names
+are resolved at launch, not frozen at export. Review generated files before
+sharing them; they can contain platform names, deployment paths and source
+metadata.
+
+Session lifetime and resume
+---------------------------
+
+The native wrapper regenerates its plugin on every launch. A transient plugin
+path is not stable session-resume configuration; use a persistent export when
+you need a stable plugin path for Copilot's native session management.
+
+Resuming a Copilot conversation does **not** preserve the old direct server or
+gateway, run handles or accepted-state handoff. A restarted MCP session has
+fresh handles, even if saved report files and conversation history still exist.
+Do not try to update an old run in the new session. See
+:doc:`../guides/artifacts` for retained evidence and
+:doc:`../guides/architecture` for execution-state boundaries.

@@ -58,6 +58,23 @@ content**, not merely paths. A vision-capable client can inspect the images
 without mounting cluster storage. A protocol without reports or fitted
 results may return fewer content blocks.
 
+Pydantic AI consumes those inline images unchanged. Native Copilot instead
+uses a proxy to stage returned PNG bytes on the client host for its ``view``
+tool, because tested Copilot adapters drop inline MCP images. Native responses
+add ``copilot_report_images`` and ``inspection_required`` to text and structured
+metadata without replacing original content. These local paths are separate
+from the execution host's ``folder`` and do not provide general access to
+remote files.
+
+The native cache is
+``$XDG_CACHE_HOME/qibocal-mcp/copilot-reports/<session>/<call>/report-N.png``,
+falling back to ``~/.cache/qibocal-mcp/copilot-reports`` when ``XDG_CACHE_HOME``
+is unset or empty. PNG-containing folders are private (``0700``); staged files
+persist with no automatic cleanup. Remove selected session directories after
+inspection according to site retention policy. An image-capable Copilot model
+must actually inspect the PNGs; staging alone is not evidence.
+See :doc:`../agent/copilot` for viewer permissions and model limitations.
+
 .. figure:: ../_images/illustrative-report.svg
    :alt: Synthetic spectroscopy illustration: sample markers are compared with a blue fit across a frequency-offset sweep. The central feature has baseline on both sides, with notes to inspect residual agreement and consult actual fit uncertainty. This picture is illustrative and contains no hardware measurements.
    :width: 100%
@@ -80,8 +97,9 @@ overwrite source files in ``QIBOLAB_PLATFORMS``.
 
 Keep the paired snapshot files together. Promotion into your authoritative
 platform definitions is a separate manual operation requiring review.
-Files persist after a session exits, but run handles do not; persistence is not
-full agent-session resume support.
+Files persist after a session exits, but run handles do not. Resuming a Copilot
+conversation or reusing an exported plugin cannot restore terminated
+server/gateway execution state.
 
 Treat reports, platform definitions and calibration output as potentially
 sensitive experiment data. Share or copy them only under your site's policy.

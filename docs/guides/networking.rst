@@ -24,8 +24,9 @@ requirements. Objectives, platform context, tool results and report images
 may be sent to that model. Choose a provider and network/data policy approved
 for your experiment data. The MCP server and SLURM workers do not make model
 API calls.
-The agent resolves the model provider before deploying the server or accessing
-hardware; deployment does not transfer model keys or user configuration.
+The Pydantic AI agent resolves its model provider before deploying the server or
+accessing hardware. Native Copilot owns its login and model selection.
+Deployment does not transfer model keys or user configuration.
 
 Provisioning may also need network access from the execution host to Git sources
 and Python package indexes. Repository authentication is separate from access

@@ -12,6 +12,8 @@ from unittest.mock import AsyncMock, Mock, patch
 import plotly.graph_objects as go
 from fastmcp import Client
 from fastmcp.exceptions import ToolError
+from mcp.shared.exceptions import McpError
+from mcp.types import CallToolResult, ImageContent, TextContent
 from qibolab import create_platform
 from qibocal.auto.operation import Protocol
 from qibocal.calibration import CalibrationPlatform
@@ -89,10 +91,17 @@ class SlurmTests(unittest.IsolatedAsyncioTestCase):
                 self.assertEqual(platforms, [])
                 self.assertEqual(
                     {tool.name for tool in await client.list_tools()},
-                    {"execute_protocol", "update_platform"},
+                    {"get_calibration_context", "execute_protocol", "update_platform"},
                 )
-                await client.read_resource("qibocal://context")
+                context_text = (
+                    await client.read_resource("qibocal://context")
+                )[0].text
                 self.assertEqual(len(platforms), 1)
+                discovery = await client.call_tool("get_calibration_context", {})
+                self.assertEqual(len(discovery.content), 1)
+                self.assertEqual(discovery.content[0].text, context_text)
+                self.assertIn("synthetic", json.loads(context_text)["protocols"])
+                self.assertEqual(len(platforms), 2)
                 result = await client.call_tool(
                     "execute_protocol",
                     {"protocol": "synthetic", "parameters": {"value": 5e9}, "targets": [0]},
@@ -103,7 +112,7 @@ class SlurmTests(unittest.IsolatedAsyncioTestCase):
                     platforms[-1].calibration.single_qubits[0].qubit.frequency_01
                 )
                 await client.call_tool("update_platform", {"run_id": run_id})
-                self.assertEqual(len(platforms), 3)
+                self.assertEqual(len(platforms), 4)
                 rejected = await client.call_tool(
                     "execute_protocol",
                     {"protocol": "synthetic", "parameters": {"value": 6e9}, "targets": [0]},
@@ -115,9 +124,9 @@ class SlurmTests(unittest.IsolatedAsyncioTestCase):
                 self.assertEqual(
                     restored.config(restored.qubits[0].drive).frequency, 5e9
                 )
-                self.assertEqual(len(platforms), 4)
-                self.assertTrue(all("--snapshot" not in cmd for cmd in commands[:3]))
-                self.assertIn("--snapshot", commands[3])
+                self.assertEqual(len(platforms), 5)
+                self.assertTrue(all("--snapshot" not in cmd for cmd in commands[:4]))
+                self.assertIn("--snapshot", commands[4])
                 for command in commands:
                     self.assertEqual(command[0], "srun")
                     self.assertIn("--partition=qpu", command)
@@ -128,7 +137,7 @@ class SlurmTests(unittest.IsolatedAsyncioTestCase):
                     platform.disconnect.assert_called_once()
                 with self.assertRaisesRegex(ToolError, "Unknown run_id"):
                     await client.call_tool("update_platform", {"run_id": "unknown"})
-                self.assertEqual(len(commands), 4)
+                self.assertEqual(len(commands), 5)
                 with self.assertRaisesRegex(ToolError, "update attempted"):
                     await client.call_tool("update_platform", {"run_id": run_id})
 
@@ -165,6 +174,59 @@ class SlurmTests(unittest.IsolatedAsyncioTestCase):
         with patch("asyncio.create_subprocess_exec", return_value=process):
             with self.assertRaisesRegex(RuntimeError, "allocation denied"):
                 await self.jobs().call("context", {})
+
+    async def test_discovery_failures_are_forwarded(self):
+        cases = [
+            (1, b"", b"allocation denied", "allocation denied"),
+            (
+                0,
+                CallToolResult(
+                    content=[TextContent(type="text", text="discovery failed")],
+                    isError=True,
+                ).model_dump_json(by_alias=True).encode(),
+                b"",
+                "discovery failed",
+            ),
+        ]
+        for content in (
+            [],
+            [TextContent(type="text", text="{}")] * 2,
+            [ImageContent(type="image", data="AA==", mimeType="image/png")],
+        ):
+            cases.append(
+                (
+                    0,
+                    CallToolResult(content=content).model_dump_json(by_alias=True).encode(),
+                    b"",
+                    "invalid context resource",
+                )
+            )
+        for status, stdout, stderr, message in cases:
+            with self.subTest(message=message, stdout=stdout):
+                process = SimpleNamespace(
+                    returncode=status,
+                    communicate=AsyncMock(return_value=(stdout, stderr)),
+                )
+                with patch("asyncio.create_subprocess_exec", return_value=process):
+                    gateway = create_slurm_server(
+                        "synthetic",
+                        partition="qpu",
+                        output=Path("runs"),
+                        python=sys.executable,
+                        workdir=Path.cwd(),
+                        slurm_args=[],
+                    )
+                    async with Client(gateway) as client:
+                        with self.assertRaisesRegex(McpError, message):
+                            await client.read_resource("qibocal://context")
+                        with self.assertRaisesRegex(ToolError, message):
+                            await client.call_tool("get_calibration_context", {})
+                self.assertEqual(process.communicate.await_count, 2)
+                for call in process.communicate.await_args_list:
+                    self.assertEqual(
+                        json.loads(call.args[0]),
+                        {"operation": "context", "arguments": {}},
+                    )
 
     async def test_cancellation_terminates_job_controller(self):
         process = SimpleNamespace(

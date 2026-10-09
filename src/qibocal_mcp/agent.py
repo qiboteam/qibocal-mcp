@@ -2,115 +2,74 @@
 
 import argparse
 import asyncio
-import json
-import os
-import shlex
-import sys
-from pathlib import Path
+from collections.abc import AsyncIterator
+from contextlib import asynccontextmanager
 
 from fastmcp import Client
 from fastmcp.client.transports import StdioTransport
+from mcp.types import TextResourceContents
 from pydantic_ai import Agent
 from pydantic_ai.exceptions import UserError
 from pydantic_ai.mcp import MCPToolset
+from pydantic_ai.models import Model
 
-from .config import add_deployment_arguments, parse_settings
-from .environment import DeploymentError, source_payload
+from .calibration import CONTEXT_RESOURCE, INSTRUCTIONS, instructions_for
+from .config import parse_settings
+from .deployment import DeploymentSettings, add_agent_deployment_arguments, launch_for
+from .environment import DeploymentError
 from .models import resolve_model
 
 
-INSTRUCTIONS = """You are a quantum calibration agent.
-Use the user's objective and constraints to plan a calibration strategy.
-Choose protocols and parameters from the supplied Qibocal context; respect its
-units and qubit IDs. Explain your decisions, but do not invent execution results.
-Execute one protocol at a time. Inspect its returned report images and fitting
-tables: look for signal quality, model agreement, uncertainty, and bad fits.
-Only call update_platform when the inspected evidence justifies the update.
-If evidence is insufficient, leave the platform unchanged and adjust the next
-experiment. An update affects subsequent acquisitions; old runs can be stale.
-Adapt your plan after each result. Stop when the objective is met, the user's
-budget is exhausted, or progress requires user input. Summarize what was run,
-which updates were applied, artifact locations, and remaining uncertainty.
-Follow the user's hardware limits. Do not treat synthetic data from a mock
-platform as evidence of a successful calibration.
-Queue waits are normal. Do not blindly retry failed acquisitions or updates:
-they may already have affected hardware. Stop when recovery needs user input.
-"""
-
-
-def transport_for(args: argparse.Namespace) -> StdioTransport:
-    """Use stdio locally or carry it over SSH to an access-node gateway."""
-    python = args.server_python or ("python3" if args.ssh else sys.executable)
-    command = [
-        python,
-        "-m", "qibocal_mcp.server",
-        "--no-config",
-        "--platform", args.platform,
-        "--output", args.output,
-    ]
-    if args.partition is not None:
-        command += ["--partition", args.partition]
-    command += [f"--slurm-arg={arg}" for arg in args.slurm_arg]
-    venv = getattr(args, "venv", None)
-    if args.ssh and args.server_python is None and venv is None:
-        venv = "qibocal-mcp"
-    repositories = getattr(args, "platform_repo", [])
-    dependencies = getattr(args, "dependency", [])
-    if venv is not None or repositories or dependencies:
-        options = {
-            "venv": venv,
-            "python": python,
-            "platform": args.platform,
-            "platforms": args.platforms,
-            "platform_repo": repositories,
-            "dependency": dependencies,
-        }
-        request = {"options": options}
-        if venv is not None:
-            request["source"] = source_payload()
-        bootstrap = Path(__file__).with_name("environment.py").read_text(encoding="utf-8")
-        command = [python, "-c", bootstrap, json.dumps(request), *command[3:]]
-    elif args.platforms is not None:
-        command += ["--platforms", args.platforms]
-    if args.ssh:
-        remote = "exec " + shlex.join(command)
-        if args.workdir is not None:
-            remote = f"cd {shlex.quote(args.workdir)} && {remote}"
-        return StdioTransport(
-            command="ssh",
-            args=["-T", "-o", "BatchMode=yes", "--", args.ssh, remote],
-            env={
-                name: os.environ[name]
-                for name in ("SSH_AUTH_SOCK",)
-                if name in os.environ
-            },
-            keep_alive=False,
-        )
-    return StdioTransport(
-        command=command[0],
-        args=command[1:],
-        # StdioTransport otherwise drops platform/driver environment settings.
-        env=dict(os.environ),
-        cwd=args.workdir,
-        keep_alive=False,
+def transport_for(args: argparse.Namespace | DeploymentSettings) -> StdioTransport:
+    """Adapt the shared launch contract to FastMCP's client transport."""
+    settings = (
+        args if isinstance(args, DeploymentSettings)
+        else DeploymentSettings.from_namespace(args)
     )
+    launch = launch_for(settings)
+    return StdioTransport(
+        command=launch.command, args=launch.args, env=launch.env,
+        cwd=launch.cwd, keep_alive=False,
+    )
+
+
+@asynccontextmanager
+async def open_calibration_agent(
+    settings: DeploymentSettings,
+    model: Model | str,
+    *,
+    model_base_url: str | None = None,
+) -> AsyncIterator[Agent]:
+    """Yield a configured agent while keeping its MCP session alive.
+
+    Run all turns inside this context. Model resolution precedes deployment
+    and hardware access; explicit model objects retain their configuration.
+    """
+    if isinstance(model, str):
+        model = resolve_model(model, base_url=model_base_url)
+    elif model_base_url is not None:
+        raise UserError("model_base_url cannot be combined with a model object")
+    async with Client(
+        transport_for(settings),
+        timeout=settings.timeout, init_timeout=settings.timeout,
+    ) as client:
+        context = await client.read_resource(CONTEXT_RESOURCE)
+        if len(context) != 1 or not isinstance(context[0], TextResourceContents):
+            raise ValueError("Server returned an invalid context resource")
+        agent = Agent(model, instructions=instructions_for(context[0].text),
+                      toolsets=[MCPToolset(client)])
+        async with agent:
+            yield agent
 
 
 async def run(args):
     """Keep one direct server or gateway alive for the entire calibration."""
     model = resolve_model(args.model, base_url=args.model_base_url)
-    async with Client(
-        transport_for(args), timeout=args.timeout, init_timeout=args.timeout
-    ) as client:
-        context = await client.read_resource("qibocal://context")
-        agent = Agent(
-            model,
-            instructions=INSTRUCTIONS + "\nQibocal context:\n" + context[0].text,
-            toolsets=[MCPToolset(client)],
-        )
-        async with agent:
-            result = await agent.run(args.objective)
-        print(result.output)
+    async with open_calibration_agent(
+        DeploymentSettings.from_namespace(args), model,
+    ) as agent:
+        result = await agent.run(args.objective)
+    print(result.output)
 
 
 def main(argv: list[str] | None = None):
@@ -120,27 +79,12 @@ def main(argv: list[str] | None = None):
     )
     parser.add_argument("objective", help="Calibration goal, limits and stopping criteria")
     parser.add_argument(
-        "--model",
-        help="Pydantic AI model identifier, github-copilot:ID or openwebui:ID",
+        "--model", help="Pydantic AI model identifier, github-copilot:ID or openwebui:ID",
     )
     parser.add_argument(
         "--model-base-url", help="OpenWebUI API base URL or Copilot endpoint override"
     )
-    parser.add_argument("--platform")
-    parser.add_argument("--output")
-    parser.add_argument("--ssh", help="SSH host/alias for the access node")
-    parser.add_argument("--partition", help="New SLURM job for each protocol/update")
-    parser.add_argument(
-        "--server-python", help="Server Python path, on the SSH host if remote"
-    )
-    parser.add_argument("--workdir", help="Working directory on the server/compute nodes")
-    parser.add_argument("--platforms", help="QIBOLAB_PLATFORMS on the server/compute nodes")
-    parser.add_argument("--slurm-arg", action="append", help="Extra srun option")
-    add_deployment_arguments(parser)
-    parser.add_argument(
-        "--timeout", type=float,
-        help="Seconds per operation, including queue wait",
-    )
+    add_agent_deployment_arguments(parser)
     args = parse_settings(parser, "agent", argv)
     try:
         asyncio.run(run(args))

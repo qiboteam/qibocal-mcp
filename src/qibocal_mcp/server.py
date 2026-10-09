@@ -66,7 +66,8 @@ def create_server(
     mcp = FastMCP(
         "Qibocal",
         instructions=(
-            "Read qibocal://context for platform targets and protocol parameters. "
+            "Read qibocal://context or call get_calibration_context for platform "
+            "targets and protocol parameters. "
             "execute_protocol acquires, fits and reports without applying fitted "
             "updates. Inspect the returned plots before calling update_platform. "
             "Run handles are valid only in this server process."
@@ -74,8 +75,7 @@ def create_server(
         lifespan=lifespan,
     )
 
-    @mcp.resource("qibocal://context")
-    async def context(ctx: Context) -> str:
+    async def calibration_context(ctx: Context) -> str:
         """Platform targets and built-in protocol parameter definitions, with units."""
         executor = ctx.lifespan_context["executor"]
         return json.dumps(
@@ -97,6 +97,16 @@ def create_server(
             },
             indent=2,
         )
+
+    @mcp.resource("qibocal://context")
+    async def context(ctx: Context) -> str:
+        """Platform targets and built-in protocol parameter definitions, with units."""
+        return await calibration_context(ctx)
+
+    @mcp.tool
+    async def get_calibration_context(ctx: Context) -> str:
+        """Return the same JSON text as qibocal://context for calibration discovery."""
+        return await calibration_context(ctx)
 
     @mcp.tool
     async def execute_protocol(

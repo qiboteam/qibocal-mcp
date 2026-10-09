@@ -104,7 +104,7 @@ def create_slurm_server(
     workdir: Path,
     slurm_args: list[str],
 ) -> FastMCP:
-    """Expose the same two tools without opening hardware on the access node."""
+    """Expose the same three tools without opening hardware on the access node."""
     jobs = SlurmJobs(
         platform,
         partition=partition,
@@ -116,19 +116,29 @@ def create_slurm_server(
     mcp = FastMCP(
         "Qibocal SLURM",
         instructions=(
-            "Read qibocal://context for protocol parameters. Every operation "
+            "Read qibocal://context or call get_calibration_context for protocol "
+            "parameters. Every operation "
             "runs in a separate SLURM job. Inspect images before updating. "
             "Run handles last for this gateway session; paths are on the cluster."
         ),
     )
 
-    @mcp.resource("qibocal://context")
-    async def context() -> str:
+    async def calibration_context() -> str:
         """Discover the platform and protocols through a compute-node job."""
         result = await jobs.call("context", {})
         if len(result.content) != 1 or not isinstance(result.content[0], TextContent):
             raise ValueError("Worker returned an invalid context resource")
         return result.content[0].text
+
+    @mcp.resource("qibocal://context")
+    async def context() -> str:
+        """Discover the platform and protocols through a compute-node job."""
+        return await calibration_context()
+
+    @mcp.tool
+    async def get_calibration_context() -> str:
+        """Return qibocal://context JSON text through a compute-node discovery job."""
+        return await calibration_context()
 
     @mcp.tool
     async def execute_protocol(

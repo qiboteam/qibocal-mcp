@@ -4,8 +4,10 @@ An autonomous calibration agent for Qibocal. Give it a bounded objective: the
 agent chooses experiments, inspects report images and fitted results, and decides
 whether to accept platform updates. Run locally or through SSH/SLURM.
 
-The agent manages its own stdio MCP subprocess. The included standalone MCP
-server is a byproduct for other clients, not a prerequisite to using the agent.
+Choose the one-shot Pydantic AI `qibocal-agent`, its reusable Python session API,
+or interactive GitHub Copilot CLI via `qibocal-copilot`. Both integrations share
+calibration policy and local/SSH/SLURM deployment, and manage their own stdio MCP
+subprocess. The standalone MCP server is not a prerequisite.
 
 This is a single-platform draft, **not a hardware safety layer**. Supply approved
 hardware limits, an execution budget and stopping criteria; acquisitions can
@@ -42,7 +44,7 @@ only for what your setup needs:
 
 - Missing platform paths or Chrome, alternative installation with `devenv`,
   and execution-host requirements: [installation](docs/installation.rst).
-- Copilot subscriptions, OpenWebUI or other model providers:
+- Pydantic AI Copilot subscriptions, OpenWebUI or other model providers:
   [model providers](docs/guides/model-providers.rst).
 - Managed environments, trusted platform repositories, Python driver
   dependencies and persistent defaults:
@@ -54,6 +56,47 @@ SSH launches without `--server-python` automatically provision the remote
 server and its Python dependencies; no remote checkout or agent installation
 is needed. Local launches use the current interpreter unless `--venv` is
 supplied. Chrome and system-level drivers remain site-managed.
+
+### Interactive GitHub Copilot CLI
+
+Install GitHub Copilot CLI separately, make `copilot` available on `PATH`, and
+authenticate through Copilot. Only the core Python package is needed, not the
+`agent` extra:
+
+```sh
+uv sync
+uv run qibocal-copilot --platform YOUR_PLATFORM "YOUR_BOUNDED_OBJECTIVE"
+```
+
+Omit the objective for a blank interactive session; establish operator-approved
+bounds before discovery or acquisition. Pass native options after `--`, for
+example `-- --model MODEL_ID`. Copilot owns login, subscription and model
+selection; `agent.model` and `agent.model_base_url` are not used.
+Native Copilot stages MCP report PNGs on the client host for its `view` tool,
+including with SSH/SLURM. Choose an image-capable model and stop if images
+cannot actually be inspected. `view` is a general reader, not an enforced
+image-only tool; native path permissions remain in effect.
+
+The wrapper generates a transient calibration plugin on every launch without
+changing global settings or installing it. For a persistent deployment snapshot:
+
+```sh
+uv run qibocal-copilot --platform YOUR_PLATFORM --export-plugin ./qibocal-plugin
+copilot --plugin-dir ./qibocal-plugin \
+  --agent qibocal-calibration:qibocal-calibration \
+  --disable-builtin-mcps --excluded-tools=skill,sql
+```
+
+Export refuses existing directories and needs no login, hardware access or
+Copilot binary. The profile picker displays `qibocal-calibration`; direct launch
+uses the qualified ID above. Exports reference environment variable names rather
+than values; keep those names defined and re-export if the name set changes.
+Use the printed launch command: tool restrictions require both the profile and
+session flags. Selecting the exported profile in an already-running session
+without those flags can expose Copilot's implicit `skill` and `sql` utilities.
+Read the [Copilot guide](docs/agent/copilot.rst) for permissions, image support,
+interpreter requirements and session-resume boundaries.
+The [agent track](docs/agent/index.rst) also shows reusable Python multi-turn use.
 
 ## Standalone MCP server
 

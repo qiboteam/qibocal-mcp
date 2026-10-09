@@ -18,7 +18,7 @@ Empty environment values fall through, as in qibocal-report. This reuses the
 configuration folder but never accesses Qibocal Report's ``servers.json`` or
 authentication files.
 
-``qibocal-mcp`` and ``qibocal-agent`` both accept:
+``qibocal-mcp``, ``qibocal-agent`` and ``qibocal-copilot`` all accept:
 
 * ``--config FILE``: read only that file; an explicitly selected missing file
   is an error.
@@ -34,8 +34,10 @@ Settings and built-in defaults
 ------------------------------
 
 Keys use underscores in JSON; the corresponding CLI flags use hyphens.
-Every setting is optional in the file. ``platform`` and the agent's ``model``
-must be supplied by configuration or CLI at runtime.
+Every setting is optional in the file. ``platform`` must be supplied by
+configuration or CLI at runtime. ``qibocal-agent`` also requires ``model``;
+``qibocal-copilot`` does not require or use ``agent.model`` or
+``agent.model_base_url``. Copilot owns model selection and login.
 
 .. list-table:: Keys valid in both sections
    :header-rows: 1
@@ -88,11 +90,12 @@ must be supplied by configuration or CLI at runtime.
      - Current Python interpreter; interpreter used by SLURM workers.
    * - ``agent.model``
      - Nonempty string
-     - Unset; required at runtime. Pydantic AI model identifier or
+     - Unset; required by ``qibocal-agent`` only. Pydantic AI model identifier or
        ``openwebui:MODEL_ID``; see :doc:`model-providers`.
    * - ``agent.model_base_url``
      - Nonempty string
-     - Unset; endpoint override for ``openwebui:`` or ``github-copilot:``.
+     - Unset; Pydantic AI endpoint override for ``openwebui:`` or
+       ``github-copilot:``; ignored by ``qibocal-copilot``.
        OpenWebUI URLs include ``/api``. No credentials in URLs.
    * - ``agent.ssh``
      - Nonempty string
@@ -104,7 +107,9 @@ must be supplied by configuration or CLI at runtime.
        environment/core-server installation.
    * - ``agent.timeout``
      - Positive finite JSON number
-     - ``3600`` seconds per operation, including queue waiting.
+     - ``3600`` seconds per operation, including queue waiting. Native Copilot
+       additionally accepts only 0.001 through 2147483.647 seconds, inclusive,
+       to fit Node's integer timeout limit after conversion to milliseconds.
 
 String values are not coerced from other types. ``null`` and booleans are not
 valid settings; a timeout must be numeric, not a quoted string, and cannot
@@ -115,6 +120,8 @@ Use ``unset`` to remove a stored value and return to the built-in default
 Objectives and API keys are not valid configuration settings. Pass the
 objective as the agent's positional argument and keep credentials in
 environment/provider settings.
+The Copilot wrapper allows the objective to be omitted for a blank interactive
+session; establish operator-approved bounds before hardware operations.
 
 Precedence and isolation
 ------------------------
@@ -122,6 +129,9 @@ Precedence and isolation
 The order is **explicit CLI > command's own section > built-in default**.
 There is no server-to-agent or agent-to-server inheritance. For example,
 ``server.platform`` does not satisfy the agent's required platform.
+Both agent integrations read the existing ``agent`` section; there is no
+separate ``copilot`` section. Unused Pydantic AI model settings are still
+subject to whole-file schema validation.
 
 An explicit ``--slurm-arg``, ``--platform-repo`` or ``--dependency`` list
 replaces its entire configured list rather than appending to it. Repeated CLI
@@ -140,6 +150,28 @@ single-task lifecycle; see :doc:`networking`.
 The agent launches its server with ``--no-config`` and resolved settings.
 Target-host server configuration cannot inject settings. Internal SLURM
 workers do not read user configuration.
+
+Copilot plugin snapshots
+------------------------
+
+``qibocal-copilot`` regenerates its transient plugin from resolved settings on
+each launch. ``--export-plugin DIRECTORY`` instead snapshots the policy and
+deployment/defaults in a new persistent directory. Later configuration edits
+do not update that export; re-export to a new directory after changes.
+
+Generated environment entries use runtime ``${NAME}`` references, never exported
+secret values. The names are recorded from the rendering environment, excluding
+model-provider credential/configuration prefixes and GitHub authentication tokens,
+but preserving ``COPILOT_MCP_*`` driver variables, including required driver keys.
+Keep every recorded name defined at launch; a missing name causes a clear
+server-relay error. Existing names' values are
+resolved at launch, but changing the set of names to forward requires re-export.
+Keep the exporting installation's interpreter path and package intact.
+Export does not install the plugin or modify global settings. See
+:doc:`../agent/copilot` for launching an export and session lifetime limits.
+Use the printed launch command, including ``--disable-builtin-mcps`` and
+``--excluded-tools=skill,sql``. The exported profile alone does not exclude
+Copilot's implicit ``skill`` and ``sql`` utilities in an already-running session.
 
 Execution-host paths and environment selection
 ----------------------------------------------
@@ -177,7 +209,7 @@ not just the gateway. Both must already contain the server. The agent instead
 uses the same installed interpreter for its server and workers.
 
 Platform repositories and dependency sources
--------------------------------------------
+--------------------------------------------
 
 Each ``platform_repo`` entry is a repository URL, Git SSH source or local
 source path; local source paths are interpreted on the deployment host, not

@@ -4,7 +4,18 @@ Development and documentation builds
 Source layout
 -------------
 
-* ``src/qibocal_mcp/agent.py``: model instructions, local/SSH transport and loop.
+* ``src/qibocal_mcp/calibration.py``: shared calibration policy and context/tool
+  identifiers; the generated Copilot profile renders this policy rather than
+  maintaining a separate committed copy.
+* ``src/qibocal_mcp/deployment.py``: dependency-light ``DeploymentSettings`` and
+  ``launch_for`` contract shared by both agent integrations.
+* ``src/qibocal_mcp/agent.py``: Pydantic AI transport adapter, reusable
+  ``open_calibration_agent`` async context manager and one-shot CLI.
+* ``src/qibocal_mcp/copilot.py``: transient native Copilot launch and persistent
+  plugin export, independent of the Pydantic AI extra.
+* ``src/qibocal_mcp/copilot_server.py``: native-only FastMCP proxy and report-PNG
+  staging on the client host, preserving one connected upstream client and its
+  tool schemas for the session.
 * ``src/qibocal_mcp/models.py``: native Copilot and OpenWebUI model selection.
 * ``src/qibocal_mcp/server.py``: direct platform server and runtime entry point.
 * ``src/qibocal_mcp/slurm.py``: gateway serialization, dispatch and accepted-state
@@ -26,15 +37,19 @@ server. Operational invariants are described in :doc:`guides/architecture`
 and :doc:`guides/safety`.
 
 Provisioning invariants
-----------------------
+-----------------------
 
-Keep deployment independent of the agent extra and model credentials. The
-agent resolves the provider before deployment/hardware, and the SSH bootstrap
+Keep shared policy, deployment and source-payload imports independent of the
+agent extra and model credentials. The Pydantic AI agent resolves the provider
+before deployment/hardware; native Copilot owns its login and model selection.
+The SSH bootstrap
 uses the standard library to transfer only server source and package metadata
 from the launching checkout or installed distribution. The installed-source
 fallback must preserve core dependencies and the Qibocal Git pin from distribution
 metadata without requiring a local checkout, including for a wheel-installed
 agent. Reconstruct minimal installation metadata from ``distribution.requires``.
+Retain this installed-wheel path for both agent integrations; sharing deployment
+must not make source-payload discovery import the optional Pydantic AI backend.
 Keep the pin as a PEP 508 direct Git requirement in ``project.dependencies``,
 not only ``tool.uv.sources``, so pip and built distributions retain it.
 The launched server receives
@@ -52,6 +67,41 @@ behavior rather than implying isolation. Standalone gateways with distinct
 explicit worker interpreters must provision repository/dependency settings into
 both gateway and worker interpreters, each already containing the server;
 agents use the same installed interpreter for workers.
+
+Native Copilot profiles allowlist Qibocal, ``view`` and ``ask_user`` without
+pinning a model, changing global settings, automatically installing a plugin
+or adding blanket permission allowances. ``view`` is a general file/image reader;
+instructions restrict its use to staged report PNGs, not enforced image-only
+access. Tool restriction also requires the launch command's
+``--disable-builtin-mcps --excluded-tools=skill,sql`` flags; selecting a profile
+without these flags in an existing session can expose implicit utilities.
+Keep wrapper and printed export commands aligned, and reject passthrough
+``--available-tools``/``--excluded-tools`` overrides.
+Persistent exports contain runtime
+environment references, not secret values. Transient plugins are regenerated
+per launch; persistent exports snapshot policy and resolved deployment/defaults.
+They also record forwarded environment names, excluding model-provider
+credential/configuration prefixes and GitHub authentication tokens but preserving
+``COPILOT_MCP_*`` driver variables; changing that name set requires re-export.
+Missing runtime names must fail clearly, and resolved values must remain literal
+rather than undergo
+recursive expansion. Direct Copilot launch uses the qualified
+``qibocal-calibration:qibocal-calibration`` plugin/profile ID.
+The native timeout adapter converts seconds to milliseconds and rejects values
+outside 0.001 through 2147483.647 seconds, inclusive, to respect Node's integer
+timeout limit without changing the shared 3600-second default.
+Neither conversation history nor a stable exported plugin restores a terminated
+server/gateway's run handles. Keep model APIs outside the MCP server and do not
+describe instructions or tool restrictions as hardware safety enforcement.
+
+Native image staging uses existing FastMCP core dependencies, not Pydantic AI.
+``StageReports`` preserves original response content/metadata and adds
+``copilot_report_images`` and ``inspection_required`` to text and structured
+metadata. PNG bytes arrive over MCP for all deployment modes; no remote file
+download or shell tool is needed. Staged files live in private client-local cache
+folders and persist until manually removed. Keep Pydantic AI's original inline
+image path unchanged, and do not imply that staging enforces inspection,
+approval or provider-independent pixel delivery.
 
 Caches belong to the execution host under ``qibocal-mcp``, not notebook
 ``qibocal/envs``. Reuse environments and fingerprint only successful dependency
@@ -119,7 +169,8 @@ to hardware or requesting model credentials. Generated output is not source
 and should remain untracked.
 
 Basic documentation has two independent tracks: ``agent/index`` comes first,
-with agent installation, getting started and tutorials; ``mcp/index`` has
+with Pydantic AI installation, getting started, a reusable Python example,
+``agent/copilot`` for native interactive use and tutorials; ``mcp/index`` has
 standalone server installation and getting started. Each installation page
 puts minimal setup before advanced customization. Shared conceptual guides
 and CLI/MCP reference follow both tracks. Add new pages to a toctree so readers

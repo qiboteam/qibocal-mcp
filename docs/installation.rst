@@ -4,6 +4,11 @@ Agent installation
 Minimal installation
 --------------------
 
+For the Pydantic AI ``qibocal-agent`` CLI and Python API, follow the setup below.
+For interactive GitHub Copilot CLI, see :doc:`agent/copilot`: ``uv sync`` and an
+installed Copilot CLI suffice, without the ``agent`` extra or Python model
+credentials. Execution-host hardware prerequisites are shared.
+
 For a standard local setup, you need ``uv``, Python 3.12 or 3.13, Chrome,
 and a working Qibolab platform with its hardware drivers. Assume your site
 has already set ``QIBOLAB_PLATFORMS`` to the platform definitions.
@@ -36,9 +41,10 @@ If your platform paths or credentials are not already configured:
    export OPENAI_API_KEY=...
 
 For another provider, use its recommended environment or credential settings.
-The same agent extra supports GitHub Copilot subscriptions and OpenWebUI's
+The same Pydantic AI extra supports GitHub Copilot subscriptions and OpenWebUI's
 OpenAI-compatible API; see :doc:`guides/model-providers` for authentication
-and launch commands. Install other Pydantic AI provider extras yourself if
+and launch commands. This provider integration is distinct from the interactive
+Copilot CLI wrapper. Install other Pydantic AI provider extras yourself if
 you select a provider not included in the agent extra. Do not put API keys
 in command objectives or in ``qibocal-mcp.json``.
 
@@ -52,8 +58,9 @@ Alternatively, ``devenv shell`` configures Python 3.12 and syncs all extras,
 following Qibolab's Python/uv setup. It also installs Chrome through Nix and
 sets ``BROWSER_PATH`` for Kaleido, so no separate ``plotly_get_chrome`` step is
 needed in that environment. The documentation extra and build commands are
-in :doc:`development`. Only the machine running the agent needs the agent
-extra and model credentials; SSH server deployment is handled automatically.
+in :doc:`development`. Only the machine running the Pydantic AI agent needs
+its extra and model credentials; the native Copilot integration uses Copilot's
+login and model selection. SSH server deployment is handled automatically.
 
 Platform selection and repositories
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -98,8 +105,8 @@ or agent extra is required. A wheel-installed agent is supported: the bootstrap
 reconstructs minimal installation metadata from the distribution's declared
 requirements, retaining the Qibocal pin. Source snapshots and repository clones
 are cached on the execution host; provisioning messages go to stderr, preserving MCP
-stdout. The agent resolves its model provider before deployment or hardware
-access.
+stdout. The Pydantic AI agent resolves its model provider before deployment or
+hardware access; native Copilot manages its own model and authentication.
 
 Environments are reused. Successful dependency state is fingerprinted, including
 nested local ``-r``/``-c`` files, root packaging metadata and repository Git

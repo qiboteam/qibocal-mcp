@@ -4,8 +4,9 @@ qibocal-agent
 An autonomous calibration agent for Qibocal. The agent chooses experiments,
 inspects report images and fitted results, and decides whether to accept
 platform updates. Execution can be local or dispatched through SSH and SLURM.
-It starts and manages its own stdio MCP subprocess; no separate server setup
-is needed to use the agent.
+Choose the one-shot Pydantic AI CLI, reusable Python sessions or interactive
+GitHub Copilot CLI. Both integrations share calibration policy and deployment,
+and manage their own stdio MCP subprocess; no separate server setup is needed.
 
 The standalone MCP server is included for other trusted clients. Its basic
 documentation is a separate track, independent of the agent instructions.

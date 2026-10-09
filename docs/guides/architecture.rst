@@ -4,12 +4,29 @@ Execution and accepted state
 Components
 ----------
 
-``qibocal-agent`` owns one MCP subprocess for a calibration session.
-It reads the platform context and gives the model the objective, protocol
-definitions and an MCP toolset. The model chooses a strategy; there is no
+The Pydantic AI agent and native Copilot integration share calibration policy
+from ``calibration.py`` and deployment through ``DeploymentSettings`` and
+``launch_for`` in ``deployment.py``. ``qibocal-agent`` remains a one-shot CLI;
+``open_calibration_agent`` keeps an MCP session alive for multiple Python turns,
+and ``qibocal-copilot`` opens an interactive session with a generated plugin.
+
+Each integration manages its MCP subprocess and gives the model platform
+context, the objective, protocol definitions and an MCP toolset.
+The model chooses a strategy; there is no
 prescribed calibration sequence, fit acceptance threshold or workflow engine.
 
-``qibocal-mcp`` exposes exactly two tools and one context resource.
+Native Copilot uses a FastMCP proxy with one connected upstream client for the
+session. It preserves upstream schemas and response content while staging
+returned PNG bytes locally for Copilot's ``view`` tool, including with SSH/SLURM.
+This requires neither remote filesystem downloads nor a shell tool. Pydantic AI
+continues to consume the original inline MCP images.
+The proxy's inspection metadata is guidance, not an evidence or approval gate.
+See :doc:`../agent/copilot` for native image and permission constraints.
+
+``qibocal-mcp`` exposes three tools and one context resource.
+``get_calibration_context`` aliases ``qibocal://context`` for clients without
+resource support; discovery through either interface has the same execution
+effects.
 Its direct server wraps a Qibocal ``Executor`` with ``update=False``.
 ``execute_protocol`` binds a built-in protocol and calls the executor to acquire,
 fit and generate reports. ``update_platform`` explicitly calls
@@ -39,8 +56,9 @@ Queued mode
 With a partition, the server becomes a hardware-free access-node gateway.
 The gateway serializes operations and launches ``srun`` workers:
 
-1. Reading ``qibocal://context`` launches a discovery job, including a platform
-   connection, then returns qubit IDs and protocol definitions.
+1. Reading ``qibocal://context`` or calling ``get_calibration_context`` launches
+   a discovery job, including a platform connection, then returns qubit IDs
+   and protocol definitions.
 2. Each ``execute_protocol`` job restores the latest accepted snapshot if one
    exists, connects, acquires/fits/reports, disconnects and exits.
 3. ``update_platform`` launches a separate job. It restores the saved execution
@@ -64,9 +82,13 @@ Session boundaries
 ------------------
 
 Run handles exist only while the direct server or gateway remains alive.
-Saved artifacts persist, but resuming an entire agent session is not supported.
+Saved artifacts and client conversation history can persist, but cannot restore
+those handles in a fresh MCP session. Copilot's native conversation resume does
+not preserve the old server/gateway or accepted-state handoff. Use a persistent
+plugin export for a stable Copilot configuration path, not a transient wrapper
+plugin; neither form provides hardware-state resume.
 Internal workers can restore the completed run needed for an update within
-the active gateway session; this is not a public session-resume feature.
+the active gateway session; this is not a public execution-session-resume feature.
 
 Every server subprocess launched by the agent receives ``--no-config`` and
 resolved settings. Internal SLURM workers likewise do not read user

@@ -81,11 +81,16 @@ class ServerTests(unittest.IsolatedAsyncioTestCase):
             async with Client(server) as client:
                 self.assertEqual(
                     {t.name for t in await client.list_tools()},
-                    {"execute_protocol", "update_platform"},
+                    {"get_calibration_context", "execute_protocol", "update_platform"},
                 )
-                context = json.loads(
-                    (await client.read_resource("qibocal://context"))[0].text
-                )
+                context_text = (
+                    await client.read_resource("qibocal://context")
+                )[0].text
+                discovery = await client.call_tool("get_calibration_context", {})
+                self.assertEqual(len(discovery.content), 1)
+                self.assertEqual(discovery.content[0].text, context_text)
+                context = json.loads(context_text)
+                self.assertEqual(context["qubits"], list(platform.qubits))
                 self.assertIn(
                     "value: float", context["protocols"]["synthetic"]["parameters"]
                 )

@@ -152,7 +152,8 @@ def save_config(data: Configuration, path: Path | None = None) -> None:
 
 
 def parse_settings(
-    parser: argparse.ArgumentParser, section: str, argv: list[str] | None = None
+    parser: argparse.ArgumentParser, section: str, argv: list[str] | None = None,
+    *, require_model: bool = True,
 ) -> argparse.Namespace:
     """Merge built-ins, the command's file section, then explicit CLI arguments."""
     selection = parser.add_mutually_exclusive_group()
@@ -190,7 +191,8 @@ def parse_settings(
         for name in FIELDS[section]:
             if values[name] is not None:
                 validate_value(f"{section}.{name}", values[name])
-        for name in ("platform", "model") if section == "agent" else ("platform",):
+        required = ("platform", "model") if section == "agent" and require_model else ("platform",)
+        for name in required:
             if values[name] is None:
                 parser.error(f"--{name} is required (or set {section}.{name})")
         if values["slurm_arg"] and values["partition"] is None:

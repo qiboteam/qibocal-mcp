@@ -15,15 +15,20 @@ Launch a stdio server
 Configure your MCP client to launch that command with this repository as its
 working directory. The process communicates over stdio; it does not provide an
 HTTP URL. Running it in a terminal alone does not initiate a calibration.
-There are exactly two tools, ``execute_protocol`` and ``update_platform``,
-plus the ``qibocal://context`` resource.
+There are three tools: ``get_calibration_context``, ``execute_protocol`` and
+``update_platform``, plus the ``qibocal://context`` resource.
 
 Make a first tool call
 ----------------------
 
-Read the context first to discover qubit IDs, protocol definitions, units and
-update support. For example, after checking that target ``0`` exists and that
-these parameters are approved for your hardware, call ``execute_protocol`` with:
+Read ``qibocal://context`` first, or call ``get_calibration_context`` with no
+arguments if your client does not support resources. Both discover qubit IDs,
+protocol definitions, units and update support. Direct-mode startup connects
+hardware, and queued discovery launches a compute job that connects it;
+discovery is not a hardware-free preflight.
+
+For example, after checking that target ``0`` exists and that these parameters
+are approved for your hardware, call ``execute_protocol`` with:
 
 .. code-block:: json
 
