@@ -56,7 +56,7 @@ stdio, change task count or detach jobs through extra scheduling options.
 
 ``--venv`` accepts a name, absolute path or ``./``/``../`` path and expands
 ``~`` on the execution host. Named environments use that host's
-``$XDG_CACHE_HOME/qibocal-mcp/envs`` or ``~/.cache/qibocal-mcp/envs``.
+``$XDG_CACHE_HOME/qibocal/agent/envs`` or ``~/.cache/qibocal/agent/envs``.
 Other existing path options remain literal. Repository fragments must have
 URL-encoded values as needed; quote arguments containing ``&``.
 Cached clones are reused without automatic pull/fetch/reset; pin a commit for
@@ -90,7 +90,10 @@ Both ``qibocal-agent`` and ``qibocal-copilot`` additionally accept:
        0.001 through 2147483.647 seconds, inclusive; its adapter converts to
        milliseconds within Node's integer timeout limit.
 
-Both read deployment defaults from the ``agent`` section, own their MCP
+Both accept a positional agent name, reading ``agents.NAME`` in
+``~/.config/qibocal/agent.json`` (or ``$XDG_CONFIG_HOME/qibocal/agent.json``).
+Named entries are isolated from unnamed defaults. Without named entries, both
+read deployment defaults from the legacy ``agent`` section. They own their MCP
 subprocess and supply resolved settings with ``--no-config``.
 Neither exposes ``--worker-python``; queued workers use the server interpreter.
 SSH managed bootstrap transfers the launching installation's server source and
@@ -110,7 +113,7 @@ qibocal-agent
                  [--dependency REQUIREMENT ...]
                  [--ssh HOST] [--partition NAME]
                  [--server-python EXECUTABLE] [--workdir PATH]
-                 [--slurm-arg VALUE ...] [--timeout SECONDS] OBJECTIVE
+                 [--slurm-arg VALUE ...] [--timeout SECONDS] [NAME] [OBJECTIVE]
 
 .. list-table:: Pydantic AI options and argument
    :header-rows: 1
@@ -127,8 +130,9 @@ qibocal-agent
        ``agent.model_base_url``. OpenWebUI URLs include ``/api``.
        See :doc:`../guides/model-providers` for credentials and precedence.
    * - ``OBJECTIVE``
-     - Required positional calibration goal, hardware limits, execution budget
-       and stopping criteria. Cannot be stored in configuration.
+     - Calibration goal, hardware limits, execution budget and stopping criteria.
+       Overrides ``agents.NAME.objective``; required unless saved on the named
+       agent. ``NAME`` alone is sufficient when model and objective are saved.
 
 This remains a one-shot CLI. Model credentials remain in environment/provider
 settings; the provider is resolved before deployment or hardware access.
@@ -147,17 +151,23 @@ qibocal-copilot
                    [--server-python EXECUTABLE] [--workdir PATH]
                    [--slurm-arg VALUE ...] [--timeout SECONDS]
                    [--report-rendering server|client]
-                   [--export-plugin DIRECTORY] [OBJECTIVE]
+                   [--export-plugin DIRECTORY | --print-options | --print-options0]
+                   [NAME] [OBJECTIVE]
                    [-- COPILOT_OPTIONS ...]
 
 An optional ``OBJECTIVE`` starts an interactive Copilot session (``-i``);
-omitting it starts a blank session. Pass native options only after ``--``,
+omitting it uses ``agents.NAME.objective`` if saved, otherwise starts a blank
+session. ``qibocal-copilot NAME`` still launches by default.
+Pass native options after ``--``,
 for example ``-- --model MODEL_ID``. Native options cannot replace the selected
 profile, plugin directory or interactive execution mode, or override tool
 availability through ``--available-tools`` or ``--excluded-tools``.
 There are no wrapper ``--model`` or ``--model-base-url`` flags, and
 ``agent.model``/``agent.model_base_url`` are not required or used.
-Copilot owns login, subscription and model selection.
+Copilot owns login, subscription and model selection. Named entries may save
+native arguments in ``copilot_options``; explicit arguments after ``--`` follow
+them. Both sources must preserve profile, execution mode and tool restrictions,
+including ``--disable-builtin-mcps``.
 
 The default launch generates a transient plugin and runs:
 
@@ -176,7 +186,9 @@ Copilot's implicit ``skill`` and ``sql`` utilities despite the allowlist.
 
 ``--export-plugin DIRECTORY`` writes a persistent plugin to a new directory,
 refuses existing targets and prints a launch command. It cannot be combined
-with an objective or native options. Export needs no login, hardware access or
+with an explicit objective or native options; saved named-agent objectives
+and native options are included in the printed command.
+Export needs no login, hardware access or
 Copilot binary. Use the printed command, which includes the required session
 flags. Exported files snapshot deployment/defaults and use runtime
 environment ``${NAME}`` references, not secret values. Recorded names exclude
@@ -186,6 +198,15 @@ launch; missing names cause a clear relay error. Keep the exporting
 installation's interpreter and package available, and re-export after deployment,
 policy or forwarded
 environment-name set changes.
+``--print-options`` instead generates/reuses an immutable plugin under
+``$XDG_DATA_HOME/qibocal/agent/plugins`` (default
+``~/.local/share/qibocal/agent/plugins``) and prints shell-quoted native
+arguments, without a leading executable. It includes the saved/explicit
+objective and native options. ``--print-options0`` emits the same argument
+vector separated by NUL for lossless shell-array use. Neither requires
+Copilot or hardware. Snapshots remain available after the command exits;
+changed deployment settings create a new path instead of modifying an active
+session's plugin. See :doc:`../agent/copilot` for shell examples.
 See :doc:`../agent/copilot` for installation, permissions and resume boundaries.
 
 qibocal-mcp
@@ -219,6 +240,7 @@ qibocal-report-server
 .. code-block:: text
 
    qibocal-report-server [--config FILE | --no-config]
+                         [NAME]
                          [--output PATH] [--ssh HOST] [--workdir PATH]
                          [--venv NAME_OR_PATH] [--port PORT]
                          [--remote-port PORT]
@@ -229,6 +251,9 @@ section, which overrides ``agent.output``, ``agent.ssh``, ``agent.workdir`` and
 an explicitly configured ``agent.venv``. Other agent settings are not inherited.
 Without configuration, serve ``runs`` locally using the managed environment
 ``qibocal-report`` and port ``8000``. The directory is created if absent.
+With ``NAME``, the same inheritance uses ``agents.NAME`` and
+``agents.NAME.report`` only, so a configured remote agent needs no additional
+location or networking flags. Unknown names error.
 
 ``--output``, ``--ssh``, ``--workdir`` and ``--venv`` have the same execution-host
 path and environment semantics as the agent. ``--port`` chooses the local
@@ -266,7 +291,8 @@ qibocal-mcp-config
    qibocal-mcp-config [--config FILE] set KEY VALUE
    qibocal-mcp-config [--config FILE] unset KEY
 
-``KEY`` is ``section.key`` with underscore-separated setting names.
+``KEY`` is ``agents.NAME.key`` or ``agents.NAME.report.key`` for named settings,
+or legacy ``section.key``, with underscore-separated setting names.
 ``path`` prints an absolute path without creating anything.
 ``show`` prints stored JSON only. ``get`` prints strings as plain text and
 arrays/numbers as JSON; missing settings error.

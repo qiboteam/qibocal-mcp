@@ -103,13 +103,15 @@ them on the command line:
 
    uv run qibocal-mcp-config path
    uv run qibocal-mcp-config show
-   uv run qibocal-mcp-config set agent.platform YOUR_PLATFORM
-   uv run qibocal-mcp-config set agent.model openai:gpt-4.1
-   uv run qibocal-mcp-config set agent.output runs
+   uv run qibocal-mcp-config set agents.local.platform YOUR_PLATFORM
+   uv run qibocal-mcp-config set agents.local.model openai:gpt-4.1
+   uv run qibocal-mcp-config set agents.local.output runs
+   uv run qibocal-mcp-config set agents.local.objective "YOUR_BOUNDED_OBJECTIVE"
+   uv run qibocal-agent local
 
 ``show`` displays stored values, not effective defaults. Inspect any stored
 ``ssh``, ``partition`` or ``slurm_arg`` settings before treating a configured
-launch as local. The agent and standalone server have independent configuration
-sections; setting ``server.platform`` alone does not configure the agent.
+launch as local. Named agents and standalone server defaults are independent;
+setting ``server.platform`` alone does not configure the agent.
 For normal use, review :doc:`../guides/configuration` and omit ``--no-config``
 only once stored defaults match your intended workflow.

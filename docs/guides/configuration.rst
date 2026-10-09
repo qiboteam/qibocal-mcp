@@ -4,15 +4,16 @@ Persistent configuration
 File selection
 --------------
 
-Configuration is a JSON file named ``qibocal-mcp.json`` with optional
-top-level ``server``, ``agent`` and ``report`` objects, and no other top-level keys.
+Configuration is a JSON file named ``agent.json`` with an ``agents`` object
+keyed by agent name. Optional top-level ``server``, ``agent`` and ``report``
+objects remain supported as unnamed defaults for existing command invocations.
 The default path is selected in this order:
 
 1. If ``QIBOCAL_MCP_CONFIG_DIR`` is nonempty:
-   ``$QIBOCAL_MCP_CONFIG_DIR/qibocal-mcp.json``.
+   ``$QIBOCAL_MCP_CONFIG_DIR/agent.json``.
 2. Otherwise, if ``XDG_CONFIG_HOME`` is nonempty:
-   ``$XDG_CONFIG_HOME/qibocal/qibocal-mcp.json``.
-3. Otherwise: ``~/.config/qibocal/qibocal-mcp.json``.
+   ``$XDG_CONFIG_HOME/qibocal/agent.json``.
+3. Otherwise: ``~/.config/qibocal/agent.json``.
 
 Empty environment values fall through, as in qibocal-report. This reuses the
 configuration folder but configuration management never accesses Qibocal
@@ -30,6 +31,70 @@ no stored defaults. Malformed JSON, unknown keys, unreadable files, invalid
 types, empty or whitespace-only strings and invalid timeouts surface errors;
 they never silently fall back to defaults. The whole selected file is
 validated, including sections not used by the current command.
+
+Named local and remote agents
+-----------------------------
+
+Each named entry uses the agent settings listed below, plus optional
+``objective`` (nonempty string), ``copilot_options`` (array of native argument
+strings) and ``report`` (report settings object):
+
+.. code-block:: json
+
+   {
+     "agents": {
+       "local": {
+         "platform": "YOUR_PLATFORM",
+         "model": "openai:gpt-4.1",
+         "objective": "Inspect existing evidence only. Do not acquire or update; stop on errors.",
+         "output": "/absolute/local/runs"
+       },
+       "myremote": {
+         "platform": "YOUR_PLATFORM",
+         "ssh": "ACCESS_NODE",
+         "partition": "PARTITION",
+         "workdir": "/shared/calibration",
+         "output": "/shared/calibration/runs",
+         "copilot_options": ["--model", "MODEL_ID"],
+         "report": {"venv": "qibocal-report", "port": 8000}
+       }
+     }
+   }
+
+Select an entry with its name:
+
+.. code-block:: sh
+
+   qibocal-agent local
+   qibocal-copilot myremote
+   qibocal-report-server myremote
+   copilot $(qibocal-copilot myremote --print-options)
+
+The Copilot command still launches by default; ``--print-options`` generates
+a persistent plugin and prints arguments without launching.
+For paths/objectives containing whitespace or shell metacharacters, use
+``--print-options0`` with a shell array as shown in :doc:`../agent/copilot`.
+Native options stored in ``copilot_options`` precede explicit options after
+``--``; they are subject to the same profile and tool-restriction validation.
+Model-provider credentials are never configuration settings.
+
+``qibocal-agent NAME`` needs a saved model and bounded objective; pass a
+second positional argument to override the objective. Copilot uses its own
+model configuration, and can start a blank session if no objective is saved.
+Client rendering remains Copilot-only; a Pydantic AI entry must use
+``report_rendering: server`` (the default).
+Names start with a letter or digit and contain only letters, digits, underscores
+or hyphens. Unknown names error rather than falling back to another deployment.
+Named entries do not inherit top-level unnamed defaults or each other's settings.
+Explicit CLI flags still override the selected entry.
+With no named entries, the old positional-objective syntax remains supported;
+use ``--no-config`` for an ad-hoc launch alongside named configurations.
+
+To migrate an existing remote file, copy its ``agent`` object into
+``agents.NAME`` in ``agent.json`` and its optional ``report`` object into
+``agents.NAME.report``. Existing explicit execution-host paths are unchanged.
+Old filenames are not automatically read; ``--config FILE`` still accepts their
+unnamed section schema.
 
 Settings and built-in defaults
 ------------------------------
@@ -124,8 +189,9 @@ be zero, negative or nonfinite.
 Use ``unset`` to remove a stored value and return to the built-in default
 (unless explicitly overridden on the CLI); do not store ``null``.
 
-Objectives and API keys are not valid configuration settings. Pass the
-objective as the agent's positional argument and keep credentials in
+Objectives can be saved only on named agents, under ``agents.NAME.objective``.
+Supply operator-approved limits, an execution budget and stopping criteria.
+API keys are not valid configuration settings; keep credentials in
 environment/provider settings.
 The Copilot wrapper allows the objective to be omitted for a blank interactive
 session; establish operator-approved bounds before hardware operations.
@@ -137,7 +203,8 @@ The order is **explicit CLI > command's own section > built-in default**.
 There is no server-to-agent or agent-to-server inheritance. For example,
 ``server.platform`` does not satisfy the agent's required platform.
 Both agent integrations read the existing ``agent`` section; there is no
-separate ``copilot`` section. Unused Pydantic AI model settings are still
+separate ``copilot`` section when using unnamed defaults. Selecting a name
+instead reads ``agents.NAME`` only. Unused Pydantic AI model settings are still
 subject to whole-file schema validation.
 
 Report server defaults
@@ -145,7 +212,9 @@ Report server defaults
 
 ``qibocal-report-server`` uses **explicit CLI > report section > selected agent
 settings > built-in default**. It inherits only ``agent.output``, ``agent.ssh``,
-``agent.workdir`` and an explicitly configured ``agent.venv``. A platform or
+``agent.workdir`` and an explicitly configured ``agent.venv`` for unnamed
+defaults. With a name, it inherits those fields from ``agents.NAME`` and uses
+``agents.NAME.report`` instead of the top-level ``report`` section. A platform or
 model is not required, and scheduling, driver dependencies and interpreter
 settings are not inherited. Overrides passed to an earlier agent invocation
 are not persisted: supply the same location overrides to the report command.
@@ -187,7 +256,7 @@ The URL is printed after the health endpoint responds; installation and server
 logs go to stderr. The server and tunnel remain attached until Ctrl+C.
 With SLURM, serve the shared output directory on the access node, not a
 compute-node job. The bootstrap uses resolved settings, not the remote host's
-``qibocal-mcp.json``. Upstream Qibocal Report maintains its own server registry.
+``agent.json``. Upstream Qibocal Report maintains its own server registry.
 
 The pinned report package is installed and its provenance and dependencies
 checked before launch. A dedicated report environment is recommended to avoid
@@ -224,6 +293,11 @@ Copilot plugin snapshots
 each launch. ``--export-plugin DIRECTORY`` instead snapshots the policy and
 deployment/defaults in a new persistent directory. Later configuration edits
 do not update that export; re-export to a new directory after changes.
+``--print-options`` and ``--print-options0`` render immutable snapshots under
+``$XDG_DATA_HOME/qibocal/agent/plugins`` (default
+``~/.local/share/qibocal/agent/plugins``). Identical snapshots reuse their
+content-addressed path; changed settings generate another path, preserving
+active sessions. Modified generated files are rejected, not overwritten.
 
 Generated environment entries use runtime ``${NAME}`` references, never exported
 secret values. The names are recorded from the rendering environment, excluding
@@ -255,8 +329,8 @@ Prefer absolute shared paths for SSH/SLURM. A Python executable setting should
 name an executable, not a shell command such as ``uv run python``.
 
 ``venv`` is the exception: it expands ``~`` on the execution host. A simple
-name selects ``$XDG_CACHE_HOME/qibocal-mcp/envs/NAME``, falling back to
-``~/.cache/qibocal-mcp/envs/NAME`` for unset/empty ``XDG_CACHE_HOME``. An absolute
+name selects ``$XDG_CACHE_HOME/qibocal/agent/envs/NAME``, falling back to
+``~/.cache/qibocal/agent/envs/NAME`` for unset/empty ``XDG_CACHE_HOME``. An absolute
 path or a path starting ``./`` or ``../`` selects that host's explicit location.
 It does not access Qibocal notebook environments under ``qibocal/envs``.
 
@@ -296,7 +370,7 @@ A subdirectory must be relative and stay inside the checkout: traversal,
 absolute paths and symlink escapes are rejected.
 
 Each URL/ref combination has its own cached clone under the execution host's
-``qibocal-mcp`` cache. Omitting the ref captures the repository's default branch
+``qibocal/agent`` cache. Omitting the ref captures the repository's default branch
 on the first clone. Subsequent launches reuse clones **without automatic
 pull, fetch or reset**, preventing unexpected hardware-definition changes.
 Pin a commit for reproducibility. To refresh, choose a new ref or explicitly
@@ -371,7 +445,8 @@ The dedicated command is:
 
    qibocal-mcp-config [--config FILE] path|show|get KEY|set KEY VALUE|unset KEY
 
-``KEY`` is ``section.key``, for example ``server.platform`` or ``agent.model``.
+``KEY`` is ``agents.NAME.key`` or ``agents.NAME.report.key`` for named agents;
+legacy ``section.key`` defaults such as ``server.platform`` remain supported.
 It operates only on stored configuration, performs no hardware imports and
 does not connect to instruments.
 
@@ -409,28 +484,29 @@ String settings take literal text, **not JSON-quoted strings**.
 .. code-block:: sh
 
    uv run qibocal-mcp-config set server.platform YOUR_PLATFORM
-   uv run qibocal-mcp-config set agent.platform YOUR_PLATFORM
-   uv run qibocal-mcp-config set agent.model openai:gpt-4.1
-   uv run qibocal-mcp-config set agent.partition PARTITION
-   uv run qibocal-mcp-config set agent.venv /shared/qibocal-mcp/env
-   uv run qibocal-mcp-config set agent.platform_repo '["https://github.com/YOUR_ORG/platforms.git#ref=COMMIT&subdirectory=platforms"]'
-   uv run qibocal-mcp-config set agent.dependency '["YOUR_DRIVER_PACKAGE==VERSION"]'
-   uv run qibocal-mcp-config set agent.timeout 7200
-   uv run qibocal-mcp-config set report.port 8000
-   uv run qibocal-mcp-config set report.venv qibocal-report
-   uv run qibocal-mcp-config set agent.slurm_arg '["--account=quantum", "--time=00:15:00"]'
-   uv run qibocal-mcp-config get agent.slurm_arg
-   uv run qibocal-mcp-config unset agent.slurm_arg
-   uv run qibocal-mcp-config get agent.platform_repo
-   uv run qibocal-mcp-config unset agent.dependency
+   uv run qibocal-mcp-config set agents.local.platform YOUR_PLATFORM
+   uv run qibocal-mcp-config set agents.local.model openai:gpt-4.1
+   uv run qibocal-mcp-config set agents.local.objective "YOUR_BOUNDED_OBJECTIVE"
+   uv run qibocal-mcp-config set agents.local.partition PARTITION
+   uv run qibocal-mcp-config set agents.local.venv /shared/qibocal-agent/env
+   uv run qibocal-mcp-config set agents.local.platform_repo '["https://github.com/YOUR_ORG/platforms.git#ref=COMMIT&subdirectory=platforms"]'
+   uv run qibocal-mcp-config set agents.local.dependency '["YOUR_DRIVER_PACKAGE==VERSION"]'
+   uv run qibocal-mcp-config set agents.local.timeout 7200
+   uv run qibocal-mcp-config set agents.local.report.port 8000
+   uv run qibocal-mcp-config set agents.local.report.venv qibocal-report
+   uv run qibocal-mcp-config set agents.local.slurm_arg '["--account=quantum", "--time=00:15:00"]'
+   uv run qibocal-mcp-config get agents.local.slurm_arg
+   uv run qibocal-mcp-config unset agents.local.slurm_arg
+   uv run qibocal-mcp-config get agents.local.platform_repo
+   uv run qibocal-mcp-config unset agents.local.dependency
 
 For a separate project-specific file, put ``--config`` before the subcommand:
 
 .. code-block:: sh
 
-   uv run qibocal-mcp-config --config ./qibocal-mcp.json set agent.model openai:gpt-4.1
-   uv run qibocal-mcp-config --config ./qibocal-mcp.json set agent.platform YOUR_PLATFORM
-   uv run qibocal-agent --config ./qibocal-mcp.json "YOUR_BOUNDED_OBJECTIVE"
+   uv run qibocal-mcp-config --config ./agent.json set agents.local.model openai:gpt-4.1
+   uv run qibocal-mcp-config --config ./agent.json set agents.local.platform YOUR_PLATFORM
+   uv run qibocal-agent --config ./agent.json local "YOUR_BOUNDED_OBJECTIVE"
 
 Sparse file example
 -------------------
@@ -442,10 +518,13 @@ Sparse file example
        "platform": "YOUR_PLATFORM",
        "output": "runs"
      },
-     "agent": {
-       "platform": "YOUR_PLATFORM",
-       "model": "openai:gpt-4.1",
-       "timeout": 3600
+     "agents": {
+       "local": {
+         "platform": "YOUR_PLATFORM",
+         "model": "openai:gpt-4.1",
+         "objective": "YOUR_BOUNDED_OBJECTIVE",
+         "timeout": 3600
+       }
      }
    }
 

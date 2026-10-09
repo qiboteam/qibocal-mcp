@@ -23,7 +23,7 @@ class ConfigTests(unittest.TestCase):
         )
         self.environment.start()
         self.addCleanup(self.environment.stop)
-        self.path = self.directory / "qibocal-mcp.json"
+        self.path = self.directory / "agent.json"
 
     def command(self, *args):
         output = io.StringIO()
@@ -45,7 +45,7 @@ class ConfigTests(unittest.TestCase):
             {"QIBOCAL_MCP_CONFIG_DIR": "", "XDG_CONFIG_HOME": str(self.directory / "xdg")},
         ):
             self.assertEqual(
-                config.get_config_file(), self.directory / "xdg/qibocal/qibocal-mcp.json"
+                config.get_config_file(), self.directory / "xdg/qibocal/agent.json"
             )
             with (
                 patch.dict(os.environ, {"XDG_CONFIG_HOME": ""}),
@@ -53,7 +53,7 @@ class ConfigTests(unittest.TestCase):
             ):
                 self.assertEqual(
                     config.get_config_file(),
-                    self.directory / ".config/qibocal/qibocal-mcp.json",
+                    self.directory / ".config/qibocal/agent.json",
                 )
 
     def test_read_commands_do_not_create_files(self):
@@ -67,6 +67,77 @@ class ConfigTests(unittest.TestCase):
             self.command("path")
             self.command("show")
         self.assertFalse((self.directory / "absent").exists())
+
+    def test_named_agent_management_and_nested_report_settings(self):
+        self.command("set", "agents.local.platform", "local-qpu")
+        self.command("set", "agents.remote.platform", "remote-qpu")
+        self.command("set", "agents.remote.ssh", "node")
+        self.command("set", "agents.remote.objective", "Inspect only; stop on errors")
+        self.command("set", "agents.remote.report.port", "8123")
+        self.command("set", "agents.remote.copilot_options", '["--model", "native-model"]')
+        self.assertEqual(self.command("get", "agents.remote.ssh"), "node")
+        self.assertEqual(self.command("get", "agents.remote.report.port"), "8123")
+        self.command("unset", "agents.remote.report.port")
+        self.assertNotIn("report", config.load_config()["agents"]["remote"])
+        self.command("unset", "agents.local.platform")
+        self.assertNotIn("local", config.load_config()["agents"])
+        self.assert_cli_error(
+            lambda: self.command("get", "agents.local.platform"), "not configured"
+        )
+
+    def test_named_agent_launch_uses_saved_objective_and_isolates_defaults(self):
+        config.save_config({
+            "agent": {"platform": "unrelated", "model": "unrelated", "ssh": "other-node"},
+            "agents": {
+                "local": {
+                    "platform": "local-qpu", "model": "test",
+                    "objective": "Inspect only; stop on errors",
+                },
+                "remote": {
+                    "platform": "remote-qpu", "model": "test",
+                    "ssh": "node", "objective": "Remote inspect only",
+                },
+            },
+        })
+        with patch("qibocal_mcp.agent.run", new_callable=AsyncMock) as run:
+            agent.main(["local"])
+            args = run.call_args.args[0]
+            self.assertEqual(args.platform, "local-qpu")
+            self.assertIsNone(args.ssh)
+            self.assertEqual(args.objective, "Inspect only; stop on errors")
+            agent.main(["remote", "--output", "explicit-runs", "Explicit inspect only"])
+            args = run.call_args.args[0]
+            self.assertEqual(args.ssh, "node")
+            self.assertEqual(args.objective, "Explicit inspect only")
+            self.assertEqual(args.output, "explicit-runs")
+            self.assertIn("--no-config", agent.transport_for(args).args[-1])
+        self.assert_cli_error(lambda: agent.main(["unknown"]), "Unknown agent: unknown")
+        self.assert_cli_error(
+            lambda: agent.main(["--no-config", "local", "Inspect"]), "Unknown agent"
+        )
+
+    def test_named_agents_require_a_bounded_objective_for_one_shot_launch(self):
+        config.save_config({"agents": {"local": {"platform": "qpu", "model": "test"}}})
+        with patch("qibocal_mcp.agent.run", new_callable=AsyncMock) as run:
+            self.assert_cli_error(lambda: agent.main(["local"]), "objective is required")
+        run.assert_not_called()
+
+    def test_named_agent_schema_validates_all_entries(self):
+        for data in (
+            {"agents": []},
+            {"agents": {"../outside": {}}},
+            {"agents": {"with.dot": {}}},
+            {"agents": {"local": []}},
+            {"agents": {"local": {"api_key": "fixture"}}},
+            {"agents": {"local": {"objective": ""}}},
+            {"agents": {"local": {"copilot_options": "--model=native"}}},
+            {"agents": {"local": {"report": []}}},
+            {"agents": {"local": {"report": {"model": "test"}}}},
+            {"agents": {"local": {"report": {"port": True}}}},
+            {"agents": {"local": {"timeout": 0}}},
+        ):
+            with self.subTest(data=data), self.assertRaises(config.ConfigError):
+                config.validate_config(data)
 
     def test_cli_round_trip_and_sibling_files(self):
         siblings = {"servers.json": "report servers", "auth.json": "report auth"}

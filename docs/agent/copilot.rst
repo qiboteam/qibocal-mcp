@@ -45,6 +45,14 @@ queued discovery launches a compute job that connects hardware.
 Native options and deployment defaults
 --------------------------------------
 
+Store named agents under ``agents.NAME`` in ``~/.config/qibocal/agent.json``.
+Then ``qibocal-copilot NAME`` launches with those deployment settings and the
+optional saved ``objective`` and ``copilot_options``. A second positional
+argument overrides the saved objective; native arguments after ``--`` follow
+saved native options. ``qibocal-report-server NAME`` serves the same output
+location, inheriting its SSH/working-directory settings and optional nested
+``report`` overrides. See :doc:`../guides/configuration`.
+
 Pass native Copilot options after ``--``:
 
 .. code-block:: sh
@@ -71,7 +79,8 @@ stop and ask the operator to attach the report images to the conversation, or us
 the Pydantic AI path. Do not claim visual inspection or accept an update from text
 alone.
 
-The wrapper reads the existing ``agent`` configuration section and accepts
+The wrapper reads a named entry, or the existing ``agent`` section for unnamed
+defaults, and accepts
 the same hardware/deployment options as ``qibocal-agent``: platform, output,
 platform paths, managed environments, repositories, dependencies, SSH, SLURM,
 server interpreter, working directory and per-operation timeout.
@@ -147,10 +156,10 @@ Returned PNG bytes arrive over MCP and are staged on the **client host**:
 
 .. code-block:: text
 
-   $XDG_CACHE_HOME/qibocal-mcp/copilot-reports/<session>/<call>/report-N.png
+   $XDG_CACHE_HOME/qibocal/agent/copilot-reports/<session>/<call>/report-N.png
 
 When ``XDG_CACHE_HOME`` is unset or empty, the root is
-``~/.cache/qibocal-mcp/copilot-reports``. The proxy adds
+``~/.cache/qibocal/agent/copilot-reports``. The proxy adds
 ``copilot_report_images`` (a local path list) and ``inspection_required`` to
 both text and structured response metadata. Inspect those PNGs using ``view``
 before deciding whether evidence supports an update.
@@ -213,6 +222,35 @@ model available to your account.
 Persistent plugin export
 ------------------------
 
+To use Copilot's native command with the current named settings:
+
+.. code-block:: sh
+
+   copilot $(qibocal-copilot myremote --print-options)
+
+``--print-options`` generates a persistent plugin and prints the complete
+shell-quoted options, including the profile, session tool restrictions, saved
+objective and native options. No Copilot binary, login or hardware is needed.
+The simple substitution above is suitable only for shells that split command
+output, such as Bash, and argument vectors with no whitespace or shell
+metacharacters: command substitution does not interpret shell quotes.
+For arbitrary paths and objectives, use NUL-delimited arguments in Bash or Zsh:
+
+.. code-block:: bash
+
+   copilot_args=()
+   while IFS= read -r -d '' arg; do copilot_args+=("$arg"); done \
+     < <(qibocal-copilot myremote --print-options0)
+   (( ${#copilot_args[@]} )) && copilot "${copilot_args[@]}"
+
+If generating options fails, do not launch Copilot with an empty options array.
+Generated plugins live under ``$XDG_DATA_HOME/qibocal/agent/plugins`` (default
+``~/.local/share/qibocal/agent/plugins``). Each snapshot is immutable and
+content-addressed: identical settings reuse the same path, changes produce a
+new one, and manually modified files are rejected rather than overwritten.
+Only environment names are stored, never their values. Old snapshots remain
+available for active sessions and can be removed explicitly after use.
+
 Export a plugin to a **new** directory without starting a session:
 
 .. code-block:: sh
@@ -231,7 +269,9 @@ To use a local executable wrapper such as ``copilot-qrc`` for BYOK environment
 settings, replace only ``copilot`` in that printed command with the wrapper's
 name. Preserve every profile and permission flag. The normal direct launcher
 still looks up ``copilot`` on ``PATH``.
-Do not combine export with an objective or native Copilot arguments. Standard
+Do not combine export with an explicit objective or native Copilot arguments.
+Saved named-agent objectives and native options appear in the printed command.
+Standard
 deployment/configuration validation still applies.
 
 The exported plugin snapshots the policy and resolved deployment/defaults.

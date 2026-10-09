@@ -14,7 +14,7 @@ from pydantic_ai.mcp import MCPToolset
 from pydantic_ai.models import Model
 
 from .calibration import CONTEXT_RESOURCE, INSTRUCTIONS, instructions_for
-from .config import parse_settings
+from .config import add_agent_selection_arguments, parse_settings
 from .deployment import DeploymentSettings, add_agent_deployment_arguments, launch_for
 from .environment import DeploymentError
 from .models import resolve_model
@@ -79,7 +79,7 @@ def main(argv: list[str] | None = None):
     parser = argparse.ArgumentParser(
         description=__doc__, argument_default=argparse.SUPPRESS
     )
-    parser.add_argument("objective", help="Calibration goal, limits and stopping criteria")
+    add_agent_selection_arguments(parser)
     parser.add_argument(
         "--model", help="Pydantic AI model identifier, github-copilot:ID or openwebui:ID",
     )
@@ -88,6 +88,8 @@ def main(argv: list[str] | None = None):
     )
     add_agent_deployment_arguments(parser)
     args = parse_settings(parser, "agent", argv)
+    if args.objective is None:
+        parser.error("An objective is required (pass one or set agents.NAME.objective)")
     try:
         asyncio.run(run(args))
     except (UserError, DeploymentError) as error:

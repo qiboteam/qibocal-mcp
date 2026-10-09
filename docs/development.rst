@@ -29,7 +29,9 @@ Source layout
   behavior and queued state handoff.
 
 The distribution is named ``qibocal-agent``. The ``qibocal_mcp`` module and
-existing MCP commands, configuration paths and caches keep their names.
+existing MCP commands keep their names. Configuration lives in
+``qibocal/agent.json``; caches and generated plugin data use ``qibocal/agent``
+under their respective XDG roots.
 Installed-source deployment reads ``qibocal-agent`` distribution metadata.
 Review :doc:`installation` before changing the pinned Qibocal API.
 Preserve stdout for MCP/worker protocols, and keep model API calls out of the
@@ -103,7 +105,7 @@ folders and persist until manually removed. Keep Pydantic AI's original inline
 image path unchanged, and do not imply that staging enforces inspection,
 approval or provider-independent pixel delivery.
 
-Caches belong to the execution host under ``qibocal-mcp``, not notebook
+Caches belong to the execution host under ``qibocal/agent``, not notebook
 ``qibocal/envs``. Reuse environments and fingerprint only successful dependency
 state; reconcile changed source/dependencies/requirements without silently
 continuing on errors or deleting/recreating broken/custom environments.

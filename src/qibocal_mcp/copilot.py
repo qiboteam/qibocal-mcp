@@ -2,7 +2,9 @@
 
 import argparse
 import base64
+import hashlib
 import json
+import os
 import shlex
 import shutil
 import signal
@@ -12,9 +14,9 @@ import tempfile
 from pathlib import Path
 
 from .calibration import DESCRIPTION, NAME, TOOLS, instructions_for
-from .config import ConfigError, parse_settings
+from .config import ConfigError, add_agent_selection_arguments, parse_settings
 from .deployment import DeploymentSettings, ServerLaunch, add_agent_deployment_arguments, launch_for
-from .environment import DeploymentError
+from .environment import DeploymentError, locked
 
 
 PROFILE_ID = f"{NAME}:{NAME}"
@@ -91,6 +93,28 @@ def export_plugin(directory: Path, settings: DeploymentSettings) -> Path:
     directory = directory.absolute()
     directory.mkdir(parents=True, exist_ok=False)
     write_plugin(directory, files)
+    return directory
+
+
+def persistent_plugin(settings: DeploymentSettings) -> Path:
+    """Reuse immutable snapshots without overwriting plugins in active sessions."""
+    files = plugin_files(settings)
+    digest = hashlib.sha256(json.dumps(files, sort_keys=True).encode()).hexdigest()
+    root = Path(os.environ.get("XDG_DATA_HOME") or Path.home() / ".local/share")
+    directory = (root / "qibocal/agent/plugins" / digest).expanduser().absolute()
+    with locked(directory.with_suffix(".lock")):
+        if directory.exists():
+            if any(
+                (directory / name).read_bytes() != content.encode("utf-8")
+                for name, content in files.items()
+            ):
+                raise CopilotError(f"Generated plugin was modified: {directory}")
+        else:
+            with tempfile.TemporaryDirectory(dir=directory.parent) as temporary:
+                staging = Path(temporary) / "plugin"
+                staging.mkdir()
+                write_plugin(staging, files)
+                os.replace(staging, directory)
     return directory
 
 
@@ -179,18 +203,26 @@ def main(argv: list[str] | None = None) -> None:
     parser = argparse.ArgumentParser(
         description=__doc__, argument_default=argparse.SUPPRESS
     )
-    parser.add_argument(
-        "objective", nargs="?", default=None,
-        help="Optional initial bounded objective for an interactive session",
-    )
-    parser.add_argument(
+    add_agent_selection_arguments(parser)
+    output = parser.add_mutually_exclusive_group()
+    output.add_argument(
         "--export-plugin", type=Path, help="Export to a new directory without launching",
+    )
+    output.add_argument(
+        "--print-options", action="store_true",
+        help="Generate a persistent plugin and print shell-quoted native Copilot arguments",
+    )
+    output.add_argument(
+        "--print-options0", action="store_true",
+        help="Print native arguments separated by NUL for lossless shell-array use",
     )
     add_agent_deployment_arguments(parser)
     args = parse_settings(parser, "agent", arguments, require_model=False)
+    native_from_cli = bool(native)
+    native = args.copilot_options + native
     reserved = {
         "--agent", "--plugin-dir", "--interactive", "-i", "--prompt", "-p",
-        "--acp", "--available-tools", "--excluded-tools",
+        "--acp", "--available-tools", "--excluded-tools", "--disable-builtin-mcps",
     }
     if any(
         option.split("=", 1)[0] in reserved
@@ -199,13 +231,20 @@ def main(argv: list[str] | None = None) -> None:
     ):
         parser.error("Native arguments cannot replace the calibration agent or interactive launch")
     exporting = getattr(args, "export_plugin", None)
-    if exporting is not None and (native or args.objective is not None):
+    if exporting is not None and (native_from_cli or args.objective_from_cli):
         parser.error("--export-plugin cannot be combined with an objective or native arguments")
     try:
         settings = DeploymentSettings.from_namespace(args)
         if exporting is not None:
             directory = export_plugin(exporting, settings)
-            print(shlex.join(command_for(directory)))
+            print(shlex.join(command_for(directory, objective=args.objective, options=native)))
+        elif getattr(args, "print_options", False) or getattr(args, "print_options0", False):
+            directory = persistent_plugin(settings)
+            options = command_for(directory, objective=args.objective, options=native)[1:]
+            if getattr(args, "print_options0", False):
+                sys.stdout.write("\0".join(options) + "\0")
+            else:
+                print(shlex.join(options))
         else:
             status = launch_copilot(settings, args.objective, native)
             if status:

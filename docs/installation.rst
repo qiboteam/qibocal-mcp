@@ -46,7 +46,7 @@ OpenAI-compatible API; see :doc:`guides/model-providers` for authentication
 and launch commands. This provider integration is distinct from the interactive
 Copilot CLI wrapper. Install other Pydantic AI provider extras yourself if
 you select a provider not included in the agent extra. Do not put API keys
-in command objectives or in ``qibocal-mcp.json``.
+in command objectives or in ``agent.json``.
 
 If Chrome is missing, install it for Kaleido's Plotly image export:
 
@@ -85,8 +85,8 @@ environment. Local agent launches manage an environment only when ``--venv``
 is supplied; otherwise they use an existing interpreter.
 
 Named environments live on the execution host under
-``$XDG_CACHE_HOME/qibocal-mcp/envs/NAME`` or, when unset/empty,
-``~/.cache/qibocal-mcp/envs/NAME``. Absolute paths, ``./`` and ``../`` paths are
+``$XDG_CACHE_HOME/qibocal/agent/envs/NAME`` or, when unset/empty,
+``~/.cache/qibocal/agent/envs/NAME``. Absolute paths, ``./`` and ``../`` paths are
 resolved on that host; ``--venv`` also expands ``~`` there, including remotely.
 These environments are separate from Qibocal notebook environments:
 ``qibocal/envs`` is not used or modified.

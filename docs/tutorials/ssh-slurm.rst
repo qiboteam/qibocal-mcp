@@ -164,25 +164,27 @@ Store reviewed agent settings rather than repeating paths every time:
 
 .. code-block:: sh
 
-   uv run qibocal-mcp-config set agent.platform YOUR_PLATFORM
-   uv run qibocal-mcp-config set agent.model openai:gpt-4.1
-   uv run qibocal-mcp-config set agent.ssh ACCESS_NODE
-   uv run qibocal-mcp-config set agent.partition PARTITION
-   uv run qibocal-mcp-config set agent.venv /shared/YOUR_USER/qibocal-mcp/env
-   uv run qibocal-mcp-config set agent.workdir /shared/calibration-work
-   uv run qibocal-mcp-config set agent.platform_repo '["https://github.com/YOUR_ORG/platforms.git#ref=COMMIT&subdirectory=platforms"]'
-   uv run qibocal-mcp-config set agent.dependency '["YOUR_DRIVER_PACKAGE==VERSION"]'
-   uv run qibocal-mcp-config set agent.output /shared/calibration-runs
-   uv run qibocal-mcp-config set agent.timeout 7200
-   uv run qibocal-mcp-config set agent.slurm_arg '["--account=quantum", "--time=00:15:00"]'
+   uv run qibocal-mcp-config set agents.myremote.platform YOUR_PLATFORM
+   uv run qibocal-mcp-config set agents.myremote.model openai:gpt-4.1
+   uv run qibocal-mcp-config set agents.myremote.objective "YOUR_BOUNDED_OBJECTIVE"
+   uv run qibocal-mcp-config set agents.myremote.ssh ACCESS_NODE
+   uv run qibocal-mcp-config set agents.myremote.partition PARTITION
+   uv run qibocal-mcp-config set agents.myremote.venv /shared/YOUR_USER/qibocal-agent/env
+   uv run qibocal-mcp-config set agents.myremote.workdir /shared/calibration-work
+   uv run qibocal-mcp-config set agents.myremote.platform_repo '["https://github.com/YOUR_ORG/platforms.git#ref=COMMIT&subdirectory=platforms"]'
+   uv run qibocal-mcp-config set agents.myremote.dependency '["YOUR_DRIVER_PACKAGE==VERSION"]'
+   uv run qibocal-mcp-config set agents.myremote.output /shared/calibration-runs
+   uv run qibocal-mcp-config set agents.myremote.timeout 7200
+   uv run qibocal-mcp-config set agents.myremote.slurm_arg '["--account=quantum", "--time=00:15:00"]'
    uv run qibocal-mcp-config show
 
 Use your actual account, not the illustrative ``quantum`` value. After reviewing
-the file, a normal ``uv run qibocal-agent "YOUR_BOUNDED_OBJECTIVE"`` uses those
-defaults. Explicit CLI settings override the agent section. The agent passes
+the file, ``uv run qibocal-agent myremote`` uses those settings and the saved
+objective. Explicit CLI settings override the named entry. The agent passes
 resolved settings and ``--no-config`` to its server, so configuration stored on
 the access node cannot silently inject another platform or partition.
-Unset an existing ``agent.server_python`` before storing ``agent.venv``.
+Unset an existing ``agents.myremote.server_python`` before storing
+``agents.myremote.venv``.
 CLI repository/dependency lists replace the entire corresponding configured
 list. ``get`` returns arrays as JSON, and ``unset`` restores built-in defaults;
 see :doc:`../guides/configuration`.

@@ -35,13 +35,21 @@ class EnvironmentTests(unittest.TestCase):
     def test_environment_names_and_explicit_paths(self):
         self.assertEqual(
             environment.environment_path("lab"),
-            self.directory / "qibocal-mcp/envs/lab",
+            self.directory / "qibocal/agent/envs/lab",
         )
         self.assertEqual(environment.environment_path("./lab"), Path.cwd() / "lab")
         self.assertEqual(environment.environment_path("~/lab"), Path.home() / "lab")
         for value in ("", " ", ".", "..", "relative/lab"):
             with self.subTest(value=value), self.assertRaises(environment.DeploymentError):
                 environment.environment_path(value)
+
+    def test_cache_default_and_empty_xdg_use_agent_namespace(self):
+        with (
+            patch.dict(os.environ, {"XDG_CACHE_HOME": ""}),
+            patch.object(Path, "home", return_value=self.directory),
+            patch.dict(os.environ, {"HOME": str(self.directory)}),
+        ):
+            self.assertEqual(environment.cache_home(), self.directory / ".cache/qibocal/agent")
 
     def test_repository_fragments_and_validation(self):
         self.assertEqual(
@@ -72,7 +80,7 @@ class EnvironmentTests(unittest.TestCase):
             manifest["project"]["dependencies"],
         )
         self.assertTrue((source / "src/qibocal_mcp/server.py").is_file())
-        self.assertFalse((source / "qibocal-mcp.json").exists())
+        self.assertFalse((source / "agent.json").exists())
         with tarfile.open(fileobj=io.BytesIO(base64.b64decode(first)), mode="r:gz") as archive:
             self.assertFalse(any(".venv" in name or "config.json" in name for name in archive.getnames()))
 

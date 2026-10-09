@@ -53,7 +53,7 @@ environment containing the server and pinned Qibocal. There is no implicit
 managed environment for standalone launches, including launches over SSH.
 
 Named environments live on the execution host under
-``$XDG_CACHE_HOME/qibocal-mcp/envs/NAME`` or ``~/.cache/qibocal-mcp/envs/NAME``.
+``$XDG_CACHE_HOME/qibocal/agent/envs/NAME`` or ``~/.cache/qibocal/agent/envs/NAME``.
 Absolute paths, ``./`` and ``../`` paths are resolved on that host; ``--venv``
 also expands ``~`` there. Managed deployment requires POSIX, Python 3.12/3.13,
 Git, and ``pip``/``ensurepip``, ``uv`` or external ``pip>=22.3``.

@@ -202,7 +202,7 @@ class CopilotVisionTests(unittest.TestCase):
             expected = directory / "expected.json"
             self.assertTrue(expected.is_file(), "The synthetic MCP tool was not called")
             images = list(
-                (directory / "cache").glob("qibocal-mcp/copilot-reports/*/*/report-0.png")
+                (directory / "cache").glob("qibocal/agent/copilot-reports/*/*/report-0.png")
             )
             self.assertEqual(len(images), 1, "Expected one report staged by the native relay")
             viewers = [call for call in calls if call["toolName"] == "view"]

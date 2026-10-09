@@ -17,7 +17,7 @@ Install the ``agent`` extra for all providers below:
 Choose a model with **vision and tool calling**. The agent sends objectives,
 platform context, fitting tables and report images to the selected provider.
 Use an endpoint and data policy approved for your experiment; credentials
-belong in the environment, never objectives or ``qibocal-mcp.json``.
+belong in the environment, never objectives or ``agent.json``.
 These options configure the model connection, not the MCP server's transport.
 Local and SSH/SLURM hardware execution work with either provider.
 

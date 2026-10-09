@@ -84,7 +84,7 @@ The gateway exports its environment to SLURM workers (``--export=ALL``).
 The remote noninteractive environment also supplies ``PATH`` for bootstrap tools,
 ``HOME`` and ``XDG_CACHE_HOME`` for managed caches, and site-specific browser and
 driver settings. Source snapshots and clones are cached under
-``$XDG_CACHE_HOME/qibocal-mcp`` (or ``~/.cache/qibocal-mcp``). Named environments
+``$XDG_CACHE_HOME/qibocal/agent`` (or ``~/.cache/qibocal/agent``). Named environments
 use its ``envs/NAME`` directory; a path supplied through ``--venv`` overrides only
 the environment location, not the cache root.
 

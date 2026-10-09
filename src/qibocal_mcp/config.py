@@ -4,12 +4,13 @@ import argparse
 import json
 import math
 import os
+import re
 import sys
 import tempfile
 from pathlib import Path
 from typing import TypeAlias
 
-ConfigValue: TypeAlias = str | int | float | list[str]
+ConfigValue: TypeAlias = str | int | float | list[str] | dict[str, "ConfigValue"]
 Configuration: TypeAlias = dict[str, dict[str, ConfigValue]]
 
 COMMON_FIELDS = {
@@ -43,10 +44,17 @@ FIELDS = {
         "remote_port": int,
     },
 }
+NAMED_FIELDS = {**FIELDS["agent"], "objective": str, "copilot_options": list}
 
 
 class ConfigError(ValueError):
     """Invalid or unreadable configuration."""
+
+
+def validate_agent_name(name: str) -> None:
+    """Keep names usable as CLI selectors and dotted management keys."""
+    if not isinstance(name, str) or re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9_-]*", name) is None:
+        raise ConfigError("Agent names must contain letters, digits, underscores or hyphens")
 
 
 def get_config_file() -> Path:
@@ -57,15 +65,29 @@ def get_config_file() -> Path:
     else:
         root = Path(os.environ.get("XDG_CONFIG_HOME") or Path.home() / ".config")
         directory = root / "qibocal"
-    return directory / "qibocal-mcp.json"
+    return directory / "agent.json"
+
+
+def setting_parts(key: str) -> list[str]:
+    """Resolve a legacy section key or a named agent setting."""
+    parts = key.split(".")
+    if len(parts) >= 3 and parts[0] == "agents":
+        validate_agent_name(parts[1])
+        if len(parts) == 3 and parts[2] in NAMED_FIELDS:
+            return parts
+        if len(parts) == 4 and parts[2] == "report" and parts[3] in FIELDS["report"]:
+            return parts
+    elif len(parts) == 2 and parts[0] in FIELDS and parts[1] in FIELDS[parts[0]]:
+        return parts
+    raise ConfigError(f"Unknown setting: {key}")
 
 
 def field_type(key: str) -> type:
     """Resolve a section.key setting and reject unknown names."""
-    section, separator, name = key.partition(".")
-    if not separator or section not in FIELDS or name not in FIELDS[section]:
-        raise ConfigError(f"Unknown setting: {key}")
-    return FIELDS[section][name]
+    parts = setting_parts(key)
+    if parts[0] == "agents":
+        return FIELDS["report"][parts[-1]] if len(parts) == 4 else NAMED_FIELDS[parts[-1]]
+    return FIELDS[parts[0]][parts[1]]
 
 
 def validate_value(key: str, value: object) -> None:
@@ -116,6 +138,23 @@ def validate_config(data: object) -> None:
     if not isinstance(data, dict):
         raise ConfigError("Configuration must be a JSON object")
     for section, values in data.items():
+        if section == "agents":
+            if not isinstance(values, dict):
+                raise ConfigError("agents must be a JSON object keyed by agent name")
+            for name, settings in values.items():
+                validate_agent_name(name)
+                if not isinstance(settings, dict):
+                    raise ConfigError(f"agents.{name} must be a JSON object")
+                for field, value in settings.items():
+                    key = f"agents.{name}.{field}"
+                    if field == "report":
+                        if not isinstance(value, dict):
+                            raise ConfigError(f"{key} must be a JSON object")
+                        for report_field, report_value in value.items():
+                            validate_value(f"{key}.{report_field}", report_value)
+                    else:
+                        validate_value(key, value)
+            continue
         if section not in FIELDS:
             raise ConfigError(f"Unknown configuration section: {section}")
         if not isinstance(values, dict):
@@ -175,7 +214,7 @@ def parse_settings(
     selection.add_argument(
         "--no-config", action="store_true", help="Ignore configuration files"
     )
-    args = parser.parse_args(argv)
+    args = parser.parse_intermixed_args(argv)
     path = getattr(args, "config", None)
     try:
         data = (
@@ -183,6 +222,27 @@ def parse_settings(
             if getattr(args, "no_config", False)
             else load_config(path, missing_ok=path is None)
         )
+        selected_name = getattr(args, "agent_name", None)
+        target = vars(args).pop("target", None)
+        if target is not None:
+            if target in data.get("agents", {}) or data.get("agents") or hasattr(args, "objective"):
+                selected_name = target
+            else:
+                args.objective = target
+        if selected_name is not None:
+            if selected_name not in data.get("agents", {}):
+                raise ConfigError(f"Unknown agent: {selected_name}")
+            args.agent_name = selected_name
+            selected = data["agents"][selected_name]
+            agent_defaults = {
+                key: value for key, value in selected.items() if key != "report"
+            }
+            section_defaults = (
+                selected.get("report", {}) if section == "report" else agent_defaults
+            )
+        else:
+            agent_defaults = data.get("agent", {})
+            section_defaults = data.get(section, {})
         common_defaults = {
             "platform": None,
             "output": "runs",
@@ -203,6 +263,7 @@ def parse_settings(
             defaults = common_defaults | {
                 "model": None, "model_base_url": None, "ssh": None,
                 "server_python": None, "timeout": 3600,
+                "objective": None, "copilot_options": [],
             }
         else:
             defaults = {
@@ -213,10 +274,12 @@ def parse_settings(
         if section == "report":
             inherited = {
                 name: value
-                for name, value in data.get("agent", {}).items()
+                for name, value in agent_defaults.items()
                 if name in {"output", "ssh", "workdir", "venv"}
             }
-        values = defaults | inherited | data.get(section, {}) | vars(args)
+        values = defaults | inherited | section_defaults | vars(args)
+        if section == "agent":
+            values["objective_from_cli"] = hasattr(args, "objective")
         if section == "report":
             if values["venv"] is None:
                 values["venv"] = "qibocal-report"
@@ -234,7 +297,11 @@ def parse_settings(
         )
         for name in required:
             if values[name] is None:
-                parser.error(f"--{name} is required (or set {section}.{name})")
+                key = (
+                    f"agents.{selected_name}.{name}"
+                    if selected_name is not None else f"{section}.{name}"
+                )
+                parser.error(f"--{name} is required (or set {key})")
         if section == "report":
             if values["ssh"] is None and values["remote_port"] != values["port"]:
                 parser.error("A distinct --remote-port requires --ssh")
@@ -243,12 +310,24 @@ def parse_settings(
                 parser.error("--slurm-arg requires --partition")
             interpreter = "server_python" if section == "agent" else "worker_python"
             if values["venv"] is not None and (
-                interpreter in data.get(section, {}) or interpreter in vars(args)
+                interpreter in section_defaults or interpreter in vars(args)
             ):
                 parser.error(f"--venv cannot be combined with --{interpreter.replace('_', '-')}")
     except ConfigError as error:
         parser.error(str(error))
     return argparse.Namespace(**values)
+
+
+def add_agent_selection_arguments(parser: argparse.ArgumentParser) -> None:
+    """Accept a named agent and an optional objective, retaining legacy objectives."""
+    parser.add_argument(
+        "target", nargs="?", default=argparse.SUPPRESS,
+        help="Configured agent name (or an objective when using unnamed defaults)",
+    )
+    parser.add_argument(
+        "objective", nargs="?", default=argparse.SUPPRESS,
+        help="Override the agent's saved bounded calibration objective",
+    )
 
 
 def add_deployment_arguments(parser: argparse.ArgumentParser) -> None:
@@ -293,22 +372,33 @@ def main(argv: list[str] | None = None) -> None:
             print(json.dumps(data, indent=2))
             return
         kind = field_type(args.key)
-        section, name = args.key.split(".")
+        parts = setting_parts(args.key)
         if args.command == "set":
             value = args.value if kind is str else json.loads(args.value)
             validate_value(args.key, value)
-            data.setdefault(section, {})[name] = value
+            container = data
+            for part in parts[:-1]:
+                container = container.setdefault(part, {})
+            container[parts[-1]] = value
             save_config(data, path)
         else:
-            if name not in data.get(section, {}):
+            container = data
+            parents = []
+            for part in parts[:-1]:
+                parents.append((container, part))
+                container = container.get(part, {})
+            name = parts[-1]
+            if name not in container:
                 raise ConfigError(f"Setting is not configured: {args.key}")
             if args.command == "get":
-                value = data[section][name]
+                value = container[name]
                 print(value if isinstance(value, str) else json.dumps(value))
             else:
-                del data[section][name]
-                if not data[section]:
-                    del data[section]
+                del container[name]
+                for parent, part in reversed(parents):
+                    if parent.get(part):
+                        break
+                    del parent[part]
                 save_config(data, path)
     except (ConfigError, json.JSONDecodeError) as error:
         parser.error(str(error))

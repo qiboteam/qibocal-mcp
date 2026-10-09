@@ -19,6 +19,7 @@ from mcp.types import (
 
 from .calibration import REPORT_FIGURE_MIME_TYPE
 from .deployment import ServerLaunch
+from .environment import cache_home
 
 
 def decode_launch(encoded: str) -> tuple[ServerLaunch, float]:
@@ -129,8 +130,7 @@ async def run(encoded: str) -> None:
         command=launch.command, args=launch.args, cwd=launch.cwd,
         env=launch.env, keep_alive=False,
     )
-    root = Path(os.environ.get("XDG_CACHE_HOME") or Path.home() / ".cache")
-    directory = (root / "qibocal-mcp/copilot-reports" / uuid4().hex).resolve()
+    directory = cache_home() / "copilot-reports" / uuid4().hex
     async with Client(transport, timeout=timeout, init_timeout=timeout) as client:
         proxy = report_proxy(client, directory)
         await proxy.run_async(transport="stdio", show_banner=False)

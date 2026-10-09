@@ -73,8 +73,8 @@ In client-rendering mode, the proxy replaces embedded Plotly resources with
 locally rendered MCP images before adding the same inspection metadata.
 
 The native cache is
-``$XDG_CACHE_HOME/qibocal-mcp/copilot-reports/<session>/<call>/report-N.png``,
-falling back to ``~/.cache/qibocal-mcp/copilot-reports`` when ``XDG_CACHE_HOME``
+``$XDG_CACHE_HOME/qibocal/agent/copilot-reports/<session>/<call>/report-N.png``,
+falling back to ``~/.cache/qibocal/agent/copilot-reports`` when ``XDG_CACHE_HOME``
 is unset or empty. PNG-containing folders are private (``0700``); staged files
 persist with no automatic cleanup. Remove selected session directories after
 inspection according to site retention policy. An image-capable Copilot model

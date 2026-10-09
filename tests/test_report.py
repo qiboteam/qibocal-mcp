@@ -251,6 +251,33 @@ class ReportConfigTests(unittest.TestCase):
         self.assertEqual(args.venv, "qibocal-report")
         self.assertEqual((args.port, args.remote_port), (8000, 8000))
 
+    def test_named_agent_needs_no_location_flags(self):
+        config.save_config({
+            "agent": {"ssh": "unrelated", "output": "unrelated"},
+            "report": {"port": 7000},
+            "agents": {
+                "remote": {
+                    "platform": "qpu", "ssh": "node", "output": "/shared/runs",
+                    "workdir": "/shared/project", "venv": "lab",
+                    "report": {"port": 8123, "remote_port": 9000, "venv": "reports"},
+                },
+                "local": {"output": "local-runs"},
+            },
+        })
+        with patch.object(report, "run") as run:
+            report.main(["remote"])
+            run.assert_called_with(report.ReportSettings(
+                ssh="node", output="/shared/runs", workdir="/shared/project",
+                venv="reports", port=8123, remote_port=9000,
+            ))
+            report.main(["local"])
+            run.assert_called_with(report.ReportSettings(output="local-runs"))
+            report.main(["remote", "--output", "explicit", "--port", "8124"])
+            self.assertEqual(run.call_args.args[0].output, "explicit")
+            self.assertEqual(run.call_args.args[0].port, 8124)
+        with contextlib.redirect_stderr(io.StringIO()), self.assertRaises(SystemExit):
+            report.main(["unknown"])
+
     def test_ports_are_validated(self):
         for option in ("--port", "--remote-port"):
             for value in ("0", "65536"):

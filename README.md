@@ -39,6 +39,33 @@ the [first-run guide](docs/getting-started.rst) and calibration tutorials.
 
 ### Advanced installation and customization
 
+Store named local and remote agents in `~/.config/qibocal/agent.json`
+(`$XDG_CONFIG_HOME/qibocal/agent.json` when set). Each entry in the `agents`
+object contains deployment settings and optional `model`, `objective`,
+`copilot_options` and `report` overrides:
+
+```json
+{
+  "agents": {
+    "myremote": {
+      "platform": "YOUR_PLATFORM",
+      "ssh": "ACCESS_NODE",
+      "workdir": "/shared/calibration",
+      "output": "/shared/calibration/runs",
+      "copilot_options": ["--model", "MODEL_ID"],
+      "report": {"venv": "qibocal-report", "port": 8000}
+    }
+  }
+}
+```
+
+Then `qibocal-copilot myremote` and `qibocal-report-server myremote` need no
+deployment flags. For `qibocal-agent myremote`, also save a Pydantic AI `model`
+and an operator-approved bounded `objective`; an objective after the name
+overrides the saved one. Credentials remain in the environment.
+Manage settings with, for example,
+`qibocal-mcp-config set agents.myremote.output /shared/calibration/runs`.
+
 Use the [advanced installation instructions](docs/installation.rst#advanced-installation-and-customization)
 only for what your setup needs:
 
@@ -78,7 +105,30 @@ cannot actually be inspected. `view` is a general reader, not an enforced
 image-only tool; native path permissions remain in effect.
 
 The wrapper generates a transient calibration plugin on every launch without
-changing global settings or installing it. For a persistent deployment snapshot:
+changing global settings or installing it. To use the native command instead,
+generate a persistent plugin and its required options:
+
+```sh
+copilot $(qibocal-copilot myremote --print-options)
+```
+
+This simple substitution works in shells with word splitting (such as Bash)
+when arguments contain no whitespace or shell metacharacters. For arbitrary
+paths/objectives, use the lossless Bash/Zsh array form:
+
+```bash
+copilot_args=()
+while IFS= read -r -d '' arg; do copilot_args+=("$arg"); done \
+  < <(qibocal-copilot myremote --print-options0)
+(( ${#copilot_args[@]} )) && copilot "${copilot_args[@]}"
+```
+
+Generated immutable snapshots live under
+`$XDG_DATA_HOME/qibocal/agent/plugins` (default
+`~/.local/share/qibocal/agent/plugins`). Regenerating options picks up current
+settings without overwriting plugins used by active sessions. Neither options
+command needs a Copilot binary, login or hardware access.
+For a snapshot at an explicit location:
 
 ```sh
 uv run qibocal-copilot --platform YOUR_PLATFORM --export-plugin ./qibocal-plugin
@@ -104,12 +154,12 @@ Start a [Qibocal Report](https://github.com/qiboteam/qibocal-report) server
 at the agent's configured output location:
 
 ```sh
-uv run qibocal-report-server
+uv run qibocal-report-server myremote
 ```
 
-The command inherits `agent.output`, `agent.ssh`, `agent.workdir` and an
-explicit `agent.venv` from your configuration. Override them with CLI flags or
-the optional `report` configuration section; `--config FILE` and `--no-config`
+The command inherits the named agent's `output`, `ssh`, `workdir` and explicit
+`venv`. Override them with CLI flags or that agent's optional `report` object;
+`--config FILE` and `--no-config`
 work as for the agent. Without configuration it serves `runs` locally, installing
 the report package in a dedicated managed environment named `qibocal-report`.
 No platform, model or hardware dependencies are required by this command.
@@ -149,8 +199,10 @@ installation, first tool call and queued gateway setup.
 The [documentation index](docs/index.rst) presents the agent first and the MCP
 server separately, followed by shared advanced guides and references.
 The distribution is named `qibocal-agent`; the `qibocal_mcp` module,
-`qibocal-mcp` and `qibocal-mcp-config` commands, configuration filenames and
-execution caches retain their existing names.
+`qibocal-mcp` and `qibocal-mcp-config` commands retain their existing names.
+Configuration is `qibocal/agent.json`; execution caches live under
+`$XDG_CACHE_HOME/qibocal/agent` (default `~/.cache/qibocal/agent`), separate from
+Qibocal Report's notebook caches.
 
 Build the Sphinx site locally:
 

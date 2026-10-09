@@ -5,6 +5,8 @@ import contextlib
 import io
 import json
 import os
+import shlex
+import shutil
 import subprocess
 import sys
 import tempfile
@@ -118,6 +120,16 @@ class CopilotProfileTests(unittest.TestCase):
                 copilot.export_plugin(target, DeploymentSettings(platform="other"))
             self.assertEqual((target / f"agents/{NAME}.agent.md").read_text(), original)
 
+    def test_persistent_plugin_default_and_empty_xdg_use_agent_data_namespace(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            home = Path(temporary)
+            with (
+                patch.dict(os.environ, {"XDG_DATA_HOME": ""}),
+                patch.object(Path, "home", return_value=home),
+            ):
+                directory = copilot.persistent_plugin(DeploymentSettings(platform="qpu"))
+            self.assertTrue(directory.is_relative_to(home / ".local/share/qibocal/agent/plugins"))
+
     def test_copilot_import_does_not_require_pydantic_ai(self):
         program = """
 import sys
@@ -137,6 +149,9 @@ class CopilotCommandTests(unittest.TestCase):
         environment = patch.dict(os.environ, {"QIBOCAL_MCP_CONFIG_DIR": str(self.directory)})
         environment.start()
         self.addCleanup(environment.stop)
+        data = patch.dict(os.environ, {"XDG_DATA_HOME": str(self.directory / "data")})
+        data.start()
+        self.addCleanup(data.stop)
 
     def assert_cli_error(self, args, pattern):
         stderr = io.StringIO()
@@ -164,8 +179,167 @@ class CopilotCommandTests(unittest.TestCase):
         self.assertEqual(launch.call_args.args[1], "inspect only")
         self.assertFalse(hasattr(launch.call_args.args[0], "model"))
 
+    def test_named_launch_uses_saved_native_options_and_objective(self):
+        config.save_config({"agents": {"remote": {
+            "platform": "qpu", "ssh": "node", "objective": "Inspect only",
+            "copilot_options": ["--model", "native-model"],
+        }}})
+        with patch.object(copilot, "launch_copilot", return_value=0) as launch:
+            copilot.main(["remote"])
+            settings, objective, native = launch.call_args.args
+            self.assertEqual(settings.ssh, "node")
+            self.assertEqual(objective, "Inspect only")
+            self.assertEqual(native, ["--model", "native-model"])
+            copilot.main(["remote", "--output", "explicit", "Explicit inspect", "--", "--model", "override"])
+            self.assertEqual(launch.call_args.args[1], "Explicit inspect")
+            self.assertEqual(
+                launch.call_args.args[2],
+                ["--model", "native-model", "--model", "override"],
+            )
+
+    def test_print_options_creates_reusable_immutable_plugin_without_launching(self):
+        config.save_config({"agents": {"remote": {
+            "platform": "qpu", "ssh": "node", "copilot_options": ["--model", "native"],
+        }}})
+        with (
+            patch.object(copilot, "copilot_executable") as executable,
+            patch.object(copilot, "launch_copilot") as launch,
+            contextlib.redirect_stdout(io.StringIO()) as output,
+        ):
+            copilot.main(["remote", "--print-options"])
+        executable.assert_not_called()
+        launch.assert_not_called()
+        options = shlex.split(output.getvalue())
+        self.assertNotEqual(options[0], "copilot")
+        directory = Path(options[options.index("--plugin-dir") + 1])
+        self.assertTrue(directory.is_relative_to(self.directory / "data/qibocal/agent/plugins"))
+        self.assertTrue((directory / "plugin.json").is_file())
+        self.assertEqual(options, copilot.command_for(directory, options=["--model", "native"])[1:])
+        self.assertIn("--excluded-tools=skill,sql", options)
+        self.assertIn("--disable-builtin-mcps", options)
+        profile = json.loads((directory / f"agents/{NAME}.agent.md").read_text().split("---\n")[1])
+        self.assertEqual(relay_launch(profile["mcp-servers"]["qibocal"])["command"], "ssh")
+        with contextlib.redirect_stdout(io.StringIO()) as repeated:
+            copilot.main(["remote", "--print-options"])
+        self.assertEqual(repeated.getvalue(), output.getvalue())
+        original = (directory / "plugin.json").read_bytes()
+        with contextlib.redirect_stdout(io.StringIO()) as changed:
+            copilot.main(["remote", "--output", "changed", "--print-options"])
+        self.assertNotEqual(changed.getvalue(), output.getvalue())
+        self.assertEqual((directory / "plugin.json").read_bytes(), original)
+        (directory / "plugin.json").write_text("modified")
+        self.assert_cli_error(["remote", "--print-options"], "was modified")
+        self.assertEqual((directory / "plugin.json").read_text(), "modified")
+
+    def test_print_options_preserves_spaces_and_newlines(self):
+        objective = "Inspect only;\nstop on errors"
+        config.save_config({"agents": {"local": {
+            "platform": "qpu", "objective": objective,
+            "copilot_options": ["--model", "native"],
+        }}})
+        with (
+            patch.dict(os.environ, {"XDG_DATA_HOME": str(self.directory / "data with spaces")}),
+            contextlib.redirect_stdout(io.StringIO()) as output,
+        ):
+            copilot.main(["local", "--print-options0"])
+        options = output.getvalue().split("\0")[:-1]
+        self.assertEqual(options[-4:], ["--interactive", objective, "--model", "native"])
+        self.assertIn("data with spaces", options[1])
+        with contextlib.redirect_stdout(io.StringIO()) as output:
+            copilot.main(["local", "--print-options"])
+        self.assertEqual(shlex.split(output.getvalue())[-4:], options[-4:])
+
+    def test_native_shell_arrays_preserve_paths_objectives_and_tool_restrictions(self):
+        objective = "Inspect only;\nstop on errors"
+        config.save_config({"agents": {"local": {
+            "platform": "qpu", "objective": objective,
+            "copilot_options": ["--model", "native"],
+        }}})
+        command = shlex.join([
+            sys.executable, "-m", "qibocal_mcp.copilot", "local", "--print-options0",
+        ])
+        script = (
+            "copilot_args=(); "
+            "while IFS= read -r -d '' arg; do copilot_args+=(\"$arg\"); done "
+            f"< <({command}); "
+            "printf '%s\\0' \"${copilot_args[@]}\""
+        )
+        for shell in ("bash", "zsh"):
+            executable = shutil.which(shell)
+            if executable is None:
+                continue
+            with (
+                self.subTest(shell=shell),
+                patch.dict(os.environ, {"XDG_DATA_HOME": str(self.directory / "data with spaces")}),
+            ):
+                result = subprocess.run(
+                    [executable, "-c", script], capture_output=True, text=True, check=True,
+                )
+            options = result.stdout.split("\0")[:-1]
+            self.assertEqual(options[-4:], ["--interactive", objective, "--model", "native"])
+            self.assertIn("data with spaces", options[1])
+            self.assertTrue(Path(options[1]).is_dir())
+            self.assertIn("--disable-builtin-mcps", options)
+            self.assertIn("--excluded-tools=skill,sql", options)
+
+    def test_simple_bash_command_substitution_supplies_native_arguments(self):
+        config.save_config({"agents": {"local": {"platform": "qpu"}}})
+        command = shlex.join([
+            sys.executable, "-m", "qibocal_mcp.copilot", "local", "--print-options",
+        ])
+        result = subprocess.run(
+            ["bash", "-c", f"printf '%s\\0' $({command})"],
+            capture_output=True, text=True, check=True,
+        )
+        options = result.stdout.split("\0")[:-1]
+        self.assertEqual(len(options), 6)
+        self.assertEqual(options[0], "--plugin-dir")
+        self.assertTrue(Path(options[1]).is_dir())
+        self.assertEqual(options[-2:], [
+            "--disable-builtin-mcps", "--excluded-tools=skill,sql",
+        ])
+
+    def test_print_options_rejects_configured_permission_overrides(self):
+        for forbidden in (
+            "--agent=other", "--available-tools=all", "--excluded-tools=",
+            "--plugin-dir=other", "-pacquire",
+            "--disable-builtin-mcps=false",
+        ):
+            with self.subTest(forbidden=forbidden):
+                config.save_config({"agents": {"local": {
+                    "platform": "qpu", "copilot_options": [forbidden],
+                }}})
+                self.assert_cli_error(["local", "--print-options"], "cannot replace")
+        self.assertFalse((self.directory / "data").exists())
+
+    def test_print_options_and_export_are_mutually_exclusive(self):
+        self.assert_cli_error(
+            ["--print-options", "--export-plugin", str(self.directory / "plugin")],
+            "not allowed",
+        )
+
+    def test_named_export_keeps_saved_objective_and_options_in_launch_command(self):
+        config.save_config({"agents": {"local": {
+            "platform": "qpu", "objective": "Inspect only",
+            "copilot_options": ["--model", "native"],
+        }}})
+        with contextlib.redirect_stdout(io.StringIO()) as output:
+            copilot.main(["local", "--export-plugin", str(self.directory / "plugin")])
+        self.assertEqual(
+            shlex.split(output.getvalue())[-4:],
+            ["--interactive", "Inspect only", "--model", "native"],
+        )
+        self.assert_cli_error(
+            ["local", "Explicit objective", "--export-plugin", str(self.directory / "other")],
+            "cannot be combined",
+        )
+        self.assert_cli_error(
+            ["local", "--export-plugin", str(self.directory / "other"), "--", "--model", "explicit"],
+            "cannot be combined",
+        )
+
     def test_no_config_and_validation_are_preserved(self):
-        (self.directory / "qibocal-mcp.json").write_text("{broken")
+        (self.directory / "agent.json").write_text("{broken")
         with patch("qibocal_mcp.copilot.launch_copilot", return_value=0):
             copilot.main(["--no-config", "--platform", "explicit"])
         self.assert_cli_error(["--platform", "qpu"], "Could not read")

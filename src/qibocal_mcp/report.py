@@ -168,6 +168,10 @@ def main(argv: list[str] | None = None) -> None:
     parser = argparse.ArgumentParser(
         description=__doc__, argument_default=argparse.SUPPRESS
     )
+    parser.add_argument(
+        "agent_name", nargs="?", default=argparse.SUPPRESS,
+        help="Configured agent whose reports should be served",
+    )
     parser.add_argument("--output", help="Calibration report directory")
     parser.add_argument("--ssh", help="SSH host/alias containing the reports")
     parser.add_argument("--workdir", help="Working directory on the report host")
