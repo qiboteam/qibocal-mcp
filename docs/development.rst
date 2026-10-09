@@ -98,9 +98,14 @@ SLURM cluster. Synthetic success is not validation of your instruments.
 Build this documentation
 ------------------------
 
-The site uses native reStructuredText, Sphinx's built-in Alabaster theme and no
-additional extensions or theme packages. The required optional ``docs`` extra
-is ``sphinx>=8,<9``.
+The site uses native reStructuredText and the Furo theme, following Qibolab's
+Qibo branding. The optional ``docs`` extra installs Sphinx and Furo; no Sphinx
+extensions are needed.
+
+The light/dark Qibo logos and favicon in ``docs/_static/`` are copied unchanged
+from `Qibolab <https://github.com/qiboteam/qibolab/tree/e73aebfac321f99dfa67f19d1567dd84eaf9f980/doc/source>`_.
+Their Apache 2.0 license is included as ``docs/_static/LICENSE.qibolab``.
+Theme colors and repository links are configured in ``docs/conf.py``.
 
 .. code-block:: sh
 

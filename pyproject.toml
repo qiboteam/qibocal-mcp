@@ -12,7 +12,7 @@ dependencies = [
 
 [project.optional-dependencies]
 agent = ["pydantic-ai-slim[mcp,openai]>=2.54,<3"]
-docs = ["sphinx>=8,<9"]
+docs = ["sphinx>=8,<9", "furo>=2024.8.6"]
 
 [project.scripts]
 qibocal-mcp = "qibocal_mcp.server:main"
