@@ -25,8 +25,7 @@ class DeploymentError(RuntimeError):
 
 
 REPORT_REQUIREMENT = (
-    "qibocal-report @ git+https://github.com/qiboteam/qibocal-report.git"
-    "@9ebca656a21fb926c943191a1fc86330a70e6fe9"
+    "qibocal-report @ git+https://github.com/qiboteam/qibocal-report.git@main"
 )
 REPORT_READY_MARKER = "qibocal-mcp:report-listening"
 
@@ -608,22 +607,34 @@ def launch(
 
 
 def provision_report(options: dict) -> tuple[str, dict[str, str]]:
-    """Install the pinned report server in an isolated managed environment."""
+    """Reconcile the latest report main commit in a managed environment."""
     path = environment_path(options["venv"])
     with locked(environment_lock(str(path))):
         python = ensure_python(path)
         installed = installed_distribution_source(python, "qibocal-report")
-        expected_url = "https://github.com/qiboteam/qibocal-report.git"
-        expected_revision = REPORT_REQUIREMENT.rsplit("@", 1)[1]
+        source = REPORT_REQUIREMENT.split(" @ git+", 1)[1]
+        expected_url, branch = source.rsplit("@", 1)
+        reference = f"refs/heads/{branch}"
+        remote = command(
+            ["git", "ls-remote", "--exit-code", expected_url, reference],
+            capture=True,
+        ).split()
+        if (
+            len(remote) != 2 or remote[1] != reference
+            or re.fullmatch(r"[0-9a-f]{40}", remote[0]) is None
+        ):
+            raise DeploymentError(f"Could not resolve qibocal-report branch {branch}")
+        expected_revision = remote[0]
+        requirement = REPORT_REQUIREMENT.rsplit("@", 1)[0] + "@" + expected_revision
         if not matches_qibocal_pin(installed, expected_url, expected_revision):
             install = installer(python)
             if installed is not None:
                 force = "--reinstall" if install[0] == "uv" else "--force-reinstall"
-                command([*install, force, "--no-deps", REPORT_REQUIREMENT])
-            command([*install, REPORT_REQUIREMENT])
+                command([*install, force, "--no-deps", requirement])
+            command([*install, requirement])
         installed = installed_distribution_source(python, "qibocal-report")
         if not matches_qibocal_pin(installed, expected_url, expected_revision):
-            raise DeploymentError("Installed qibocal-report does not match the required commit")
+            raise DeploymentError("Installed qibocal-report does not match the latest main commit")
         command([python, "-c", "import qibocal_report.cli"], capture=True)
         command(installer(python, "check"))
     return python, dict(os.environ)

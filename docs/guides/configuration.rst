@@ -263,8 +263,10 @@ With SLURM, serve the shared output directory on the access node, not a
 compute-node job. The bootstrap uses resolved settings, not the remote host's
 ``agent.json``. Upstream Qibocal Report maintains its own server registry.
 
-The pinned report package is installed and its provenance and dependencies
-checked before launch. A dedicated report environment is recommended to avoid
+The latest report ``main`` commit is resolved over HTTPS on each launch,
+installed if needed, and its provenance and dependencies checked before launch.
+Network or installation failures prevent startup rather than using a stale
+version. A dedicated report environment is recommended to avoid
 changing an agent environment's dependencies; use ``report.venv`` to override
 an inherited environment. Report and calibration provisioning share the same
 environment lock. No frontend build, Qibolab platform or Chrome setup is required

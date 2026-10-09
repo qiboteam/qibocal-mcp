@@ -419,11 +419,14 @@ class ReportConfigTests(unittest.TestCase):
 
 
 class ReportProvisionTests(unittest.TestCase):
-    def test_pinned_report_is_installed_and_launched(self):
-        revision = environment.REPORT_REQUIREMENT.rsplit("@", 1)[1]
+    revision = "a" * 40
+    remote = revision + "\trefs/heads/main\n"
+    requirement = environment.REPORT_REQUIREMENT.rsplit("@", 1)[0] + "@" + revision
+
+    def test_latest_report_is_installed_and_launched(self):
         installed = {
             "url": "https://github.com/qiboteam/qibocal-report.git",
-            "vcs_info": {"commit_id": revision},
+            "vcs_info": {"commit_id": self.revision},
         }
         with (
             patch.object(environment, "environment_path", return_value=Path("/env")),
@@ -434,19 +437,23 @@ class ReportProvisionTests(unittest.TestCase):
                 side_effect=[None, installed],
             ),
             patch.object(environment, "installer", return_value=["install"]) as installer,
-            patch.object(environment, "command") as command,
+            patch.object(environment, "command", return_value=self.remote) as command,
         ):
             python, _ = environment.provision_report({"venv": "reports"})
         self.assertEqual(python, "/env/bin/python")
         self.assertEqual(command.call_args_list[0].args[0], [
-            "install", environment.REPORT_REQUIREMENT,
+            "git", "ls-remote", "--exit-code",
+            "https://github.com/qiboteam/qibocal-report.git", "refs/heads/main",
+        ])
+        self.assertEqual(command.call_args_list[1].args[0], [
+            "install", self.requirement,
         ])
         installer.assert_any_call("/env/bin/python", "check")
 
-    def test_correct_pin_is_reused_with_shared_environment_lock(self):
+    def test_current_main_is_reused_with_shared_environment_lock(self):
         installed = {
             "url": "https://github.com/qiboteam/qibocal-report.git",
-            "vcs_info": {"commit_id": environment.REPORT_REQUIREMENT.rsplit("@", 1)[1]},
+            "vcs_info": {"commit_id": self.revision},
         }
         with (
             patch.object(environment, "environment_path", return_value=Path("/env")),
@@ -454,42 +461,61 @@ class ReportProvisionTests(unittest.TestCase):
             patch.object(environment, "ensure_python", return_value="/env/bin/python"),
             patch.object(environment, "installed_distribution_source", return_value=installed),
             patch.object(environment, "installer", return_value=["check"]) as installer,
-            patch.object(environment, "command"),
+            patch.object(environment, "command", return_value=self.remote),
         ):
             environment.provision_report({"venv": "reports"})
         locked.assert_called_once_with(environment.environment_lock("/env"))
         installer.assert_called_once_with("/env/bin/python", "check")
 
     def test_wrong_pin_is_selectively_reinstalled(self):
+        previous = {
+            "url": "https://github.com/qiboteam/qibocal-report.git",
+            "vcs_info": {"commit_id": "9ebca656a21fb926c943191a1fc86330a70e6fe9"},
+        }
         correct = {
             "url": "https://github.com/qiboteam/qibocal-report.git",
-            "vcs_info": {"commit_id": environment.REPORT_REQUIREMENT.rsplit("@", 1)[1]},
+            "vcs_info": {"commit_id": self.revision},
         }
         with (
             patch.object(environment, "environment_path", return_value=Path("/env")),
             patch.object(environment, "locked"),
             patch.object(environment, "ensure_python", return_value="/env/bin/python"),
-            patch.object(environment, "installed_distribution_source", side_effect=[{}, correct]),
+            patch.object(environment, "installed_distribution_source", side_effect=[previous, correct]),
             patch.object(environment, "installer", return_value=["uv", "pip", "install"]),
-            patch.object(environment, "command") as command,
+            patch.object(environment, "command", return_value=self.remote) as command,
         ):
             environment.provision_report({"venv": "reports"})
-        self.assertEqual(command.call_args_list[0].args[0], [
+        self.assertEqual(command.call_args_list[1].args[0], [
             "uv", "pip", "install", "--reinstall", "--no-deps",
-            environment.REPORT_REQUIREMENT,
+            self.requirement,
         ])
 
-    def test_unresolved_pin_fails_before_launch(self):
+    def test_incorrect_installed_revision_fails_before_launch(self):
         with (
             patch.object(environment, "environment_path", return_value=Path("/env")),
             patch.object(environment, "locked"),
             patch.object(environment, "ensure_python", return_value="/env/bin/python"),
             patch.object(environment, "installed_distribution_source", return_value=None),
             patch.object(environment, "installer", return_value=["install"]),
-            patch.object(environment, "command"),
-            self.assertRaisesRegex(environment.DeploymentError, "required commit"),
+            patch.object(environment, "command", return_value=self.remote),
+            self.assertRaisesRegex(environment.DeploymentError, "latest main commit"),
         ):
             environment.provision_report({"venv": "reports"})
+
+    def test_invalid_main_resolution_prevents_installation(self):
+        for remote in ("", "main\trefs/heads/main\n", self.revision + "\trefs/heads/other\n"):
+            with (
+                self.subTest(remote=remote),
+                patch.object(environment, "environment_path", return_value=Path("/env")),
+                patch.object(environment, "locked"),
+                patch.object(environment, "ensure_python", return_value="/env/bin/python"),
+                patch.object(environment, "installed_distribution_source", return_value=None),
+                patch.object(environment, "installer") as installer,
+                patch.object(environment, "command", return_value=remote),
+                self.assertRaisesRegex(environment.DeploymentError, "Could not resolve"),
+            ):
+                environment.provision_report({"venv": "reports"})
+            installer.assert_not_called()
 
     def test_installer_failure_is_not_swallowed(self):
         with (
@@ -500,7 +526,9 @@ class ReportProvisionTests(unittest.TestCase):
             patch.object(environment, "installer", return_value=["install"]),
             patch.object(
                 environment, "command",
-                side_effect=environment.DeploymentError("installation failed"),
+                side_effect=[
+                    self.remote, environment.DeploymentError("installation failed"),
+                ],
             ),
             self.assertRaisesRegex(environment.DeploymentError, "installation failed"),
         ):

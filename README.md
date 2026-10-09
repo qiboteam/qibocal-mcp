@@ -168,6 +168,8 @@ The command inherits the named agent's `output`, `ssh`, `workdir` and explicit
 work as for the agent. Without configuration it serves `runs` locally, installing
 the report package in a dedicated managed environment named `qibocal-report`.
 No platform, model or hardware dependencies are required by this command.
+Each launch resolves the latest `qibocal-report` `main` commit over HTTPS and
+updates the managed environment if needed. No GitHub SSH credentials are required.
 
 Both direct and SLURM execution collect a standard Qibocal report under
 `OUTPUT/sessions/<session_id>/`: `meta.json`, `history.json`, the initial
