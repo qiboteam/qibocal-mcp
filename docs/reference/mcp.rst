@@ -210,8 +210,8 @@ Only a successful response advances the gateway to the accepted snapshot,
 including both Qibolab parameters and Qibocal calibration. Rejected fits are
 never used as the next job's platform state.
 
-start_session(source="current", run_id=None, ref=None, platform_path=None, snapshot_path=None)
---------------------------------------------------------------------------------------------
+start_session(source="current", run_id=None, ref=None, platform_path=None, snapshot_path=None, fetch=False, remote=None)
+--------------------------------------------------------------------------------------------------------------------
 
 Start a fresh calibration within the connected agent/server, without restarting
 the chat, reconnecting the MCP client or launching a second direct hardware
@@ -240,14 +240,17 @@ The old reports and source platform files are left unchanged.
      - Read committed ``parameters.json`` and ``calibration.json`` from ``ref``
        (branch, tag or commit; defaults to ``HEAD``). ``platform_path`` optionally
        selects the execution-host folder containing the platform files; otherwise
-       the configured platform lookup is used.
+       the configured platform lookup is used. ``fetch=true`` first retrieves
+       the selected remote revision; ``remote`` names an existing Git remote
+       (defaults to ``origin`` when fetching).
    * - ``snapshot``
      - Require ``snapshot_path``: an execution-host folder containing paired
        ``parameters.json`` and ``calibration.json`` files. This can be a saved
        accepted run snapshot or another session's initial snapshot.
 
-Only supply ``run_id`` for ``run``, ``ref``/``platform_path`` for ``repository``,
-and ``snapshot_path`` for ``snapshot``. Examples:
+Only supply ``run_id`` for ``run``, ``ref``/``platform_path``/``fetch``/``remote``
+for ``repository``, and ``snapshot_path`` for ``snapshot``. ``remote`` requires
+``fetch=true``. Examples:
 
 .. code-block:: json
 
@@ -255,6 +258,8 @@ and ``snapshot_path`` for ``snapshot``. Examples:
    {"source": "run", "run_id": "INSPECTED_RUN_ID"}
    {"source": "repository", "ref": "calibration-baseline"}
    {"source": "repository", "ref": "COMMIT_SHA", "platform_path": "/shared/platforms/my_platform"}
+   {"source": "repository", "fetch": true}
+   {"source": "repository", "fetch": true, "remote": "origin", "ref": "main"}
    {"source": "snapshot", "snapshot_path": "/shared/runs/sessions/SESSION_ID/platform"}
 
 ``source=run`` is an explicit fit-application decision: inspect and approve that
@@ -263,15 +268,27 @@ fitted results and an update-capable protocol. Failed/incomplete update attempts
 cannot be used as run starting points. Fitted results are applied only to the new
 session's state; the original run's update flags and snapshots are not modified.
 
-Repository selection reads Git objects locally on the execution host. It does
-not fetch, checkout, reset, modify a dirty worktree or execute historical
-``platform.py`` code. Both models must be compatible with the currently configured
-hardware/drivers; this tool changes calibration state, not instrument topology.
+Repository selection stays offline unless ``fetch=true``. Fetching reads a
+branch, tag or commit from a remote already configured in that repository;
+the agent cannot supply a new URL or a destination refspec. With fetching enabled,
+an omitted ``ref`` (or ``HEAD``) selects the remote's HEAD, not the local HEAD.
+Use remote branch names such as ``main``, not local tracking names such as
+``origin/main``. Git authentication and network access must already work
+noninteractively on the execution host (the compute node in queued mode).
+
+Fetching downloads Git objects and writes ``FETCH_HEAD`` but does not advance
+local branches, tags or remote-tracking refs, pull, checkout, reset, modify a dirty
+worktree or execute historical ``platform.py`` code. It does not reinstall
+dependencies or reload drivers. Both models must be compatible with the currently
+configured hardware/drivers; this tool changes calibration state, not instrument
+topology. Fetch or model-validation failures leave the active session unchanged,
+though downloaded Git objects may remain.
 
 The response contains the new ``session_id``, ``report_folder``, immutable initial
 ``snapshot`` path, ``source`` and ``parent_session_id``. Run/repository/snapshot
 selection adds its provenance; repository refs are resolved to an exact
-``commit``. Provenance is also saved in ``session.json``.
+``commit``. Fetched revisions also include ``fetch: true`` and the selected
+``remote``. Provenance is also saved in ``session.json``.
 After success, all previous run handles expire: refresh
 ``get_calibration_context`` and use only new executions for updates. A rejected
 starting point leaves the active session unchanged.

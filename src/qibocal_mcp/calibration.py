@@ -40,6 +40,10 @@ starting state and a new report folder without restarting the conversation.
 Use current for the last accepted update, initial for this session's baseline,
 run for a selected execution's fitted results, repository for committed platform
 files at HEAD or a specified ref, or snapshot for saved paired platform files.
+For a newly published repository baseline, use source=repository with fetch=true.
+This fetches the requested branch, tag or commit from the configured origin
+remote (or another configured remote named by remote); omitted ref selects the
+remote's HEAD. It never pulls, checks out files or reloads platform driver code.
 source=run explicitly applies fitted results in the new session: inspect its
 images and approve the fit first, just as for update_platform. Old run handles
 expire on a successful switch. Refresh get_calibration_context afterwards;

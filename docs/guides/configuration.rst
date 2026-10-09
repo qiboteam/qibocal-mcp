@@ -411,6 +411,12 @@ pull, fetch or reset**, preventing unexpected hardware-definition changes.
 Pin a commit for reproducibility. To refresh, choose a new ref or explicitly
 review and maintain the cache; changing a branch upstream alone does not refresh
 an existing clone. Array/CLI order determines repository lookup order.
+During calibration, the agent can explicitly select newly published paired
+parameters/calibration files with
+``start_session(source="repository", fetch=true, ref="main")``. This fetches from
+the checkout's configured ``origin`` (or another existing ``remote``) without
+changing checkout refs/files, reinstalling dependencies or reloading drivers.
+See :doc:`../reference/mcp` for remote revision selection and provenance.
 
 The effective ``QIBOLAB_PLATFORMS`` search path is:
 

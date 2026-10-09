@@ -157,6 +157,8 @@ def create_server(
         ref: str | None = None,
         platform_path: str | None = None,
         snapshot_path: str | None = None,
+        fetch: bool = False,
+        remote: str | None = None,
     ) -> dict:
         """Switch to a fresh calibration session and report folder.
 
@@ -165,6 +167,9 @@ def create_server(
         fitted results to its execution checkpoint, not to later updates.
         repository reads committed parameters/calibration at ref (default HEAD);
         platform_path is the execution-host platform folder (defaults to lookup).
+        fetch=true first fetches ref from a configured remote (default origin);
+        HEAD then means the remote's HEAD. No checkout, pull or driver reload.
+        remote requires fetch=true; both require source=repository.
         snapshot loads paired files from snapshot_path on the execution host.
         Old run handles expire; source files and old reports are not modified.
         Inspect and approve fitted results before selecting source=run.
@@ -173,6 +178,7 @@ def create_server(
         result = await client.call_tool("start_session", {
             "source": source, "run_id": run_id, "ref": ref,
             "platform_path": platform_path, "snapshot_path": snapshot_path,
+            "fetch": fetch, "remote": remote,
         })
         if result.structured_content is None:
             raise ValueError("Hardware process returned no session metadata")

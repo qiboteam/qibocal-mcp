@@ -23,8 +23,8 @@ Source layout
   directly inside SLURM workers.
 * ``src/qibocal_mcp/artifacts.py``: incremental task-backed Qibocal report storage
   shared by direct execution and successive SLURM workers.
-* ``src/qibocal_mcp/sessions.py``: paired calibration checkpoints and read-only
-  repository revision selection for switching calibration sessions.
+* ``src/qibocal_mcp/sessions.py``: paired calibration checkpoints and repository
+  revision selection, with explicit configured-remote fetching and no checkout.
 * ``src/qibocal_mcp/slurm.py``: gateway serialization, dispatch and accepted-state
   handoff.
 * ``src/qibocal_mcp/worker.py``: one internal operation per allocation, with
@@ -125,6 +125,11 @@ traversal and symlink escape, and discover requirements only at the documented
 root/subdirectory/selected-platform locations, deduplicating files and
 delegating ``-r`` includes to pip. Resolve repository and explicit dependencies
 together in one resolver request, not with precedence overrides.
+An explicit ``start_session(source="repository", fetch=true)`` may fetch a
+source revision from an existing Git remote without updating checkout refs,
+reconciling dependencies or executing historical code. Serialize fetch and
+``FETCH_HEAD`` resolution for callers sharing a checkout, record the exact commit
+and remote, and preserve accepted state and handles on failure.
 
 Maintain explicit-path/repository/inherited-host platform lookup order and
 CLI whole-list replacement for ``platform_repo`` and ``dependency``. Only

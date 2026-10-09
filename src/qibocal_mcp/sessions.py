@@ -1,6 +1,7 @@
-"""Platform checkpoints and read-only repository revision selection."""
+"""Platform checkpoints and repository revision selection without checkout."""
 
 import json
+import os
 import re
 import subprocess
 from dataclasses import dataclass
@@ -100,35 +101,67 @@ def pointer_value(document, tokens: list[str]):
 
 
 def git(repository: Path, *arguments: str) -> str:
-    """Run only read-only Git operations, surfacing their diagnostics."""
+    """Keep Git noninteractive and its output outside the MCP stream."""
     result = subprocess.run(
         ["git", "--no-pager", "-C", str(repository), *arguments],
-        capture_output=True, text=True,
+        capture_output=True, text=True, stdin=subprocess.DEVNULL,
+        env={**os.environ, "GIT_TERMINAL_PROMPT": "0"},
     )
     if result.returncode != 0:
-        raise ValueError(f"Could not read platform repository: {result.stderr.strip()}")
+        raise ValueError(f"Could not access platform repository: {result.stderr.strip()}")
     return result.stdout.strip()
 
 
 def repository_state(
-    platform_folder: Path, ref: str | None,
+    platform_folder: Path, ref: str | None, *,
+    fetch: bool = False, remote: str | None = None,
 ) -> tuple[PlatformState, dict]:
-    """Read paired files from a commit without checking out or executing code."""
+    """Read paired files, optionally fetching a ref from a configured remote."""
+    if remote is not None and not fetch:
+        raise ValueError("remote requires fetch=true")
     platform_folder = platform_folder.resolve()
     root = Path(git(platform_folder, "rev-parse", "--show-toplevel")).resolve()
     relative = platform_folder.relative_to(root).as_posix()
     if ref is not None and not ref.strip():
         raise ValueError("Repository ref must not be empty")
     selected_ref = "HEAD" if ref is None else ref
-    commit = git(
-        root, "rev-parse", "--verify", "--end-of-options", f"{selected_ref}^{{commit}}"
-    )
+    if fetch:
+        from .environment import locked
+
+        remote = "origin" if remote is None else remote
+        if remote not in git(root, "remote").splitlines():
+            raise ValueError(f"Unknown configured repository remote: {remote}")
+        if selected_ref.startswith("-"):
+            raise ValueError("Fetched repository ref must not start with a dash")
+        try:
+            git(root, "check-ref-format", "--allow-onelevel", selected_ref)
+        except ValueError as error:
+            raise ValueError(
+                f"Fetched repository ref must name a branch, tag or commit: {selected_ref}"
+            ) from error
+        git_directory = Path(git(root, "rev-parse", "--absolute-git-dir"))
+        # FETCH_HEAD is shared by callers using the same checkout.
+        with locked(git_directory / "qibocal-fetch.lock"):
+            git(
+                root, "fetch", "--no-tags", "--no-recurse-submodules",
+                "--refmap=", "--", remote, selected_ref,
+            )
+            commit = git(
+                root, "rev-parse", "--verify", "FETCH_HEAD^{commit}",
+            )
+    else:
+        commit = git(
+            root, "rev-parse", "--verify", "--end-of-options", f"{selected_ref}^{{commit}}"
+        )
     prefix = "" if relative == "." else relative + "/"
     state = PlatformState(
         git(root, "show", f"{commit}:{prefix}parameters.json"),
         git(root, "show", f"{commit}:{prefix}calibration.json"),
     )
-    return state, {
+    metadata = {
         "repository": str(root), "platform_path": relative,
         "ref": selected_ref, "commit": commit,
     }
+    if fetch:
+        metadata.update({"fetch": True, "remote": remote})
+    return state, metadata

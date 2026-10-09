@@ -214,6 +214,8 @@ def create_server(
         ref: str | None = None,
         platform_path: str | None = None,
         snapshot_path: str | None = None,
+        fetch: bool = False,
+        remote: str | None = None,
     ) -> dict:
         """Switch to a fresh calibration session and report folder.
 
@@ -222,6 +224,9 @@ def create_server(
         fitted results to its execution checkpoint, not to later updates.
         repository reads committed parameters/calibration at ref (default HEAD);
         platform_path is the execution-host platform folder (defaults to lookup).
+        fetch=true first fetches ref from a configured remote (default origin);
+        HEAD then means the remote's HEAD. No checkout, pull or driver reload.
+        remote requires fetch=true; both require source=repository.
         snapshot loads paired files from snapshot_path on the execution host.
         Old run handles expire; source files and old reports are not modified.
         Inspect and approve fitted results before selecting source=run.
@@ -229,8 +234,12 @@ def create_server(
         nonlocal session_id, report_folder, session_report, accepted_state, initial_state
         if (source == "run") != (run_id is not None):
             raise ValueError("Supply run_id only and always with source=run")
-        if source != "repository" and (ref is not None or platform_path is not None):
-            raise ValueError("ref and platform_path require source=repository")
+        if source != "repository" and (
+            ref is not None or platform_path is not None or fetch or remote is not None
+        ):
+            raise ValueError("ref, platform_path, fetch and remote require source=repository")
+        if remote is not None and not fetch:
+            raise ValueError("remote requires fetch=true")
         if (source == "snapshot") != (snapshot_path is not None):
             raise ValueError("Supply snapshot_path only and always with source=snapshot")
         async with lock:
@@ -252,7 +261,9 @@ def create_server(
                     Path(platform_path) if platform_path is not None
                     else locate_platform(platform_name)
                 )
-                state, revision = repository_state(path, ref)
+                state, revision = await asyncio.to_thread(
+                    repository_state, path, ref, fetch=fetch, remote=remote,
+                )
                 provenance.update(revision)
             else:
                 completed = find_run(executor, run_id)

@@ -26,6 +26,16 @@ def update_second_transition(results, platform, target):
     platform.calibration.single_qubits[target].qubit.frequency_12 = results.frequency[target]
 
 
+def repository_git(repository, *arguments):
+    return subprocess.run(
+        [
+            "git", "--no-pager", "-c", "commit.gpgSign=false",
+            "-c", "tag.gpgSign=false", "-C", str(repository), *arguments,
+        ],
+        check=True, capture_output=True, text=True,
+    ).stdout.strip()
+
+
 class SessionTests(unittest.IsolatedAsyncioTestCase):
     def setUp(self):
         self.directory = tempfile.TemporaryDirectory()
@@ -63,6 +73,32 @@ class SessionTests(unittest.IsolatedAsyncioTestCase):
 
     async def state(self, client, path=""):
         return (await client.call_tool("get_platform_state", {"path": path})).structured_content
+
+    def remote_repository(self):
+        remote = Path(self.directory.name) / "remote"
+        platform_folder = remote / "platforms" / "synthetic"
+        platform_folder.mkdir(parents=True)
+        template = self.create("synthetic")
+        template.dump(platform_folder)
+        repository_git(remote, "init", "--quiet", "--initial-branch=main")
+        repository_git(remote, "add", ".")
+        repository_git(
+            remote, "-c", "user.name=Tests", "-c", "user.email=tests@example.invalid",
+            "commit", "--quiet", "-m", "baseline",
+        )
+        checkout = Path(self.directory.name) / "checkout"
+        repository_git(remote, "clone", "--quiet", str(remote), str(checkout))
+        baseline = repository_git(checkout, "rev-parse", "HEAD")
+        update(fit(acquire(Inputs(value=5e9), [0])), template, 0)
+        template.dump(platform_folder)
+        repository_git(remote, "add", ".")
+        repository_git(
+            remote, "-c", "user.name=Tests", "-c", "user.email=tests@example.invalid",
+            "commit", "--quiet", "-m", "published update",
+        )
+        repository_git(remote, "branch", "published")
+        repository_git(remote, "tag", "published-tag")
+        return remote, checkout / "platforms" / "synthetic", baseline, template
 
     async def test_inspection_and_explicit_edits_through_frontend(self):
         changes = {
@@ -344,6 +380,9 @@ class SessionTests(unittest.IsolatedAsyncioTestCase):
                 {"source": "run"},
                 {"source": "initial", "run_id": execution["run_id"]},
                 {"source": "current", "ref": "HEAD"},
+                {"source": "current", "fetch": True},
+                {"source": "initial", "remote": "origin"},
+                {"source": "repository", "remote": "origin"},
                 {"source": "snapshot"},
                 {"source": "current", "snapshot_path": str(self.output)},
                 {"source": "run", "run_id": "missing"},
@@ -440,6 +479,105 @@ class SessionTests(unittest.IsolatedAsyncioTestCase):
             self.assertEqual(restored["source"], "snapshot")
             self.assertEqual(self.platforms[-1].calibration.single_qubits[0].qubit.frequency_01, 9e9)
 
+    async def test_fetch_remote_revisions_through_frontend_without_checkout(self):
+        remote, platform_folder, baseline, _ = self.remote_repository()
+        checkout = platform_folder.parent.parent
+        published = repository_git(remote, "rev-parse", "HEAD")
+        repository_git(checkout, "remote", "add", "published", str(remote))
+        repository_git(checkout, "config", "remote.origin.fetch", "+refs/heads/*:refs/heads/*")
+        (platform_folder / "calibration.json").write_text("dirty local calibration")
+        dirty_status = repository_git(checkout, "status", "--porcelain")
+        refs = repository_git(checkout, "show-ref")
+        backend = create_server("synthetic", output=self.output)
+        with (
+            patch("qibocal_mcp.server.StdioTransport", return_value=backend),
+            patch("qibocal.calibration.platform.locate_platform", return_value=platform_folder),
+        ):
+            async with Client(create_frontend("synthetic")) as client:
+                offline = await self.switch(client, source="repository")
+                self.assertEqual(offline["commit"], baseline)
+                self.assertNotIn("fetch", offline)
+                with self.assertRaises(ToolError):
+                    await self.switch(client, source="repository", ref="published")
+                self.assertEqual((await self.context(client))["session_id"], offline["session_id"])
+                for ref, selected_remote in [
+                    (None, None), ("main", None), ("published", "published"),
+                    ("published-tag", None), (published, None),
+                ]:
+                    with self.subTest(ref=ref, remote=selected_remote):
+                        switched = await self.switch(
+                            client, source="repository", ref=ref, fetch=True,
+                            remote=selected_remote,
+                        )
+                        self.assertEqual(switched["commit"], published)
+                        self.assertEqual(switched["ref"], ref or "HEAD")
+                        self.assertTrue(switched["fetch"])
+                        self.assertEqual(switched["remote"], selected_remote or "origin")
+                        self.assertEqual(
+                            (await self.state(client))["value"]["calibration"]["single_qubits"]["0"]["qubit"]["frequency_01"],
+                            5e9,
+                        )
+                        saved = json.loads((Path(switched["report_folder"]) / "session.json").read_text())
+                        self.assertEqual(saved["commit"], published)
+                        self.assertEqual(saved["remote"], selected_remote or "origin")
+                        self.assertEqual(repository_git(checkout, "rev-parse", "HEAD"), baseline)
+                        self.assertEqual(repository_git(checkout, "show-ref"), refs)
+                        self.assertEqual(repository_git(checkout, "status", "--porcelain"), dirty_status)
+                        self.assertEqual(
+                            (platform_folder / "calibration.json").read_text(), "dirty local calibration",
+                        )
+                execution = await self.execute(client, 6e9)
+                self.assertEqual(
+                    PlatformState.load(Path(execution["folder"]) / "execution_platform")
+                    .document()["calibration"]["single_qubits"]["0"]["qubit"]["frequency_01"],
+                    5e9,
+                )
+
+    async def test_failed_fetch_and_invalid_remote_models_preserve_session(self):
+        remote, platform_folder, _, _ = self.remote_repository()
+        backend = create_server("synthetic", output=self.output)
+        with patch("qibocal_mcp.server.StdioTransport", return_value=backend):
+            async with Client(create_frontend("synthetic")) as client:
+                original = await self.state(client)
+                execution = await self.execute(client, 6e9)
+                for arguments in [
+                    {"remote": str(remote)},
+                    {"remote": "missing"},
+                    {"remote": ""},
+                    {"ref": "missing"},
+                    {"ref": ""},
+                    {"ref": "--all"},
+                    {"ref": "main:refs/heads/main"},
+                    {"ref": "refs/heads/*"},
+                ]:
+                    with self.subTest(arguments=arguments), self.assertRaises(ToolError):
+                        await self.switch(
+                            client, source="repository", platform_path=str(platform_folder),
+                            fetch=True, **arguments,
+                        )
+                    self.assertEqual(await self.state(client), original)
+                repository_git(
+                    platform_folder.parent.parent, "remote", "add", "unavailable",
+                    str(Path(self.directory.name) / "missing-remote"),
+                )
+                with self.assertRaises(ToolError):
+                    await self.switch(
+                        client, source="repository", platform_path=str(platform_folder),
+                        fetch=True, remote="unavailable",
+                    )
+                (remote / "platforms" / "synthetic" / "calibration.json").write_text("invalid JSON")
+                repository_git(remote, "add", ".")
+                repository_git(
+                    remote, "-c", "user.name=Tests", "-c", "user.email=tests@example.invalid",
+                    "commit", "--quiet", "-m", "invalid models",
+                )
+                with self.assertRaises(ToolError):
+                    await self.switch(
+                        client, source="repository", platform_path=str(platform_folder), fetch=True,
+                    )
+                self.assertEqual(await self.state(client), original)
+                await client.call_tool("update_platform", {"run_id": execution["run_id"]})
+
     async def test_slurm_switches_worker_session_and_preserves_failed_switch(self):
         from types import SimpleNamespace
 
@@ -493,6 +631,60 @@ class SessionTests(unittest.IsolatedAsyncioTestCase):
                 await self.switch(client, source="initial")
                 self.assertEqual(self.platforms[-1].calibration.single_qubits[0].qubit.frequency_01, 5e9)
                 self.assertEqual(json.loads((Path(first["report_folder"]) / "history.json").read_text()), ["synthetic-0", "synthetic-1"])
+
+    async def test_slurm_fetch_restores_published_snapshot_in_later_workers(self):
+        from types import SimpleNamespace
+
+        remote, platform_folder, _, _ = self.remote_repository()
+        published = repository_git(remote, "rev-parse", "HEAD")
+
+        async def start(*command, **kwargs):
+            process = SimpleNamespace(returncode=0)
+
+            async def communicate(request):
+                try:
+                    result = await run(
+                        "synthetic", output=self.output,
+                        snapshot=Path(command[command.index("--snapshot") + 1]) if "--snapshot" in command else None,
+                        request=json.loads(request),
+                        session_id=command[command.index("--session-id") + 1],
+                    )
+                except ToolError as error:
+                    process.returncode = 1
+                    return b"", str(error).encode()
+                return result.model_dump_json(by_alias=True).encode(), b""
+
+            process.communicate = communicate
+            return process
+
+        with patch("asyncio.create_subprocess_exec", side_effect=start):
+            gateway = create_slurm_server(
+                "synthetic", output=self.output, partition="qpu", python="python",
+                workdir=Path(self.directory.name), slurm_args=[],
+            )
+            async with Client(gateway) as client:
+                switched = await self.switch(
+                    client, source="repository", platform_path=str(platform_folder),
+                    fetch=True, remote="origin", ref="published",
+                )
+                self.assertEqual(switched["commit"], published)
+                self.assertEqual(switched["remote"], "origin")
+                state = await self.state(client)
+                self.assertEqual(state["session_id"], switched["session_id"])
+                self.assertEqual(
+                    state["value"]["calibration"]["single_qubits"]["0"]["qubit"]["frequency_01"], 5e9,
+                )
+                with self.assertRaises(ToolError):
+                    await self.switch(
+                        client, source="repository", platform_path=str(platform_folder),
+                        fetch=True, ref="missing",
+                    )
+                self.assertEqual(await self.state(client), state)
+                execution = await self.execute(client, 6e9)
+                self.assertEqual(
+                    PlatformState.load(Path(execution["folder"]) / "execution_platform"),
+                    PlatformState.load(Path(switched["snapshot"])),
+                )
 
 
 if __name__ == "__main__":
