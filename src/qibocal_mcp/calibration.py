@@ -4,7 +4,10 @@ NAME = "qibocal-calibration"
 DESCRIPTION = "Plan, execute and inspect bounded Qibocal calibrations."
 CONTEXT_RESOURCE = "qibocal://context"
 CONTEXT_TOOL = "get_calibration_context"
-TOOLS = (CONTEXT_TOOL, "execute_protocol", "update_platform", "start_session")
+TOOLS = (
+    CONTEXT_TOOL, "execute_protocol", "update_platform", "start_session",
+    "get_platform_state", "patch_platform",
+)
 REPORT_FIGURE_MIME_TYPE = "application/vnd.plotly.v1+json"
 
 INSTRUCTIONS = """You are a quantum calibration agent.
@@ -14,6 +17,15 @@ units and qubit IDs. Explain your decisions, but do not invent execution results
 Execute one protocol at a time. Inspect its returned report images and fitting
 tables: look for signal quality, model agreement, uncertainty, and bad fits.
 Only call update_platform when the inspected evidence justifies the update.
+Use get_platform_state to inspect current Parameters and Calibration, optionally
+selecting a value with an RFC 6901 JSON pointer. Use execute_protocol's
+platform_overrides for self-inferred trial values in a single experiment.
+Use patch_platform to accept explicit scalar edits for subsequent experiments
+in this session, only when inspected evidence or the user's instructions justify
+them. Edit coupled hardware parameters and calibration values together; these
+tools do not infer their relationship. Respect the user's limits for all edits.
+Trial models are isolated, but physical hardware effects are not rolled back.
+Source files are never overwritten; do not use filesystem tools for state edits.
 If evidence is insufficient, leave the platform unchanged and adjust the next
 experiment. An update affects subsequent acquisitions; old runs can be stale.
 Adapt your plan after each result. Stop when the objective is met, the user's

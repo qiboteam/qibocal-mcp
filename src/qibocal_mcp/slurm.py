@@ -103,7 +103,7 @@ class SlurmJobs:
                 if self.snapshot is None:
                     # Pin the baseline instead of re-reading changing source files.
                     self.snapshot = Path(result.structuredContent["report_folder"]) / "platform"
-            elif operation == "update_platform":
+            elif operation in {"update_platform", "patch_platform"}:
                 if result.structuredContent is None:
                     raise ValueError("Worker response has no platform snapshot")
                 self.snapshot = Path(result.structuredContent["snapshot"])
@@ -145,6 +145,9 @@ def create_slurm_server(
             "Read qibocal://context or call get_calibration_context for protocol "
             "parameters. Every operation "
             "runs in a separate SLURM job. Inspect images before updating. "
+            "get_platform_state inspects parameters and calibration; "
+            "patch_platform accepts explicit session edits. Use platform_overrides "
+            "on execute_protocol for isolated trials. "
             "start_session selects a new baseline and report folder. "
             "Run handles expire on a session switch or gateway exit; "
             "paths are on the cluster."
@@ -167,6 +170,33 @@ def create_slurm_server(
     async def get_calibration_context() -> str:
         """Return qibocal://context JSON text through a compute-node discovery job."""
         return await calibration_context()
+
+    @mcp.tool
+    async def get_platform_state(path: str = "") -> dict:
+        """Inspect current Parameters and Calibration without executing a protocol.
+
+        path is an RFC 6901 JSON pointer; empty returns both complete models.
+        Mapping keys are JSON strings. Returns path, value and session metadata.
+        """
+        result = await jobs.call("get_platform_state", {"path": path})
+        if result.structuredContent is None:
+            raise ValueError("Worker response has no platform state")
+        return result.structuredContent
+
+    @mcp.tool
+    async def patch_platform(changes: dict) -> dict:
+        """Accept explicit scalar edits to Parameters and Calibration for this session.
+
+        changes maps existing RFC 6901 JSON pointers to replacement scalar values.
+        Inspect get_platform_state first; supply all coupled edits together.
+        Both models are validated before application. Saves an immutable snapshot
+        and updates subsequent executions, without overwriting source files.
+        For one execution only, use execute_protocol platform_overrides instead.
+        """
+        result = await jobs.call("patch_platform", {"changes": changes})
+        if result.structuredContent is None:
+            raise ValueError("Worker response has no edit metadata")
+        return result.structuredContent
 
     @mcp.tool
     async def start_session(
@@ -197,16 +227,21 @@ def create_slurm_server(
 
     @mcp.tool
     async def execute_protocol(
-        protocol: str, parameters: dict, targets: Targets
+        protocol: str, parameters: dict, targets: Targets,
+        platform_overrides: dict | None = None,
     ) -> ToolResult:
         """Run one protocol in a new SLURM job, without fitted platform updates.
 
         Use qibocal://context for protocols, parameters, units and qubit IDs.
         Returns run metadata, fitting tables and report images over MCP.
+        platform_overrides maps existing JSON pointers to scalar trial values.
+        Trials use isolated validated models and never change accepted session
+        state, even on failure. Hardware effects are not rolled back.
         """
         result = await jobs.call(
             "execute_protocol",
-            {"protocol": protocol, "parameters": parameters, "targets": targets},
+            {"protocol": protocol, "parameters": parameters, "targets": targets,
+             "platform_overrides": platform_overrides},
         )
         return ToolResult(
             content=result.content, structured_content=result.structuredContent

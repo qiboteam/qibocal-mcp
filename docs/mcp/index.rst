@@ -6,11 +6,14 @@ calibration platform. This track is independent of the autocalibration agent:
 the server makes no model API calls and requires no model credentials or
 agent extra.
 
-The server exposes four tools: ``get_calibration_context``,
-``execute_protocol``, ``update_platform`` and ``start_session``, plus the ``qibocal://context``
+The server exposes six tools: ``get_calibration_context``,
+``execute_protocol``, ``update_platform``, ``start_session``,
+``get_platform_state`` and ``patch_platform``, plus the ``qibocal://context``
 resource. The discovery tool aliases that resource for clients without resource
 support. Your client decides which experiments to run and whether to accept
-their fitted updates.
+their fitted updates. Structured inspection and explicit session edits also
+support agent-inferred values; per-execution platform overrides allow isolated
+trials without accepting those values for later experiments.
 Communication is over stdio, locally or over SSH, not an HTTP service.
 
 Complete the installation below, then configure your client's subprocess

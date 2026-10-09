@@ -5,7 +5,7 @@ Transport and session
 ---------------------
 
 The server and queued gateway expose the same stdio interface, with exactly
-four tools and one resource. Calls are serialized. Run handles belong to the
+six tools and one resource. Calls are serialized. Run handles belong to the
 current calibration session and cannot be reused after switching sessions or
 after the server/gateway exits.
 Errors are exposed as MCP errors; failed acquisitions and updates are not
@@ -46,8 +46,73 @@ The tool uses the same discovery path as the resource. It may connect to
 hardware, and each call in queued mode submits a discovery job that may wait
 for an allocation.
 
-execute_protocol(protocol, parameters, targets)
------------------------------------------------
+get_platform_state(path="")
+---------------------------
+
+Inspect the live Qibolab ``Parameters`` and Qibocal ``Calibration`` models,
+without acquiring data or applying updates. The response contains
+``session_id``, ``report_folder``, ``path`` and ``value``. With the default empty
+path, ``value`` contains both complete models under ``parameters`` and
+``calibration``. Inspection alone creates no report folder. Like context discovery,
+it waits for hardware initialization and submits a worker job in queued mode.
+
+Select a subtree or scalar using an RFC 6901 JSON pointer. Keys are strings in
+this serialized representation, even for numeric qubit IDs. Escape ``/`` within
+a key as ``~1`` and ``~`` as ``~0``; array elements use zero-based indices.
+Missing paths and malformed pointers are errors. For example, if your inspected
+platform has a channel named ``0/drive``:
+
+.. code-block:: json
+
+   {"path": "/parameters/configs/0~1drive/frequency"}
+   {"path": "/calibration/single_qubits/0/qubit/frequency_01"}
+
+patch_platform(changes)
+-----------------------
+
+Accept explicit platform edits for the rest of this session, independently of
+any protocol's fitted update callback. ``changes`` is a nonempty object mapping
+existing JSON pointers to replacement scalar values (including null).
+Only individual values within ``parameters`` or ``calibration`` can be replaced:
+adding/removing keys, replacing containers and overlapping paths are rejected.
+Inspect current state first; paths and units depend on the installed platform.
+
+For a platform with these inspected paths, a coupled frequency edit could be:
+
+.. code-block:: json
+
+   {
+     "changes": {
+       "/parameters/configs/0~1drive/frequency": 5000000000,
+       "/calibration/single_qubits/0/qubit/frequency_01": 5000000000
+     }
+   }
+
+Both models are validated together before changing either live model; validation
+errors leave the session unchanged. The server does not infer relationships
+between hardware configurations and calibration fields: supply coupled edits
+together. Model validation is not a hardware safety interlock.
+
+The response contains ``session_id``, ``report_folder``, ``edit_id``, submitted
+``changes``, ``updated`` and an immutable ``snapshot`` path. Paired model files
+and ``edit.json`` provenance are saved under ``edits/<edit_id>/`` in the session
+report. The original baseline and source platform files are not overwritten.
+Successful edits refresh ``new_platform/`` and are used by subsequent protocols
+and ``start_session(source="current")``. ``source="initial"`` excludes edits
+accepted after the current session's baseline.
+
+In queued mode each edit is a separate job. Only a successful response advances
+the gateway to the immutable edit snapshot. Disk errors are surfaced, not
+reported as success; they may leave partial report artifacts.
+
+Dedicated tools are intentional: a disk edit would not change a direct server's
+in-memory models, and the next queued job restores the gateway's accepted
+snapshot rather than arbitrary modified files. Native agent profiles also
+provide no general filesystem writer. These tools therefore enable autonomous
+lookup and exploration without adding broad filesystem permissions.
+
+execute_protocol(protocol, parameters, targets, platform_overrides=None)
+-----------------------------------------------------------------------
 
 .. list-table:: Arguments
    :header-rows: 1
@@ -65,6 +130,10 @@ execute_protocol(protocol, parameters, targets)
    * - ``targets``
      - Array
      - Nonempty array of qubit IDs, or arrays of IDs for multi-qubit targets.
+   * - ``platform_overrides``
+     - Object or null
+     - Optional scalar platform edits for this execution only, using the same
+       pointer/value format and validation as ``patch_platform``.
 
 Single-qubit example:
 
@@ -85,6 +154,19 @@ array to Qibocal's tuple-valued target. Multiple single-qubit targets such as
 The tool binds the protocol and calls ``Executor.__call__()`` with automatic
 fitted updates disabled. It acquires, fits and reports without applying
 those fitted settings. Acquisition itself may still alter hardware state.
+
+``platform_overrides`` runs the protocol against isolated copies of both models.
+The accepted session models and ``new_platform/`` remain unchanged, including
+when the trial fails. The run's ``execution_platform/`` records the actual trial
+state, and ``platform_overrides`` is included in run metadata. Subsequent jobs
+load the accepted baseline, never the trial checkpoint.
+This is software-state isolation, not physical hardware rollback.
+
+``update_platform`` still applies only the protocol's fitted callback to the
+current live state; it does not promote trial overrides automatically.
+Use ``patch_platform`` to accept chosen explicit values, or
+``start_session(source="run")`` to start from the trial checkpoint and apply
+its inspected fitted results in a new session.
 
 The response contains structured metadata plus text/image content:
 
@@ -144,7 +226,7 @@ The old reports and source platform files are left unchanged.
    * - ``source``
      - Meaning
    * - ``current`` (default)
-     - Last successfully accepted update in this calibration session, or its
+     - Last successfully accepted fitted update or explicit edit in this calibration session, or its
        baseline if no update was accepted. Unaccepted fits and partial failed
        updates are excluded.
    * - ``initial``

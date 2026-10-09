@@ -51,6 +51,23 @@ older runs can be stale; re-evaluate their relevance before accepting them.
 Source platform files remain untouched, but the live platform and hardware
 may have changed.
 
+Explicit edits and temporary trials
+------------------------------------
+
+``get_platform_state`` returns serialized parameters and calibration without
+acquisition, but like discovery it may connect hardware. ``patch_platform``
+accepts explicit values independently of fitted callbacks; require inspected
+evidence or explicit operator instructions before accepting them.
+The agent must respect approved hardware limits and edit coupled hardware and
+calibration fields together. Model validation does not enforce site-specific
+bounds or guarantee that those fields are physically consistent.
+
+``execute_protocol(platform_overrides=...)`` isolates both software models for
+a single trial, including on failure. Accepted session state is not changed.
+It does not undo physical acquisition-side effects, instrument commands or
+partial failures. Neither trials nor saved snapshots are hardware rollback.
+Older fitted runs can be stale after explicit edits as well as fitted updates.
+
 Updates are not transactional
 -----------------------------
 

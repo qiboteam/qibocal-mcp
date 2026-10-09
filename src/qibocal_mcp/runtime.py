@@ -24,7 +24,9 @@ with redirect_stdout(sys.stderr):
 
     from .artifacts import SessionReport
 from .calibration import REPORT_FIGURE_MIME_TYPE
-from .sessions import PlatformState, SessionSource, repository_state
+from .sessions import (
+    PlatformState, SessionSource, pointer_tokens, pointer_value, repository_state,
+)
 
 
 def create_server(
@@ -91,6 +93,9 @@ def create_server(
             "targets and protocol parameters. "
             "execute_protocol acquires, fits and reports without applying fitted "
             "updates. Inspect the returned plots before calling update_platform. "
+            "get_platform_state inspects parameters and calibration; "
+            "patch_platform accepts explicit session edits. Use platform_overrides "
+            "on execute_protocol for isolated trials. "
             "start_session selects a new baseline and report folder. "
             "Run handles expire on a session switch or server exit."
         ),
@@ -131,6 +136,58 @@ def create_server(
     async def get_calibration_context(ctx: Context) -> str:
         """Return the same JSON text as qibocal://context for calibration discovery."""
         return await calibration_context(ctx)
+
+    @mcp.tool
+    async def get_platform_state(ctx: Context, path: str = "") -> dict:
+        """Inspect current Parameters and Calibration without executing a protocol.
+
+        path is an RFC 6901 JSON pointer; empty returns both complete models.
+        Mapping keys are JSON strings. Returns path, value and session metadata.
+        """
+        async with lock:
+            platform = ctx.lifespan_context["executor"].platform
+            value = pointer_value(
+                PlatformState.capture(platform).document(), pointer_tokens(path),
+            )
+            return {
+                "session_id": session_id, "report_folder": str(report_folder),
+                "path": path, "value": value,
+            }
+
+    @mcp.tool
+    async def patch_platform(changes: dict, ctx: Context) -> dict:
+        """Accept explicit scalar edits to Parameters and Calibration for this session.
+
+        changes maps existing RFC 6901 JSON pointers to replacement scalar values.
+        Inspect get_platform_state first; supply all coupled edits together.
+        Both models are validated before application. Saves an immutable snapshot
+        and updates subsequent executions, without overwriting source files.
+        For one execution only, use execute_protocol platform_overrides instead.
+        """
+        nonlocal accepted_state
+        async with lock:
+            executor = ctx.lifespan_context["executor"]
+            state = PlatformState.capture(executor.platform).patched(changes)
+            candidate = copy(executor.platform)
+            state.apply(candidate)
+            with redirect_stdout(sys.stderr):
+                report = report_for(executor)
+                edit_id = uuid4().hex
+                folder = report_folder / "edits" / edit_id
+                folder.mkdir(parents=True)
+                candidate.dump(folder)
+                (folder / "edit.json").write_text(
+                    json.dumps({"edit_id": edit_id, "changes": changes}, indent=2),
+                    encoding="utf-8",
+                )
+                report.save(candidate)
+            state.apply(executor.platform)
+            accepted_state = PlatformState.capture(executor.platform)
+            return {
+                "session_id": session_id, "report_folder": str(report_folder),
+                "edit_id": edit_id, "changes": changes, "snapshot": str(folder),
+                "updated": True,
+            }
 
     def find_run(executor: Executor, run_id: str) -> Completed:
         if run_id not in completed_runs and restore_runs:
@@ -239,12 +296,16 @@ def create_server(
         parameters: dict,
         targets: Targets,
         ctx: Context,
+        platform_overrides: dict | None = None,
     ) -> ToolResult:
         """Acquire, fit and report, without applying fitted platform updates.
 
         Choose a built-in protocol and parameters from qibocal://context.
         targets must be qubit IDs, or lists of IDs for multi-qubit protocols.
         Returns a run_id, fitted results, report tables and PNG report images.
+        platform_overrides maps existing JSON pointers to scalar trial values.
+        Trials use isolated validated models and never change accepted session
+        state, even on failure. Hardware effects are not rolled back.
         """
         if protocol not in protocols:
             raise ValueError(f"Unknown protocol: {protocol}")
@@ -254,16 +315,22 @@ def create_server(
         selected = [tuple(t) if isinstance(t, list) else t for t in targets]
         async with lock:
             executor = ctx.lifespan_context["executor"]
+            execution = executor
+            if platform_overrides is not None:
+                candidate = copy(executor.platform)
+                state = PlatformState.capture(executor.platform).patched(platform_overrides)
+                state.apply(candidate)
+                execution = Executor(candidate, update=False)
             with redirect_stdout(sys.stderr):
                 bound = protocols[protocol](**parameters)
                 report = report_for(executor)
-                completed = executor(bound, targets=selected)
+                completed = execution(bound, targets=selected)
                 run_id = uuid4().hex
                 completed = report.add(completed, protocol, parameters, selected)
                 folder = completed.path
                 execution_snapshot = folder / "execution_platform"
                 execution_snapshot.mkdir()
-                executor.platform.dump(execution_snapshot)
+                execution.platform.dump(execution_snapshot)
                 metadata = {
                     "run_id": run_id,
                     "session_id": session_id,
@@ -272,6 +339,7 @@ def create_server(
                     "slurm_job_id": os.environ.get("SLURM_JOB_ID"),
                     "protocol": protocol,
                     "parameters": parameters,
+                    "platform_overrides": platform_overrides,
                     "targets": selected,
                     "folder": str(folder),
                     "results": (

@@ -15,13 +15,15 @@ Launch a stdio server
 Configure your MCP client to launch that command with this repository as its
 working directory. The process communicates over stdio; it does not provide an
 HTTP URL. Running it in a terminal alone does not initiate a calibration.
-There are four tools: ``get_calibration_context``, ``execute_protocol``,
-``update_platform`` and ``start_session``, plus the ``qibocal://context`` resource.
+There are six tools: ``get_calibration_context``, ``execute_protocol``,
+``update_platform``, ``start_session``, ``get_platform_state`` and
+``patch_platform``, plus the ``qibocal://context`` resource.
 
 The server accepts the MCP connection and lists its tools/resources while
 Qibocal and the direct-mode hardware initialize in the background. The first
 context or calibration request waits for that initialization and reports any
-failure. Report folders are created only when needed by a run.
+failure. Report folders are created only when needed by a run, accepted edit
+or explicit session switch.
 Managed-environment installation and SSH setup still happen before connection;
 queued discovery can additionally wait for a SLURM allocation.
 

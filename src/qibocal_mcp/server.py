@@ -94,6 +94,9 @@ def create_server(
             "targets and protocol parameters. "
             "execute_protocol acquires, fits and reports without applying fitted "
             "updates. Inspect the returned plots before calling update_platform. "
+            "get_platform_state inspects parameters and calibration; "
+            "patch_platform accepts explicit session edits. Use platform_overrides "
+            "on execute_protocol for isolated trials. "
             "start_session selects a new baseline and report folder. "
             "Run handles expire on a session switch or server exit."
         ),
@@ -116,6 +119,35 @@ def create_server(
     async def get_calibration_context(ctx: Context) -> str:
         """Return the same JSON text as qibocal://context for calibration discovery."""
         return await calibration_context(ctx)
+
+    @mcp.tool
+    async def get_platform_state(ctx: Context, path: str = "") -> dict:
+        """Inspect current Parameters and Calibration without executing a protocol.
+
+        path is an RFC 6901 JSON pointer; empty returns both complete models.
+        Mapping keys are JSON strings. Returns path, value and session metadata.
+        """
+        client = await asyncio.shield(ctx.lifespan_context["ready"])
+        result = await client.call_tool("get_platform_state", {"path": path})
+        if result.structured_content is None:
+            raise ValueError("Hardware process returned no platform state")
+        return result.structured_content
+
+    @mcp.tool
+    async def patch_platform(changes: dict, ctx: Context) -> dict:
+        """Accept explicit scalar edits to Parameters and Calibration for this session.
+
+        changes maps existing RFC 6901 JSON pointers to replacement scalar values.
+        Inspect get_platform_state first; supply all coupled edits together.
+        Both models are validated before application. Saves an immutable snapshot
+        and updates subsequent executions, without overwriting source files.
+        For one execution only, use execute_protocol platform_overrides instead.
+        """
+        client = await asyncio.shield(ctx.lifespan_context["ready"])
+        result = await client.call_tool("patch_platform", {"changes": changes})
+        if result.structured_content is None:
+            raise ValueError("Hardware process returned no edit metadata")
+        return result.structured_content
 
     @mcp.tool
     async def start_session(
@@ -149,16 +181,21 @@ def create_server(
     @mcp.tool
     async def execute_protocol(
         protocol: str, parameters: dict, targets: Targets, ctx: Context,
+        platform_overrides: dict | None = None,
     ) -> ToolResult:
         """Acquire, fit and report, without applying fitted platform updates.
 
         Choose a built-in protocol and parameters from qibocal://context.
         targets must be qubit IDs, or lists of IDs for multi-qubit protocols.
         Returns a run_id, fitted results, report tables and PNG report images.
+        platform_overrides maps existing JSON pointers to scalar trial values.
+        Trials use isolated validated models and never change accepted session
+        state, even on failure. Hardware effects are not rolled back.
         """
         client = await asyncio.shield(ctx.lifespan_context["ready"])
         result = await client.call_tool("execute_protocol", {
             "protocol": protocol, "parameters": parameters, "targets": targets,
+            "platform_overrides": platform_overrides,
         })
         return ToolResult(
             content=result.content, structured_content=result.structured_content,

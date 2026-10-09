@@ -28,6 +28,11 @@ A session report contains, depending on protocol support and execution success:
      session.json              # selected baseline provenance, for start_session
      platform/                 # initial session platform, never overwritten
      new_platform/             # current session platform
+     edits/
+       <edit_id>/
+         edit.json             # explicit pointer/value edits
+         parameters.json       # immutable accepted edit snapshot
+         calibration.json
      data/
        <protocol>-0/
          action.yml
@@ -76,6 +81,7 @@ Run metadata
 * ``run_id``, ``platform`` and ``slurm_job_id`` (possibly null).
 * ``session_id`` and ``report_folder`` for the shared Qibocal report.
 * ``protocol``, submitted ``parameters`` and selected ``targets``.
+* ``platform_overrides``: submitted trial edits, or null for ordinary executions.
 * ``folder`` on the execution host.
 * Serialized fitted ``results``, or null when absent.
 * ``supports_update``, ``updated`` and ``update_started``.
@@ -135,6 +141,12 @@ for queued accepted-state handoff, so a failed later update cannot overwrite
 the previously accepted snapshot. An update changes the live direct-mode platform
 or becomes the accepted state for subsequent queued jobs. It does not
 overwrite source files in ``QIBOLAB_PLATFORMS``.
+
+Explicit ``patch_platform`` edits save paired files and provenance in
+``edits/<edit_id>/`` and refresh ``new_platform/``. Queued jobs use this immutable
+edit snapshot for handoff. Temporary ``platform_overrides`` are recorded in
+``run.json`` and the run's ``execution_platform/``, never promoted to the
+accepted session state or ``new_platform/`` merely by executing the trial.
 
 Keep the paired snapshot files together. Promotion into your authoritative
 platform definitions is a separate manual operation requiring review.
