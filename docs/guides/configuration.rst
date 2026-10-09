@@ -5,7 +5,7 @@ File selection
 --------------
 
 Configuration is a JSON file named ``qibocal-mcp.json`` with optional
-top-level ``server`` and ``agent`` objects, and no other top-level keys.
+top-level ``server``, ``agent`` and ``report`` objects, and no other top-level keys.
 The default path is selected in this order:
 
 1. If ``QIBOCAL_MCP_CONFIG_DIR`` is nonempty:
@@ -15,10 +15,11 @@ The default path is selected in this order:
 3. Otherwise: ``~/.config/qibocal/qibocal-mcp.json``.
 
 Empty environment values fall through, as in qibocal-report. This reuses the
-configuration folder but never accesses Qibocal Report's ``servers.json`` or
-authentication files.
+configuration folder but configuration management never accesses Qibocal
+Report's ``servers.json`` or authentication files.
 
-``qibocal-mcp``, ``qibocal-agent`` and ``qibocal-copilot`` all accept:
+``qibocal-mcp``, ``qibocal-agent``, ``qibocal-copilot`` and
+``qibocal-report-server`` all accept:
 
 * ``--config FILE``: read only that file; an explicitly selected missing file
   is an error.
@@ -28,18 +29,19 @@ These flags are mutually exclusive. A missing default file means there are
 no stored defaults. Malformed JSON, unknown keys, unreadable files, invalid
 types, empty or whitespace-only strings and invalid timeouts surface errors;
 they never silently fall back to defaults. The whole selected file is
-validated, including the section not used by the current command.
+validated, including sections not used by the current command.
 
 Settings and built-in defaults
 ------------------------------
 
 Keys use underscores in JSON; the corresponding CLI flags use hyphens.
-Every setting is optional in the file. ``platform`` must be supplied by
-configuration or CLI at runtime. ``qibocal-agent`` also requires ``model``;
+Every setting is optional in the file. Calibration commands require
+``platform`` supplied by configuration or CLI at runtime.
+``qibocal-agent`` also requires ``model``;
 ``qibocal-copilot`` does not require or use ``agent.model`` or
 ``agent.model_base_url``. Copilot owns model selection and login.
 
-.. list-table:: Keys valid in both sections
+.. list-table:: Keys valid in both server and agent sections
    :header-rows: 1
    :widths: 18 20 62
 
@@ -137,6 +139,63 @@ There is no server-to-agent or agent-to-server inheritance. For example,
 Both agent integrations read the existing ``agent`` section; there is no
 separate ``copilot`` section. Unused Pydantic AI model settings are still
 subject to whole-file schema validation.
+
+Report server defaults
+----------------------
+
+``qibocal-report-server`` uses **explicit CLI > report section > selected agent
+settings > built-in default**. It inherits only ``agent.output``, ``agent.ssh``,
+``agent.workdir`` and an explicitly configured ``agent.venv``. A platform or
+model is not required, and scheduling, driver dependencies and interpreter
+settings are not inherited. Overrides passed to an earlier agent invocation
+are not persisted: supply the same location overrides to the report command.
+
+The ``report`` section accepts only:
+
+.. list-table::
+   :header-rows: 1
+   :widths: 22 22 56
+
+   * - Key
+     - Type
+     - Built-in default and meaning
+   * - ``output``
+     - Nonempty string
+     - ``runs``. Directory to serve; created if absent.
+   * - ``ssh``
+     - Nonempty string
+     - Unset; local execution. Otherwise SSH host/alias containing the reports.
+   * - ``workdir``
+     - Nonempty string
+     - Unset; working directory on the report host, as for the agent.
+   * - ``venv``
+     - Nonempty string
+     - ``qibocal-report``. Always-managed environment on the report host.
+       Explicit agent environments are inherited; implicit agent defaults are not.
+   * - ``port``
+     - JSON integer, 1 through 65535
+     - ``8000``. Local port used in the frontend registration URL.
+   * - ``remote_port``
+     - JSON integer, 1 through 65535
+     - Effective ``port``. Report-host listening port; a distinct value requires SSH.
+
+The report server binds to loopback only. SSH automatically forwards
+``127.0.0.1:port`` locally to ``127.0.0.1:remote_port`` on the report host.
+The URL is printed after the health endpoint responds; installation and server
+logs go to stderr. The server and tunnel remain attached until Ctrl+C.
+With SLURM, serve the shared output directory on the access node, not a
+compute-node job. The bootstrap uses resolved settings, not the remote host's
+``qibocal-mcp.json``. Upstream Qibocal Report maintains its own server registry.
+
+The pinned report package is installed and its provenance and dependencies
+checked before launch. A dedicated report environment is recommended to avoid
+changing an agent environment's dependencies; use ``report.venv`` to override
+an inherited environment. Report and calibration provisioning share the same
+environment lock. No frontend build, Qibolab platform or Chrome setup is required
+to start the backend for registration in an existing frontend.
+
+Agent list overrides and isolation
+----------------------------------
 
 An explicit ``--slurm-arg``, ``--platform-repo`` or ``--dependency`` list
 replaces its entire configured list rather than appending to it. Repeated CLI
@@ -341,7 +400,8 @@ Writes preserve other valid stored settings; invalid existing files are
 reported rather than silently repaired. There are no profile or clean commands.
 
 String settings take literal text, **not JSON-quoted strings**.
-``timeout`` takes a JSON numeric value; ``slurm_arg``, ``platform_repo`` and
+``timeout`` takes a JSON numeric value; report ports take JSON integers;
+``slurm_arg``, ``platform_repo`` and
 ``dependency`` take JSON arrays:
 
 .. code-block:: sh
@@ -354,6 +414,8 @@ String settings take literal text, **not JSON-quoted strings**.
    uv run qibocal-mcp-config set agent.platform_repo '["https://github.com/YOUR_ORG/platforms.git#ref=COMMIT&subdirectory=platforms"]'
    uv run qibocal-mcp-config set agent.dependency '["YOUR_DRIVER_PACKAGE==VERSION"]'
    uv run qibocal-mcp-config set agent.timeout 7200
+   uv run qibocal-mcp-config set report.port 8000
+   uv run qibocal-mcp-config set report.venv qibocal-report
    uv run qibocal-mcp-config set agent.slurm_arg '["--account=quantum", "--time=00:15:00"]'
    uv run qibocal-mcp-config get agent.slurm_arg
    uv run qibocal-mcp-config unset agent.slurm_arg

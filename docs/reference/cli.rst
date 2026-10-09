@@ -213,6 +213,48 @@ no objective, model or SSH option, and has no ``--timeout`` option.
 Other clients launch it as their subprocess and configure their own timeouts.
 No model API call is made by this command.
 
+qibocal-report-server
+---------------------
+
+.. code-block:: text
+
+   qibocal-report-server [--config FILE | --no-config]
+                         [--output PATH] [--ssh HOST] [--workdir PATH]
+                         [--venv NAME_OR_PATH] [--port PORT]
+                         [--remote-port PORT]
+
+Start a managed Qibocal Report backend at the agent's report location without
+starting calibration or importing hardware. CLI values override the ``report``
+section, which overrides ``agent.output``, ``agent.ssh``, ``agent.workdir`` and
+an explicitly configured ``agent.venv``. Other agent settings are not inherited.
+Without configuration, serve ``runs`` locally using the managed environment
+``qibocal-report`` and port ``8000``. The directory is created if absent.
+
+``--output``, ``--ssh``, ``--workdir`` and ``--venv`` have the same execution-host
+path and environment semantics as the agent. ``--port`` chooses the local
+registration port. ``--remote-port`` defaults to the effective ``--port``; a
+distinct value requires ``--ssh``. Both ports must be integers from 1 to 65535.
+There are no platform, model, driver, scheduling or interpreter options.
+
+The command installs a pinned upstream report package in the managed
+environment, verifies it, and binds the backend to ``127.0.0.1``.
+SSH automatically opens a loopback-only local forward and uses a remote
+pseudo-terminal so disconnecting the tunnel terminates the remote server.
+After the backend's health endpoint responds, stdout contains the URL to
+register in a frontend running on the local machine; provisioning and server
+logs are on stderr. Keep the command running while browsing. Ctrl+C stops the
+server and forwarding connection.
+
+.. code-block:: sh
+
+   uv run qibocal-report-server --ssh ACCESS_NODE \
+     --output /shared/calibration/runs --port 8000 --remote-port 9000
+
+This prints ``http://127.0.0.1:8000``, not the report host's port ``9000``.
+For SLURM deployments, the access node must have access to the shared output
+directory; the report server does not dispatch through SLURM.
+See :doc:`../guides/configuration` for persistent report defaults.
+
 qibocal-mcp-config
 ------------------
 
@@ -233,7 +275,8 @@ directories when needed. ``unset`` errors on missing settings and removes
 empty sections.
 
 Values for string settings are literal, not JSON-quoted. Use a JSON number for
-``timeout`` and JSON arrays for ``slurm_arg``, ``platform_repo`` and
+``timeout``, JSON integers for ``report.port``/``report.remote_port``, and JSON
+arrays for ``slurm_arg``, ``platform_repo`` and
 ``dependency``:
 
 .. code-block:: sh

@@ -98,6 +98,36 @@ Read the [Copilot guide](docs/agent/copilot.rst) for permissions, image support,
 interpreter requirements and session-resume boundaries.
 The [agent track](docs/agent/index.rst) also shows reusable Python multi-turn use.
 
+## Browse calibration reports
+
+Start a [Qibocal Report](https://github.com/qiboteam/qibocal-report) server
+at the agent's configured output location:
+
+```sh
+uv run qibocal-report-server
+```
+
+The command inherits `agent.output`, `agent.ssh`, `agent.workdir` and an
+explicit `agent.venv` from your configuration. Override them with CLI flags or
+the optional `report` configuration section; `--config FILE` and `--no-config`
+work as for the agent. Without configuration it serves `runs` locally, installing
+the report package in a dedicated managed environment named `qibocal-report`.
+No platform, model or hardware dependencies are required by this command.
+
+For remote reports, it starts the server on the SSH host and opens a private
+local port forward:
+
+```sh
+uv run qibocal-report-server --ssh ACCESS_NODE --output /shared/calibration/runs \
+  --port 8000 --remote-port 9000
+```
+
+Once ready, it prints `http://127.0.0.1:8000` to register in the frontend on
+your local machine. Keep the command running; Ctrl+C stops the server and
+tunnel. With SLURM, the access node must be able to read the shared report
+directory; the report server itself is not a SLURM job.
+See the [CLI reference](docs/reference/cli.rst#qibocal-report-server).
+
 ## Standalone MCP server
 
 This is a separate track for connecting another trusted MCP client to Qibocal.

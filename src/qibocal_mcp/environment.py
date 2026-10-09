@@ -24,6 +24,12 @@ class DeploymentError(RuntimeError):
     """Environment or repository provisioning failed before hardware startup."""
 
 
+REPORT_REQUIREMENT = (
+    "qibocal-report @ git+https://github.com/qiboteam/qibocal-report.git"
+    "@9ebca656a21fb926c943191a1fc86330a70e6fe9"
+)
+
+
 def cache_home() -> Path:
     root = Path(os.environ.get("XDG_CACHE_HOME") or "~/.cache").expanduser().resolve()
     return root / "qibocal-mcp"
@@ -402,22 +408,28 @@ def qibocal_requirement(source: Path) -> tuple[str, str, str]:
 
 
 def installed_qibocal_source(python: str) -> dict | None:
+    return installed_distribution_source(python, "qibocal")
+
+
+def installed_distribution_source(python: str, distribution: str) -> dict | None:
+    """Read direct-install provenance without importing the installed package."""
     result = command(
         [
             python, "-c",
-            "import importlib.metadata as m, json\n"
+            "import importlib.metadata as m, json, sys\n"
             "try:\n"
-            "    d = m.distribution('qibocal')\n"
+            "    d = m.distribution(sys.argv[1])\n"
             "except m.PackageNotFoundError:\n"
             "    print('null')\n"
             "else:\n"
             "    print(d.read_text('direct_url.json') or '{}')\n",
+            distribution,
         ],
         capture=True,
     )
     installed = json.loads(result)
     if installed is not None and not isinstance(installed, dict):
-        raise DeploymentError("Invalid installed Qibocal provenance metadata")
+        raise DeploymentError(f"Invalid installed {distribution} provenance metadata")
     return installed
 
 
@@ -443,16 +455,18 @@ def installed_fingerprint(python: str) -> str:
     return hashlib.sha256(installed.encode()).hexdigest()
 
 
+def environment_lock(key: str) -> Path:
+    """Serialize all provisioners targeting the same interpreter/environment."""
+    return cache_home() / "locks" / (hashlib.sha256(key.encode()).hexdigest() + ".lock")
+
+
 def provision(options: dict, payload: str | None = None) -> tuple[str, dict[str, str]]:
     """Reconcile all explicitly selected dependencies before starting the server."""
     managed = options.get("venv") is not None
     path = environment_path(options["venv"]) if managed else None
     python = options.get("python") or sys.executable
     lock_key = str(path) if managed else python
-    lock_path = (
-        cache_home() / "locks"
-        / (hashlib.sha256(lock_key.encode()).hexdigest() + ".lock")
-    )
+    lock_path = environment_lock(lock_key)
     with locked(lock_path):
         if managed:
             python = ensure_python(path)
@@ -572,10 +586,48 @@ def launch(
     os.execvpe(python, [python, "-m", "qibocal_mcp.server", *server_arguments], env)
 
 
+def provision_report(options: dict) -> tuple[str, dict[str, str]]:
+    """Install the pinned report server in an isolated managed environment."""
+    path = environment_path(options["venv"])
+    with locked(environment_lock(str(path))):
+        python = ensure_python(path)
+        installed = installed_distribution_source(python, "qibocal-report")
+        expected_url = "https://github.com/qiboteam/qibocal-report.git"
+        expected_revision = REPORT_REQUIREMENT.rsplit("@", 1)[1]
+        if not matches_qibocal_pin(installed, expected_url, expected_revision):
+            install = installer(python)
+            if installed is not None:
+                force = "--reinstall" if install[0] == "uv" else "--force-reinstall"
+                command([*install, force, "--no-deps", REPORT_REQUIREMENT])
+            command([*install, REPORT_REQUIREMENT])
+        installed = installed_distribution_source(python, "qibocal-report")
+        if not matches_qibocal_pin(installed, expected_url, expected_revision):
+            raise DeploymentError("Installed qibocal-report does not match the required commit")
+        command([python, "-c", "import qibocal_report.cli"], capture=True)
+        command(installer(python, "check"))
+    return python, dict(os.environ)
+
+
+def launch_report(options: dict, report_arguments: list[str]) -> None:
+    """Provision and replace the bootstrap with qibocal-report."""
+    directory = Path(report_arguments[0]).resolve()
+    directory.mkdir(parents=True, exist_ok=True)
+    python, env = provision_report(options)
+    expression = "from qibocal_report.cli import main; main()"
+    os.execvpe(
+        python,
+        [python, "-c", expression, "report", "server", *report_arguments],
+        env,
+    )
+
+
 def main() -> None:
     try:
         request = json.loads(sys.argv[1])
-        launch(request["options"], sys.argv[2:], request.get("source"))
+        if request.get("application") == "report":
+            launch_report(request["options"], sys.argv[2:])
+        else:
+            launch(request["options"], sys.argv[2:], request.get("source"))
     except (DeploymentError, OSError, ValueError, tarfile.TarError) as error:
         print(f"Deployment failed: {error}", file=sys.stderr)
         raise SystemExit(1) from error

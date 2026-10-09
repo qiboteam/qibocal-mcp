@@ -18,6 +18,7 @@ docs = ["sphinx>=8,<9", "furo>=2024.8.6"]
 qibocal-mcp = "qibocal_mcp.server:main"
 qibocal-agent = "qibocal_mcp.agent:main"
 qibocal-copilot = "qibocal_mcp.copilot:main"
+qibocal-report-server = "qibocal_mcp.report:main"
 qibocal-mcp-config = "qibocal_mcp.config:main"
 
 [build-system]

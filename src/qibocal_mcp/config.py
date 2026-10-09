@@ -34,6 +34,14 @@ FIELDS = {
         "server_python": str,
         "timeout": float,
     },
+    "report": {
+        "output": str,
+        "ssh": str,
+        "workdir": str,
+        "venv": str,
+        "port": int,
+        "remote_port": int,
+    },
 }
 
 
@@ -71,6 +79,9 @@ def validate_value(key: str, value: object) -> None:
             not isinstance(item, str) or not item.strip() for item in value
         ):
             raise ConfigError(f"{key} must be a JSON array of nonempty strings")
+    elif kind is int:
+        if isinstance(value, bool) or not isinstance(value, int) or not 1 <= value <= 65535:
+            raise ConfigError(f"{key} must be an integer from 1 through 65535")
     elif (
         isinstance(value, bool)
         or not isinstance(value, (int, float))
@@ -172,7 +183,7 @@ def parse_settings(
             if getattr(args, "no_config", False)
             else load_config(path, missing_ok=path is None)
         )
-        defaults = {
+        common_defaults = {
             "platform": None,
             "output": "runs",
             "platforms": None,
@@ -185,27 +196,56 @@ def parse_settings(
             "report_rendering": "server",
         }
         if section == "server":
-            defaults.update(worker_python=sys.executable, workdir=str(Path.cwd()))
+            defaults = common_defaults | {
+                "worker_python": sys.executable, "workdir": str(Path.cwd())
+            }
+        elif section == "agent":
+            defaults = common_defaults | {
+                "model": None, "model_base_url": None, "ssh": None,
+                "server_python": None, "timeout": 3600,
+            }
         else:
-            defaults.update(
-                model=None, model_base_url=None, ssh=None, server_python=None,
-                timeout=3600,
-            )
-        values = defaults | data.get(section, {}) | vars(args)
+            defaults = {
+                "output": "runs", "ssh": None, "workdir": None,
+                "venv": None, "port": 8000, "remote_port": None,
+            }
+        inherited = {}
+        if section == "report":
+            inherited = {
+                name: value
+                for name, value in data.get("agent", {}).items()
+                if name in {"output", "ssh", "workdir", "venv"}
+            }
+        values = defaults | inherited | data.get(section, {}) | vars(args)
+        if section == "report":
+            if values["venv"] is None:
+                values["venv"] = "qibocal-report"
+            if values["remote_port"] is None:
+                values["remote_port"] = values["port"]
         for name in FIELDS[section]:
             if values[name] is not None:
                 validate_value(f"{section}.{name}", values[name])
-        required = ("platform", "model") if section == "agent" and require_model else ("platform",)
+        required = (
+            ("platform", "model")
+            if section == "agent" and require_model
+            else ("platform",)
+            if section != "report"
+            else ()
+        )
         for name in required:
             if values[name] is None:
                 parser.error(f"--{name} is required (or set {section}.{name})")
-        if values["slurm_arg"] and values["partition"] is None:
-            parser.error("--slurm-arg requires --partition")
-        interpreter = "server_python" if section == "agent" else "worker_python"
-        if values["venv"] is not None and (
-            interpreter in data.get(section, {}) or interpreter in vars(args)
-        ):
-            parser.error(f"--venv cannot be combined with --{interpreter.replace('_', '-')}")
+        if section == "report":
+            if values["ssh"] is None and values["remote_port"] != values["port"]:
+                parser.error("A distinct --remote-port requires --ssh")
+        else:
+            if values["slurm_arg"] and values["partition"] is None:
+                parser.error("--slurm-arg requires --partition")
+            interpreter = "server_python" if section == "agent" else "worker_python"
+            if values["venv"] is not None and (
+                interpreter in data.get(section, {}) or interpreter in vars(args)
+            ):
+                parser.error(f"--venv cannot be combined with --{interpreter.replace('_', '-')}")
     except ConfigError as error:
         parser.error(str(error))
     return argparse.Namespace(**values)
@@ -229,7 +269,7 @@ def add_deployment_arguments(parser: argparse.ArgumentParser) -> None:
 
 
 def main(argv: list[str] | None = None) -> None:
-    """Locate, read and write server/agent defaults without importing hardware."""
+    """Locate, read and write runtime defaults without importing hardware."""
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--config", type=Path, help="Manage this file instead")
     commands = parser.add_subparsers(dest="command", required=True)
