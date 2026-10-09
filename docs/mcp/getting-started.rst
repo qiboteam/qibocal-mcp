@@ -15,8 +15,8 @@ Launch a stdio server
 Configure your MCP client to launch that command with this repository as its
 working directory. The process communicates over stdio; it does not provide an
 HTTP URL. Running it in a terminal alone does not initiate a calibration.
-There are three tools: ``get_calibration_context``, ``execute_protocol`` and
-``update_platform``, plus the ``qibocal://context`` resource.
+There are four tools: ``get_calibration_context``, ``execute_protocol``,
+``update_platform`` and ``start_session``, plus the ``qibocal://context`` resource.
 
 The server accepts the MCP connection and lists its tools/resources while
 Qibocal and the direct-mode hardware initialize in the background. The first
@@ -55,7 +55,8 @@ before deciding whether to call ``update_platform`` with the returned
 update. See :doc:`../reference/mcp` for target arrays and response details.
 
 Keep the run's artifact location. Run handles expire when the server or
-gateway exits, even though the files remain on disk. See
+gateway exits or ``start_session`` switches calibration sessions, even though
+the files remain on disk. See
 :doc:`../guides/artifacts` for output layout and accepted snapshots.
 
 Advanced: queued gateway over SSH

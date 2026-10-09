@@ -11,6 +11,7 @@ from fastmcp.tools import ToolResult
 from mcp.types import CallToolResult, TextContent
 
 from .targets import Targets
+from .sessions import SessionSource
 
 
 class SlurmJobs:
@@ -57,7 +58,10 @@ class SlurmJobs:
     async def call(self, operation: str, arguments: dict) -> CallToolResult:
         """Await one allocation; cancellation terminates srun and its job step."""
         async with self.lock:
-            if operation == "update_platform" and arguments["run_id"] not in self.runs:
+            if (
+                operation == "update_platform"
+                or (operation == "start_session" and arguments.get("source") == "run")
+            ) and arguments.get("run_id") not in self.runs:
                 raise ValueError("Unknown run_id in this gateway session")
             command = list(self.command)
             if self.snapshot is not None:
@@ -96,10 +100,22 @@ class SlurmJobs:
                 if result.structuredContent is None:
                     raise ValueError("Worker response has no run metadata")
                 self.runs.add(result.structuredContent["run_id"])
+                if self.snapshot is None:
+                    # Pin the baseline instead of re-reading changing source files.
+                    self.snapshot = Path(result.structuredContent["report_folder"]) / "platform"
             elif operation == "update_platform":
                 if result.structuredContent is None:
                     raise ValueError("Worker response has no platform snapshot")
                 self.snapshot = Path(result.structuredContent["snapshot"])
+            elif operation == "start_session":
+                if result.structuredContent is None:
+                    raise ValueError("Worker response has no session metadata")
+                metadata = result.structuredContent
+                self.session_id = metadata["session_id"]
+                self.output = Path(metadata["report_folder"])
+                self.snapshot = Path(metadata["snapshot"])
+                self.command[self.command.index("--session-id") + 1] = self.session_id
+                self.runs.clear()
             return result
 
 
@@ -113,7 +129,7 @@ def create_slurm_server(
     slurm_args: list[str],
     report_rendering: str = "server",
 ) -> FastMCP:
-    """Expose the same three tools without opening hardware on the access node."""
+    """Expose the same calibration tools without hardware on the access node."""
     jobs = SlurmJobs(
         platform,
         partition=partition,
@@ -129,7 +145,9 @@ def create_slurm_server(
             "Read qibocal://context or call get_calibration_context for protocol "
             "parameters. Every operation "
             "runs in a separate SLURM job. Inspect images before updating. "
-            "Run handles last for this gateway session; paths are on the cluster."
+            "start_session selects a new baseline and report folder. "
+            "Run handles expire on a session switch or gateway exit; "
+            "paths are on the cluster."
         ),
     )
 
@@ -149,6 +167,33 @@ def create_slurm_server(
     async def get_calibration_context() -> str:
         """Return qibocal://context JSON text through a compute-node discovery job."""
         return await calibration_context()
+
+    @mcp.tool
+    async def start_session(
+        source: SessionSource = "current",
+        run_id: str | None = None,
+        ref: str | None = None,
+        platform_path: str | None = None,
+        snapshot_path: str | None = None,
+    ) -> dict:
+        """Switch to a fresh calibration session and report folder.
+
+        current restores the latest accepted update, or the session baseline.
+        initial restores this session's baseline. run applies an inspected run's
+        fitted results to its execution checkpoint, not to later updates.
+        repository reads committed parameters/calibration at ref (default HEAD);
+        platform_path is the execution-host platform folder (defaults to lookup).
+        snapshot loads paired files from snapshot_path on the execution host.
+        Old run handles expire; source files and old reports are not modified.
+        Inspect and approve fitted results before selecting source=run.
+        """
+        result = await jobs.call("start_session", {
+            "source": source, "run_id": run_id, "ref": ref,
+            "platform_path": platform_path, "snapshot_path": snapshot_path,
+        })
+        if result.structuredContent is None:
+            raise ValueError("Worker response has no session metadata")
+        return result.structuredContent
 
     @mcp.tool
     async def execute_protocol(

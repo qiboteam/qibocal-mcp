@@ -4,7 +4,7 @@ NAME = "qibocal-calibration"
 DESCRIPTION = "Plan, execute and inspect bounded Qibocal calibrations."
 CONTEXT_RESOURCE = "qibocal://context"
 CONTEXT_TOOL = "get_calibration_context"
-TOOLS = (CONTEXT_TOOL, "execute_protocol", "update_platform")
+TOOLS = (CONTEXT_TOOL, "execute_protocol", "update_platform", "start_session")
 REPORT_FIGURE_MIME_TYPE = "application/vnd.plotly.v1+json"
 
 INSTRUCTIONS = """You are a quantum calibration agent.
@@ -23,6 +23,15 @@ Follow the user's hardware limits. Do not treat synthetic data from a mock
 platform as evidence of a successful calibration.
 Queue waits are normal. Do not blindly retry failed acquisitions or updates:
 they may already have affected hardware. Stop when recovery needs user input.
+When the user requests a fresh calibration, use start_session to select the
+starting state and a new report folder without restarting the conversation.
+Use current for the last accepted update, initial for this session's baseline,
+run for a selected execution's fitted results, repository for committed platform
+files at HEAD or a specified ref, or snapshot for saved paired platform files.
+source=run explicitly applies fitted results in the new session: inspect its
+images and approve the fit first, just as for update_platform. Old run handles
+expire on a successful switch. Refresh get_calibration_context afterwards;
+previously supplied session IDs, report paths and calibration plans may be stale.
 """
 
 

@@ -9,6 +9,9 @@ session under ``OUTPUT/sessions/<session_id>/``. With default settings this is
 ``runs/sessions/<session_id>/``. Each execution has a dedicated
 ``data/<protocol>-<iteration>/`` directory; repeated protocols get new iterations
 rather than overwriting earlier runs. Discovery alone does not create a report.
+``start_session`` switches the active agent to a fresh report folder and saves
+its selected baseline immediately. It does not restart the conversation or
+modify earlier reports. See :doc:`../reference/mcp` for selectable starting points.
 
 With SSH, these paths are on the cluster, not on the laptop. Results and images
 return over MCP, but copying the remaining files is a separate operation.
@@ -22,6 +25,7 @@ A session report contains, depending on protocol support and execution success:
    <session_id>/
      meta.json
      history.json
+     session.json              # selected baseline provenance, for start_session
      platform/                 # initial session platform, never overwritten
      new_platform/             # current session platform
      data/
@@ -33,6 +37,9 @@ A session report contains, depending on protocol support and execution success:
          report-0-0.html
          report-0-0.png
          ... more target/figure report files, if present ...
+         execution_platform/   # immutable state after acquisition/fit, before update
+           parameters.json
+           calibration.json
          platform/             # immutable snapshot after an accepted update
            parameters.json
            calibration.json
@@ -133,7 +140,12 @@ Keep the paired snapshot files together. Promotion into your authoritative
 platform definitions is a separate manual operation requiring review.
 Files persist after a session exits, but run handles do not. Resuming a Copilot
 conversation or reusing an exported plugin cannot restore terminated
-server/gateway execution state.
+server/gateway execution state. While it remains connected, ``start_session``
+can restart calibration from the latest accepted update, a session baseline,
+an inspected execution's fitted results, committed repository files or a saved
+snapshot. Old run handles expire when switching. A saved snapshot can also be
+selected from a new server connection; restoring state does not restore old
+execution handles.
 
 Treat reports, platform definitions and calibration output as potentially
 sensitive experiment data. Share or copy them only under your site's policy.

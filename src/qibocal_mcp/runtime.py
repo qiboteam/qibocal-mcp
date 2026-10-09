@@ -7,6 +7,7 @@ import json
 import os
 import sys
 from contextlib import asynccontextmanager, redirect_stdout
+from copy import copy
 from pathlib import Path
 from uuid import UUID, uuid4
 
@@ -19,11 +20,11 @@ with redirect_stdout(sys.stderr):
     from qibocal.auto.operation import Protocol
     from qibocal.auto.serialize import serialize
     from qibocal.auto.task import Completed, Targets
-    from qibocal.calibration.calibration import Calibration
     from qibocal.protocols import PROTOCOLS
 
     from .artifacts import SessionReport
 from .calibration import REPORT_FIGURE_MIME_TYPE
+from .sessions import PlatformState, SessionSource, repository_state
 
 
 def create_server(
@@ -51,6 +52,8 @@ def create_server(
     session_id = uuid4().hex if session_id is None else UUID(session_id).hex
     report_folder = output / "sessions" / session_id
     session_report: SessionReport | None = None
+    accepted_state: PlatformState | None = None
+    initial_state: PlatformState | None = None
 
     def report_for(executor: Executor) -> SessionReport:
         nonlocal session_report
@@ -62,16 +65,17 @@ def create_server(
 
     @asynccontextmanager
     async def lifespan(server):
+        nonlocal accepted_state, initial_state
         # Hardware drivers and Qibocal may print; stdout belongs to MCP.
         with redirect_stdout(sys.stderr):
             platform = create_calibration_platform(platform_name)
             if snapshot is not None:
-                platform.parameters = type(platform.parameters).model_validate_json(
-                    (snapshot / "parameters.json").read_text(encoding="utf-8")
-                )
-                platform.calibration = Calibration.model_validate_json(
-                    (snapshot / "calibration.json").read_text(encoding="utf-8")
-                )
+                PlatformState.load(snapshot).apply(platform)
+            accepted_state = PlatformState.capture(platform)
+            initial_state = (
+                PlatformState.load(report_folder / "platform")
+                if (report_folder / "platform").exists() else accepted_state
+            )
             executor = Executor(platform, update=False)
             platform.connect()
         try:
@@ -87,7 +91,8 @@ def create_server(
             "targets and protocol parameters. "
             "execute_protocol acquires, fits and reports without applying fitted "
             "updates. Inspect the returned plots before calling update_platform. "
-            "Run handles are valid only in this server process."
+            "start_session selects a new baseline and report folder. "
+            "Run handles expire on a session switch or server exit."
         ),
         lifespan=lifespan,
     )
@@ -127,6 +132,107 @@ def create_server(
         """Return the same JSON text as qibocal://context for calibration discovery."""
         return await calibration_context(ctx)
 
+    def find_run(executor: Executor, run_id: str) -> Completed:
+        if run_id not in completed_runs and restore_runs:
+            if UUID(run_id).hex != run_id:
+                raise ValueError("Invalid run_id")
+            completed = report_for(executor).find_run(run_id)
+            metadata = json.loads(
+                (completed.path / "run.json").read_text(encoding="utf-8")
+            )
+            if metadata["platform"] != platform_name:
+                raise ValueError("Run belongs to a different platform")
+            completed_runs[run_id] = completed
+            if metadata["update_started"]:
+                updated_runs.add(run_id)
+        if run_id not in completed_runs:
+            raise ValueError(f"Unknown run_id in this server session: {run_id}")
+        return completed_runs[run_id]
+
+    @mcp.tool
+    async def start_session(
+        ctx: Context,
+        source: SessionSource = "current",
+        run_id: str | None = None,
+        ref: str | None = None,
+        platform_path: str | None = None,
+        snapshot_path: str | None = None,
+    ) -> dict:
+        """Switch to a fresh calibration session and report folder.
+
+        current restores the latest accepted update, or the session baseline.
+        initial restores this session's baseline. run applies an inspected run's
+        fitted results to its execution checkpoint, not to later updates.
+        repository reads committed parameters/calibration at ref (default HEAD);
+        platform_path is the execution-host platform folder (defaults to lookup).
+        snapshot loads paired files from snapshot_path on the execution host.
+        Old run handles expire; source files and old reports are not modified.
+        Inspect and approve fitted results before selecting source=run.
+        """
+        nonlocal session_id, report_folder, session_report, accepted_state, initial_state
+        if (source == "run") != (run_id is not None):
+            raise ValueError("Supply run_id only and always with source=run")
+        if source != "repository" and (ref is not None or platform_path is not None):
+            raise ValueError("ref and platform_path require source=repository")
+        if (source == "snapshot") != (snapshot_path is not None):
+            raise ValueError("Supply snapshot_path only and always with source=snapshot")
+        async with lock:
+            executor = ctx.lifespan_context["executor"]
+            provenance = {"source": source, "parent_session_id": session_id}
+            candidate = copy(executor.platform)
+            if source == "current":
+                state = accepted_state
+            elif source == "initial":
+                state = initial_state
+            elif source == "snapshot":
+                path = Path(snapshot_path).resolve()
+                state = PlatformState.load(path)
+                provenance["snapshot_path"] = str(path)
+            elif source == "repository":
+                from qibocal.calibration.platform import locate_platform
+
+                path = (
+                    Path(platform_path) if platform_path is not None
+                    else locate_platform(platform_name)
+                )
+                state, revision = repository_state(path, ref)
+                provenance.update(revision)
+            else:
+                completed = find_run(executor, run_id)
+                metadata = json.loads(
+                    (completed.path / "run.json").read_text(encoding="utf-8")
+                )
+                if metadata["update_started"] and not metadata["updated"]:
+                    raise ValueError("Run has a failed or incomplete update attempt")
+                if completed.results is None:
+                    raise ValueError("Run has no fitted results")
+                if completed.bound is None or completed.bound.protocol.update is None:
+                    raise ValueError("Protocol does not support updating")
+                PlatformState.load(completed.path / "execution_platform").apply(candidate)
+                with redirect_stdout(sys.stderr):
+                    Executor(candidate, update=False).update(completed)
+                state = PlatformState.capture(candidate)
+                provenance["run_id"] = run_id
+            if state is None:
+                raise ValueError("Session platform state is not initialized")
+            state.apply(candidate)
+            new_id = uuid4().hex
+            new_folder = output / "sessions" / new_id
+            with redirect_stdout(sys.stderr):
+                new_report = SessionReport(new_folder, platform_name, candidate, protocols)
+                (new_folder / "session.json").write_text(
+                    json.dumps(provenance, indent=2), encoding="utf-8"
+                )
+            state.apply(executor.platform)
+            session_id, report_folder, session_report = new_id, new_folder, new_report
+            accepted_state = initial_state = state
+            completed_runs.clear()
+            updated_runs.clear()
+            return {
+                "session_id": session_id, "report_folder": str(report_folder),
+                "snapshot": str(report_folder / "platform"), **provenance,
+            }
+
     @mcp.tool
     async def execute_protocol(
         protocol: str,
@@ -155,6 +261,9 @@ def create_server(
                 run_id = uuid4().hex
                 completed = report.add(completed, protocol, parameters, selected)
                 folder = completed.path
+                execution_snapshot = folder / "execution_platform"
+                execution_snapshot.mkdir()
+                executor.platform.dump(execution_snapshot)
                 metadata = {
                     "run_id": run_id,
                     "session_id": session_id,
@@ -228,26 +337,12 @@ def create_server(
         Does not overwrite the source platform in QIBOLAB_PLATFORMS.
         A run's update can be attempted only once.
         """
+        nonlocal accepted_state
         async with lock:
             executor = ctx.lifespan_context["executor"]
-            if run_id not in completed_runs and restore_runs:
-                if UUID(run_id).hex != run_id:
-                    raise ValueError("Invalid run_id")
-                completed = report_for(executor).find_run(run_id)
-                folder = completed.path
-                metadata = json.loads(
-                    (folder / "run.json").read_text(encoding="utf-8")
-                )
-                if metadata["platform"] != platform_name:
-                    raise ValueError("Run belongs to a different platform")
-                completed_runs[run_id] = completed
-                if metadata["update_started"]:
-                    updated_runs.add(run_id)
-            if run_id not in completed_runs:
-                raise ValueError(f"Unknown run_id in this server session: {run_id}")
+            completed = find_run(executor, run_id)
             if run_id in updated_runs:
                 raise ValueError(f"Run already applied or update attempted: {run_id}")
-            completed = completed_runs[run_id]
             if completed.results is None:
                 raise ValueError("Run has no fitted results")
             if completed.bound is None or completed.bound.protocol.update is None:
@@ -267,6 +362,7 @@ def create_server(
                 completed.dump_parameters()
                 metadata["updated"] = True
                 path.write_text(json.dumps(metadata, indent=2), encoding="utf-8")
+                accepted_state = PlatformState.capture(executor.platform)
             return {"run_id": run_id, "updated": True, "snapshot": str(snapshot)}
 
     return mcp

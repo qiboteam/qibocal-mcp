@@ -42,6 +42,31 @@ Establish approved bounds before discovery, acquisition or updates. Discovery
 is not necessarily hardware-free: a direct server connects its platform, and
 queued discovery launches a compute job that connects hardware.
 
+Restart calibration within an active conversation
+-------------------------------------------------
+
+Ask the calibration agent to start a new calibration session from the last
+accepted update, this session's initial state, an inspected execution's fitted
+results, or committed platform files at a branch/commit. For example:
+
+.. code-block:: text
+
+   Start a new calibration session from the last accepted update.
+   Keep the same hardware bounds; save the next protocols in a new report folder.
+
+The agent calls ``start_session`` and refreshes its calibration context. The
+Copilot conversation and MCP connection remain active, but the calibration gets
+a new session ID and report folder. Old execution handles expire; old reports
+remain available. Starting from an execution applies that execution's fitted
+results to its checkpoint, so inspect and approve them first. Repository
+selection reads committed calibration models without checking out the branch
+or changing the execution host's working tree. Saved paired snapshot files are
+also supported. See :doc:`../reference/mcp` for the exact tool arguments.
+
+Newly generated profiles include this tool. Re-export an existing persistent
+plugin to a new destination and reconnect its server to pick up the new interface;
+exported plugins are immutable snapshots, not live policy updates.
+
 Native options and deployment defaults
 --------------------------------------
 

@@ -25,7 +25,7 @@ continues to consume the original inline MCP images.
 The proxy's inspection metadata is guidance, not an evidence or approval gate.
 See :doc:`../agent/copilot` for native image and permission constraints.
 
-``qibocal-mcp`` exposes three tools and one context resource.
+``qibocal-mcp`` exposes four tools and one context resource.
 ``get_calibration_context`` aliases ``qibocal://context`` for clients without
 resource support; discovery through either interface has the same execution
 effects.
@@ -53,8 +53,11 @@ subsequent acquisitions and saves a snapshot under that run's output directory.
 All executions share a standard Qibocal report under
 ``OUTPUT/sessions/<session_id>/`` with separate protocol/iteration folders.
 Accepted updates also refresh the report's ``new_platform/``.
-Report folders are created only when executing or restoring a run, not during
-startup or context discovery.
+Report folders are created only when executing, restoring a run or explicitly
+starting a calibration session, not during startup or context discovery.
+``start_session`` replaces the active session's paired calibration models and
+report folder while keeping the direct hardware connection. Prior execution
+handles are cleared; prior files remain unchanged.
 
 Environment provisioning still precedes the MCP server: a first managed launch
 may need to install dependencies or clone platform repositories. SSH connection
@@ -100,14 +103,18 @@ does not make updates transactional.
 Session boundaries
 ------------------
 
-Run handles exist only while the direct server or gateway remains alive.
+Run handles exist only while the direct server or gateway remains alive and
+expire when ``start_session`` switches the active calibration session.
 Saved artifacts and client conversation history can persist, but cannot restore
 those handles in a fresh MCP session. Copilot's native conversation resume does
 not preserve the old server/gateway or accepted-state handoff. Use a persistent
 plugin export for a stable Copilot configuration path, not a transient wrapper
 plugin; neither form provides hardware-state resume.
-Internal workers can restore the completed run needed for an update within
-the active gateway session; this is not a public execution-session-resume feature.
+``start_session`` can explicitly select saved paired platform files as the
+baseline of a fresh calibration, but does not restore their old run handles.
+Internal workers can restore the completed run needed for an update or a
+run-based starting point within the active gateway session; this is not a
+public execution-handle-resume feature.
 
 Every server subprocess launched by the agent receives ``--no-config`` and
 resolved settings. Internal SLURM workers likewise do not read user

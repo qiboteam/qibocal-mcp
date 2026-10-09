@@ -145,7 +145,7 @@ class SlurmTests(unittest.IsolatedAsyncioTestCase):
                 self.assertEqual(platforms, [])
                 self.assertEqual(
                     {tool.name for tool in await client.list_tools()},
-                    {"get_calibration_context", "execute_protocol", "update_platform"},
+                    {"get_calibration_context", "execute_protocol", "update_platform", "start_session"},
                 )
                 context_text = (
                     await client.read_resource("qibocal://context")
@@ -181,7 +181,11 @@ class SlurmTests(unittest.IsolatedAsyncioTestCase):
                     restored.config(restored.qubits[0].drive).frequency, 5e9
                 )
                 self.assertEqual(len(platforms), 5)
-                self.assertTrue(all("--snapshot" not in cmd for cmd in commands[:4]))
+                self.assertTrue(all("--snapshot" not in cmd for cmd in commands[:3]))
+                self.assertEqual(
+                    commands[3][commands[3].index("--snapshot") + 1],
+                    str(report_folder / "platform"),
+                )
                 self.assertIn("--snapshot", commands[4])
                 self.assertEqual(
                     commands[4][commands[4].index("--snapshot") + 1],

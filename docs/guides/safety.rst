@@ -85,11 +85,18 @@ confirm job state through site tools before starting recovery or another run.
 Session and artifact boundaries
 -------------------------------
 
-Run handles expire when the direct server or gateway exits. Copilot may resume
+Run handles expire when ``start_session`` switches calibration sessions or the
+direct server or gateway exits. Copilot may resume
 conversation history, but does not preserve the old MCP session or run handles.
 Saved files are retained evidence, not a way to call ``update_platform`` in a
 fresh session. A persistent exported plugin provides stable configuration, not
 restored execution state.
+
+``start_session(source="run")`` applies fitted results in the new session, so it
+requires the same prior inspection and approval as ``update_platform``. Other
+starting points select saved or committed software state; they do not undo
+physical hardware effects or change the configured instruments and drivers.
+The tool preserves old reports and uses a fresh folder for future protocols.
 
 The latest *accepted* snapshot is handed to subsequent queued jobs; rejected
 fits are not promoted. This is not rollback protection against acquisition-side

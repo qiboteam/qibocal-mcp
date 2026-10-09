@@ -37,7 +37,7 @@ async def run(
                 return CallToolResult(
                     content=[TextContent(type="text", text=content[0].text)]
                 )
-            if request["operation"] not in {"execute_protocol", "update_platform"}:
+            if request["operation"] not in {"execute_protocol", "update_platform", "start_session"}:
                 raise ValueError(f"Unknown worker operation: {request['operation']}")
             result = await client.call_tool(
                 request["operation"], request["arguments"]

@@ -48,6 +48,8 @@ class CopilotProfileTests(unittest.TestCase):
         server = profile["mcp-servers"]["qibocal"]
         self.assertEqual(server["timeout"], 10000)
         self.assertEqual(server["tools"], list(TOOLS))
+        self.assertIn("start_session", server["tools"])
+        self.assertIn("qibocal/start_session", profile["tools"])
         self.assertIn("get_calibration_context", text)
         self.assertIn("image pixels must actually be available", text)
         self.assertEqual(copilot.PROFILE_ID, "qibocal-calibration:qibocal-calibration")

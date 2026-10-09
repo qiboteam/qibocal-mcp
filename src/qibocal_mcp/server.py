@@ -15,6 +15,7 @@ from fastmcp.tools import ToolResult
 from mcp.types import TextResourceContents
 
 from .config import add_deployment_arguments, parse_settings
+from .sessions import SessionSource
 from .targets import Targets
 
 logger = logging.getLogger(__name__)
@@ -93,7 +94,8 @@ def create_server(
             "targets and protocol parameters. "
             "execute_protocol acquires, fits and reports without applying fitted "
             "updates. Inspect the returned plots before calling update_platform. "
-            "Run handles are valid only in this server process."
+            "start_session selects a new baseline and report folder. "
+            "Run handles expire on a session switch or server exit."
         ),
         lifespan=lifespan,
     )
@@ -114,6 +116,35 @@ def create_server(
     async def get_calibration_context(ctx: Context) -> str:
         """Return the same JSON text as qibocal://context for calibration discovery."""
         return await calibration_context(ctx)
+
+    @mcp.tool
+    async def start_session(
+        ctx: Context,
+        source: SessionSource = "current",
+        run_id: str | None = None,
+        ref: str | None = None,
+        platform_path: str | None = None,
+        snapshot_path: str | None = None,
+    ) -> dict:
+        """Switch to a fresh calibration session and report folder.
+
+        current restores the latest accepted update, or the session baseline.
+        initial restores this session's baseline. run applies an inspected run's
+        fitted results to its execution checkpoint, not to later updates.
+        repository reads committed parameters/calibration at ref (default HEAD);
+        platform_path is the execution-host platform folder (defaults to lookup).
+        snapshot loads paired files from snapshot_path on the execution host.
+        Old run handles expire; source files and old reports are not modified.
+        Inspect and approve fitted results before selecting source=run.
+        """
+        client = await asyncio.shield(ctx.lifespan_context["ready"])
+        result = await client.call_tool("start_session", {
+            "source": source, "run_id": run_id, "ref": ref,
+            "platform_path": platform_path, "snapshot_path": snapshot_path,
+        })
+        if result.structured_content is None:
+            raise ValueError("Hardware process returned no session metadata")
+        return result.structured_content
 
     @mcp.tool
     async def execute_protocol(

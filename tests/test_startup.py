@@ -40,7 +40,7 @@ class StartupTests(unittest.IsolatedAsyncioTestCase):
         with patch("qibocal_mcp.server.StdioTransport", return_value=backend) as transport:
             async with Client(create_server("synthetic")) as client:
                 await asyncio.wait_for(started.wait(), timeout=2)
-                self.assertEqual(len(await client.list_tools()), 3)
+                self.assertEqual(len(await client.list_tools()), 4)
                 self.assertEqual(len(await client.list_resources()), 1)
                 pending = asyncio.create_task(client.call_tool("get_calibration_context", {}))
                 await asyncio.sleep(0.05)
@@ -68,7 +68,7 @@ class StartupTests(unittest.IsolatedAsyncioTestCase):
             self.assertLogs("qibocal_mcp.server", level="ERROR") as logs,
         ):
             async with Client(create_server("synthetic")) as client:
-                self.assertEqual(len(await client.list_tools()), 3)
+                self.assertEqual(len(await client.list_tools()), 4)
                 for _ in range(2):
                     with self.assertRaisesRegex(ToolError, "Instrument unavailable"):
                         await client.call_tool("get_calibration_context", {})
@@ -197,7 +197,7 @@ server.main(["--no-config", "--platform", "dummy", "--output", sys.argv[3]])
                     try:
                         self.assertEqual(len(await asyncio.wait_for(
                             client.list_tools(), timeout=2,
-                        )), 3)
+                        )), 4)
                         self.assertEqual(len(await client.list_resources()), 1)
                         async with asyncio.timeout(5):
                             while not started.exists():
