@@ -18,6 +18,13 @@ HTTP URL. Running it in a terminal alone does not initiate a calibration.
 There are three tools: ``get_calibration_context``, ``execute_protocol`` and
 ``update_platform``, plus the ``qibocal://context`` resource.
 
+The server accepts the MCP connection and lists its tools/resources while
+Qibocal and the direct-mode hardware initialize in the background. The first
+context or calibration request waits for that initialization and reports any
+failure. Report folders are created only when needed by a run.
+Managed-environment installation and SSH setup still happen before connection;
+queued discovery can additionally wait for a SLURM allocation.
+
 Make a first tool call
 ----------------------
 

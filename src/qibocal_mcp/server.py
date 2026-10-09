@@ -1,29 +1,23 @@
-"""A single-platform, stdio MCP server with explicit calibration updates."""
+"""A responsive MCP frontend with background hardware initialization."""
 
 import argparse
 import asyncio
-import inspect
-import json
+import logging
 import os
 import sys
 from contextlib import asynccontextmanager, redirect_stdout
 from pathlib import Path
 from uuid import UUID, uuid4
 
-from fastmcp import Context, FastMCP
+from fastmcp import Client, Context, FastMCP
+from fastmcp.client.transports import StdioTransport
 from fastmcp.tools import ToolResult
-from fastmcp.utilities.types import Image
-from mcp.types import ContentBlock, EmbeddedResource, TextContent, TextResourceContents
-from qibocal import Executor, create_calibration_platform
-from qibocal.auto.operation import Protocol
-from qibocal.auto.serialize import serialize
-from qibocal.auto.task import Completed, Targets
-from qibocal.calibration.calibration import Calibration
-from qibocal.protocols import PROTOCOLS
+from mcp.types import TextResourceContents
 
-from .artifacts import SessionReport
 from .config import add_deployment_arguments, parse_settings
-from .calibration import REPORT_FIGURE_MIME_TYPE
+from .targets import Targets
+
+logger = logging.getLogger(__name__)
 
 
 def create_server(
@@ -35,50 +29,62 @@ def create_server(
     report_rendering: str = "server",
     session_id: str | None = None,
 ) -> FastMCP:
-    """Create one server; execution handles live only for its lifetime."""
+    """Advertise tools immediately and own one main-thread hardware subprocess."""
     if report_rendering not in {"server", "client"}:
         raise ValueError("report_rendering must be server or client")
-    # Qibocal's registry also contains exported parameter/data classes.
-    protocols = {
-        name: protocol
-        for name, protocol in PROTOCOLS.items()
-        if isinstance(protocol, Protocol)
-    }
-    completed_runs: dict[str, Completed] = {}
-    updated_runs: set[str] = set()
-    lock = asyncio.Lock()
-    output = output.resolve()
     session_id = uuid4().hex if session_id is None else UUID(session_id).hex
-    report_folder = output / "sessions" / session_id
-    session_report: SessionReport | None = None
-
-    def report_for(executor: Executor) -> SessionReport:
-        nonlocal session_report
-        if session_report is None:
-            session_report = SessionReport(
-                report_folder, platform_name, executor.platform, protocols
-            )
-        return session_report
+    arguments = [
+        "-m", "qibocal_mcp.runtime",
+        "--platform", platform_name,
+        "--output", str(output.resolve()),
+        "--session-id", session_id,
+        "--report-rendering", report_rendering,
+    ]
+    if snapshot is not None:
+        arguments += ["--snapshot", str(snapshot.resolve())]
+    if restore_runs:
+        arguments.append("--restore-runs")
 
     @asynccontextmanager
     async def lifespan(server):
-        # Hardware drivers and Qibocal may print; stdout belongs to MCP.
-        with redirect_stdout(sys.stderr):
-            platform = create_calibration_platform(platform_name)
-            if snapshot is not None:
-                platform.parameters = type(platform.parameters).model_validate_json(
-                    (snapshot / "parameters.json").read_text(encoding="utf-8")
+        ready = asyncio.get_running_loop().create_future()
+        stop = asyncio.Event()
+        client = Client(
+            StdioTransport(
+                command=sys.executable, args=arguments, keep_alive=False,
+                env=dict(os.environ),
+            ),
+            init_timeout=0,
+        )
+
+        async def connect():
+            async with client:
+                ready.set_result(client)
+                await stop.wait()
+
+        def finished(task):
+            if task.cancelled():
+                ready.cancel()
+                return
+            error = task.exception()
+            if error is not None:
+                if not ready.done():
+                    ready.set_exception(error)
+                    ready.exception()
+                logger.error(
+                    "Qibocal initialization failed",
+                    exc_info=(type(error), error, error.__traceback__),
                 )
-                platform.calibration = Calibration.model_validate_json(
-                    (snapshot / "calibration.json").read_text(encoding="utf-8")
-                )
-            executor = Executor(platform, update=False)
-            platform.connect()
+
+        initialization = asyncio.create_task(connect(), name="qibocal-initialization")
+        initialization.add_done_callback(finished)
         try:
-            yield {"executor": executor}
+            yield {"ready": ready}
         finally:
-            with redirect_stdout(sys.stderr):
-                platform.disconnect()
+            stop.set()
+            if not ready.done():
+                initialization.cancel()
+            await asyncio.wait({initialization})
 
     mcp = FastMCP(
         "Qibocal",
@@ -93,29 +99,11 @@ def create_server(
     )
 
     async def calibration_context(ctx: Context) -> str:
-        """Platform targets and built-in protocol parameter definitions, with units."""
-        executor = ctx.lifespan_context["executor"]
-        return json.dumps(
-            {
-                "platform": platform_name,
-                "session_id": session_id,
-                "report_folder": str(report_folder),
-                "qubits": list(executor.platform.qubits),
-                "protocols": {
-                    name: {
-                        "parameters": inspect.getsource(protocol.parameters_type),
-                        "two_qubit_gates": protocol.two_qubit_gates,
-                        "supports_update": protocol.update is not None,
-                    }
-                    for name, protocol in protocols.items()
-                },
-                "common_parameters": (
-                    "nshots (integer) and relaxation_time (ns) may be supplied "
-                    "with any protocol. Omit them to use platform defaults."
-                ),
-            },
-            indent=2,
-        )
+        client = await asyncio.shield(ctx.lifespan_context["ready"])
+        content = await client.read_resource("qibocal://context")
+        if len(content) != 1 or not isinstance(content[0], TextResourceContents):
+            raise ValueError("Hardware process returned an invalid context resource")
+        return content[0].text
 
     @mcp.resource("qibocal://context")
     async def context(ctx: Context) -> str:
@@ -129,10 +117,7 @@ def create_server(
 
     @mcp.tool
     async def execute_protocol(
-        protocol: str,
-        parameters: dict,
-        targets: Targets,
-        ctx: Context,
+        protocol: str, parameters: dict, targets: Targets, ctx: Context,
     ) -> ToolResult:
         """Acquire, fit and report, without applying fitted platform updates.
 
@@ -140,84 +125,14 @@ def create_server(
         targets must be qubit IDs, or lists of IDs for multi-qubit protocols.
         Returns a run_id, fitted results, report tables and PNG report images.
         """
-        if protocol not in protocols:
-            raise ValueError(f"Unknown protocol: {protocol}")
-        if not targets:
-            raise ValueError("Supply at least one target")
-        # JSON arrays represent Qibocal's tuple-valued multi-qubit targets.
-        selected = [tuple(t) if isinstance(t, list) else t for t in targets]
-        async with lock:
-            executor = ctx.lifespan_context["executor"]
-            with redirect_stdout(sys.stderr):
-                bound = protocols[protocol](**parameters)
-                report = report_for(executor)
-                completed = executor(bound, targets=selected)
-                run_id = uuid4().hex
-                completed = report.add(completed, protocol, parameters, selected)
-                folder = completed.path
-                metadata = {
-                    "run_id": run_id,
-                    "session_id": session_id,
-                    "report_folder": str(report_folder),
-                    "platform": platform_name,
-                    "slurm_job_id": os.environ.get("SLURM_JOB_ID"),
-                    "protocol": protocol,
-                    "parameters": parameters,
-                    "targets": selected,
-                    "folder": str(folder),
-                    "results": (
-                        serialize(completed.results.params)
-                        if completed.results is not None
-                        else None
-                    ),
-                    "supports_update": protocols[protocol].update is not None,
-                    "updated": False,
-                    "update_started": False,
-                }
-                (folder / "run.json").write_text(
-                    json.dumps(metadata, indent=2), encoding="utf-8"
-                )
-                report.save(executor.platform)
-                content: list[ContentBlock] = [
-                    TextContent(type="text", text=json.dumps(metadata))
-                ]
-                reports = completed.reports
-                if reports is not None:
-                    # Built-in Qibocal reports return (Plotly figures, HTML table).
-                    entries = (
-                        reports.items()
-                        if isinstance(reports, dict)
-                        else [("all", reports)]
-                    )
-                    for index, (target, (figures, table)) in enumerate(entries):
-                        content.append(
-                            TextContent(type="text", text=f"Target {target}: {table}")
-                        )
-                        for number, figure in enumerate(figures):
-                            stem = folder / f"report-{index}-{number}"
-                            figure.write_html(stem.with_suffix(".html"))
-                            if report_rendering == "client":
-                                serialized = figure.to_json()
-                                stem.with_suffix(".json").write_text(
-                                    serialized, encoding="utf-8"
-                                )
-                                content.append(EmbeddedResource(
-                                    type="resource",
-                                    resource=TextResourceContents(
-                                        uri=f"qibocal://reports/{run_id}/{index}/{number}",
-                                        mimeType=REPORT_FIGURE_MIME_TYPE,
-                                        text=serialized,
-                                    ),
-                                ))
-                            else:
-                                figure.write_image(
-                                    stem.with_suffix(".png"), width=1200, height=700
-                                )
-                                content.append(
-                                    Image(path=stem.with_suffix(".png")).to_image_content()
-                                )
-                completed_runs[run_id] = completed
-                return ToolResult(content=content, structured_content=metadata)
+        client = await asyncio.shield(ctx.lifespan_context["ready"])
+        result = await client.call_tool("execute_protocol", {
+            "protocol": protocol, "parameters": parameters, "targets": targets,
+        })
+        return ToolResult(
+            content=result.content, structured_content=result.structured_content,
+            meta=result.meta, is_error=result.is_error,
+        )
 
     @mcp.tool
     async def update_platform(run_id: str, ctx: Context) -> dict:
@@ -228,46 +143,11 @@ def create_server(
         Does not overwrite the source platform in QIBOLAB_PLATFORMS.
         A run's update can be attempted only once.
         """
-        async with lock:
-            executor = ctx.lifespan_context["executor"]
-            if run_id not in completed_runs and restore_runs:
-                if UUID(run_id).hex != run_id:
-                    raise ValueError("Invalid run_id")
-                completed = report_for(executor).find_run(run_id)
-                folder = completed.path
-                metadata = json.loads(
-                    (folder / "run.json").read_text(encoding="utf-8")
-                )
-                if metadata["platform"] != platform_name:
-                    raise ValueError("Run belongs to a different platform")
-                completed_runs[run_id] = completed
-                if metadata["update_started"]:
-                    updated_runs.add(run_id)
-            if run_id not in completed_runs:
-                raise ValueError(f"Unknown run_id in this server session: {run_id}")
-            if run_id in updated_runs:
-                raise ValueError(f"Run already applied or update attempted: {run_id}")
-            completed = completed_runs[run_id]
-            if completed.results is None:
-                raise ValueError("Run has no fitted results")
-            if completed.bound is None or completed.bound.protocol.update is None:
-                raise ValueError("Protocol does not support updating")
-            with redirect_stdout(sys.stderr):
-                path = completed.path / "run.json"
-                metadata = json.loads(path.read_text(encoding="utf-8"))
-                metadata["update_started"] = True
-                path.write_text(json.dumps(metadata, indent=2), encoding="utf-8")
-                updated_runs.add(run_id)
-                executor.update(completed)
-                snapshot = completed.path / "platform"
-                snapshot.mkdir()
-                executor.platform.dump(snapshot)
-                report_for(executor).save(executor.platform)
-                completed.task.action.update = True
-                completed.dump_parameters()
-                metadata["updated"] = True
-                path.write_text(json.dumps(metadata, indent=2), encoding="utf-8")
-            return {"run_id": run_id, "updated": True, "snapshot": str(snapshot)}
+        client = await asyncio.shield(ctx.lifespan_context["ready"])
+        result = await client.call_tool("update_platform", {"run_id": run_id})
+        if result.structured_content is None:
+            raise ValueError("Hardware process returned no update metadata")
+        return result.structured_content
 
     return mcp
 

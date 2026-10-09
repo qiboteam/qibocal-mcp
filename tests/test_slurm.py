@@ -53,8 +53,8 @@ class SlurmTests(unittest.IsolatedAsyncioTestCase):
 
         with (
             tempfile.TemporaryDirectory() as directory,
-            patch("qibocal_mcp.server.create_calibration_platform", return_value=platform),
-            patch("qibocal_mcp.server.PROTOCOLS", {"synthetic": Protocol(acquire, fit, report, update)}),
+            patch("qibocal_mcp.runtime.create_calibration_platform", return_value=platform),
+            patch("qibocal_mcp.runtime.PROTOCOLS", {"synthetic": Protocol(acquire, fit, report, update)}),
             patch.object(go.Figure, "write_image", side_effect=AssertionError("Remote rendering")),
             patch.object(go.Figure, "to_image", return_value=png) as local_render,
             patch("asyncio.create_subprocess_exec", side_effect=start),
@@ -125,9 +125,9 @@ class SlurmTests(unittest.IsolatedAsyncioTestCase):
 
         with (
             tempfile.TemporaryDirectory() as directory,
-            patch("qibocal_mcp.server.create_calibration_platform", side_effect=create),
+            patch("qibocal_mcp.runtime.create_calibration_platform", side_effect=create),
             patch(
-                "qibocal_mcp.server.PROTOCOLS",
+                "qibocal_mcp.runtime.PROTOCOLS",
                 {"synthetic": protocol},
             ),
             patch.object(go.Figure, "write_image", write_image),

@@ -9,7 +9,8 @@ from uuid import uuid4
 from fastmcp import FastMCP
 from fastmcp.tools import ToolResult
 from mcp.types import CallToolResult, TextContent
-from qibocal.auto.task import Targets
+
+from .targets import Targets
 
 
 class SlurmJobs:

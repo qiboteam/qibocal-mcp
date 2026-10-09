@@ -40,13 +40,25 @@ for the limits of this separation.
 Direct mode
 -----------
 
-With no partition, the server creates and connects one calibration platform
-when its MCP session starts. It disconnects when the session ends.
+With no partition, the server imports Qibocal and creates and connects one
+calibration platform in a background subprocess when its MCP session starts.
+The MCP handshake and tool/resource listing do not wait for this work.
+Context discovery, acquisitions and updates wait for initialization; failures
+are logged on stderr and returned to those requests rather than retried.
+Initialization, execution, updates and disconnection run on that subprocess's
+main thread, as required by Qibolab's signal handlers. The frontend owns the
+subprocess and closes it when the MCP session ends.
 Calls are serialized. An accepted update changes the live platform used by
 subsequent acquisitions and saves a snapshot under that run's output directory.
 All executions share a standard Qibocal report under
 ``OUTPUT/sessions/<session_id>/`` with separate protocol/iteration folders.
 Accepted updates also refresh the report's ``new_platform/``.
+Report folders are created only when executing or restoring a run, not during
+startup or context discovery.
+
+Environment provisioning still precedes the MCP server: a first managed launch
+may need to install dependencies or clone platform repositories. SSH connection
+setup and, in queued mode, SLURM allocation waits are separate sources of latency.
 
 .. figure:: ../_images/local-workflow.svg
    :alt: An objective and platform context guide acquisition. The returned fit, table and image are inspected before an explicit update or rejection; follow-up acquisitions depend on the remaining budget.

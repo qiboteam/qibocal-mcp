@@ -10,7 +10,7 @@ from pathlib import Path
 from fastmcp import Client
 from mcp.types import CallToolResult, TextContent, TextResourceContents
 
-from .server import create_server
+from .runtime import create_server
 
 
 async def run(

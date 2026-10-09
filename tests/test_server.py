@@ -21,8 +21,10 @@ from qibocal.cli.report import generate_figures_and_report
 from qibocal.protocols.utils import PowerLevel
 from qibocal.update import drive_frequency
 
-from qibocal_mcp.server import create_server
+from qibocal_mcp.runtime import create_server
+from qibocal_mcp.server import create_server as create_frontend
 from qibocal_mcp.calibration import REPORT_FIGURE_MIME_TYPE
+from qibocal_mcp.targets import Targets
 
 
 @dataclass
@@ -69,6 +71,52 @@ def update(results, platform, target):
 
 
 class ServerTests(unittest.IsolatedAsyncioTestCase):
+    async def test_frontend_preserves_schemas_reports_updates_and_errors(self):
+        platform = CalibrationPlatform(
+            **vars(create_platform("dummy")),
+            calibration=Calibration(single_qubits={0: QubitCalibration()}),
+        )
+        with (
+            tempfile.TemporaryDirectory() as directory,
+            patch("qibocal_mcp.runtime.create_calibration_platform", return_value=platform),
+            patch("qibocal_mcp.runtime.PROTOCOLS", {"synthetic": Protocol(acquire, fit, report, update)}),
+        ):
+            backend = create_server(
+                "synthetic", output=Path(directory), report_rendering="client",
+            )
+            with patch("qibocal_mcp.server.StdioTransport", return_value=backend):
+                async with Client(backend) as original, Client(create_frontend("synthetic")) as client:
+                    self.assertEqual(
+                        [tool.model_dump() for tool in await client.list_tools()],
+                        [tool.model_dump() for tool in await original.list_tools()],
+                    )
+                    self.assertEqual(
+                        await client.read_resource("qibocal://context"),
+                        await original.read_resource("qibocal://context"),
+                    )
+                    result = await client.call_tool("execute_protocol", {
+                        "protocol": "synthetic", "parameters": {"value": 5e9}, "targets": [0],
+                    })
+                    self.assertTrue(any(item.type == "resource" for item in result.content))
+                    run_id = result.structured_content["run_id"]
+                    applied = await client.call_tool("update_platform", {"run_id": run_id})
+                    self.assertTrue(applied.structured_content["updated"])
+                    self.assertEqual(platform.calibration.single_qubits[0].qubit.frequency_01, 5e9)
+                    with self.assertRaisesRegex(ToolError, "already applied"):
+                        await client.call_tool("update_platform", {"run_id": run_id})
+
+    async def test_target_wire_schema_matches_qibocal(self):
+        from pydantic import TypeAdapter
+        from qibocal.auto.task import Targets as QibocalTargets
+
+        adapter = TypeAdapter(Targets)
+        original = TypeAdapter(QibocalTargets)
+        self.assertEqual(adapter.json_schema(), original.json_schema())
+        for targets in ([0], ["0"], ["a"], [[0, 1]], [[0, 1, 2]], []):
+            self.assertEqual(
+                adapter.validate_python(targets), original.validate_python(targets)
+            )
+
     async def test_client_reports_do_not_render_on_execution_host(self):
         platform = CalibrationPlatform(
             **vars(create_platform("dummy")),
@@ -76,8 +124,8 @@ class ServerTests(unittest.IsolatedAsyncioTestCase):
         )
         with (
             tempfile.TemporaryDirectory() as directory,
-            patch("qibocal_mcp.server.create_calibration_platform", return_value=platform),
-            patch("qibocal_mcp.server.PROTOCOLS", {"synthetic": Protocol(acquire, fit, report, update)}),
+            patch("qibocal_mcp.runtime.create_calibration_platform", return_value=platform),
+            patch("qibocal_mcp.runtime.PROTOCOLS", {"synthetic": Protocol(acquire, fit, report, update)}),
             patch.object(go.Figure, "write_image", side_effect=AssertionError("Remote Chrome invoked")) as render,
         ):
             async with Client(create_server(
@@ -113,8 +161,8 @@ class ServerTests(unittest.IsolatedAsyncioTestCase):
 
         with (
             tempfile.TemporaryDirectory() as directory,
-            patch("qibocal_mcp.server.create_calibration_platform", return_value=platform),
-            patch("qibocal_mcp.server.PROTOCOLS", {"synthetic": protocol}),
+            patch("qibocal_mcp.runtime.create_calibration_platform", return_value=platform),
+            patch("qibocal_mcp.runtime.PROTOCOLS", {"synthetic": protocol}),
             patch.object(go.Figure, "write_image", write_image),
         ):
             server = create_server("synthetic", output=Path(directory))
@@ -214,8 +262,8 @@ class ServerTests(unittest.IsolatedAsyncioTestCase):
         )
         with (
             tempfile.TemporaryDirectory() as directory,
-            patch("qibocal_mcp.server.create_calibration_platform", return_value=platform),
-            patch("qibocal_mcp.server.PROTOCOLS", {"synthetic": Protocol(acquire)}),
+            patch("qibocal_mcp.runtime.create_calibration_platform", return_value=platform),
+            patch("qibocal_mcp.runtime.PROTOCOLS", {"synthetic": Protocol(acquire)}),
         ):
             reports = []
             for _ in range(2):
@@ -247,8 +295,8 @@ class ServerTests(unittest.IsolatedAsyncioTestCase):
         )
         with (
             tempfile.TemporaryDirectory() as directory,
-            patch("qibocal_mcp.server.create_calibration_platform", return_value=platform),
-            patch("qibocal_mcp.server.PROTOCOLS", {
+            patch("qibocal_mcp.runtime.create_calibration_platform", return_value=platform),
+            patch("qibocal_mcp.runtime.PROTOCOLS", {
                 "single": Protocol(acquire_with_defaults),
                 "pair": Protocol(acquire, two_qubit_gates=True),
             }),
