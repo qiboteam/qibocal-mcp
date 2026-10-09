@@ -28,8 +28,10 @@ GitHub Copilot subscriptions and OpenWebUI's OpenAI-compatible API;
 see :doc:`guides/model-providers` for authentication and launch commands.
 
 Alternatively, ``devenv shell`` configures Python 3.12 and syncs all extras,
-following Qibolab's Python/uv setup. Chrome must still be available for image
-export. The documentation extra and build commands are in :doc:`development`.
+following Qibolab's Python/uv setup. It also installs Chrome through Nix and
+sets ``BROWSER_PATH`` for Kaleido, so no separate ``plotly_get_chrome`` step is
+needed in that environment. The documentation extra and build commands are
+in :doc:`development`.
 
 Platform and model setup
 ------------------------

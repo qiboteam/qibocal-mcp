@@ -18,8 +18,10 @@ uv run plotly_get_chrome -y
 ```
 
 Python 3.12 or 3.13, platform definitions, hardware drivers and Chrome are
-required. `devenv shell` is an alternative Python 3.12 setup. Only the machine
-running the agent needs the agent extra and model credentials.
+required. `devenv shell` provides Python 3.12 and Nix-managed Chrome, configures
+Kaleido to use it and syncs all extras; no `plotly_get_chrome` step is needed
+inside that environment. Only the machine running the agent needs the agent
+extra and model credentials.
 
 ## Quick launch
 
