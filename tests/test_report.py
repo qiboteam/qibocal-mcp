@@ -6,6 +6,7 @@ import io
 import json
 import os
 import shlex
+import socket
 import subprocess
 import sys
 import tempfile
@@ -205,6 +206,37 @@ class ReportLaunchTests(unittest.TestCase):
         ):
             socket.return_value.__enter__.return_value.bind.side_effect = OSError("in use")
             report.run(report.ReportSettings())
+        spawn.assert_not_called()
+
+    def test_closed_server_connections_do_not_block_restart(self):
+        with socket.socket() as listener:
+            listener.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+            listener.bind(("127.0.0.1", 0))
+            listener.listen()
+            address = listener.getsockname()
+            with socket.create_connection(address) as client:
+                connection, _ = listener.accept()
+                with connection:
+                    connection.shutdown(socket.SHUT_WR)
+                    self.assertEqual(client.recv(1), b"")
+
+        process = Mock()
+        process.poll.return_value = 0
+        process.wait.return_value = 0
+        with patch.object(report.subprocess, "Popen", return_value=process) as spawn:
+            report.run(report.ReportSettings(port=address[1]))
+        spawn.assert_called_once()
+
+    def test_reuse_does_not_allow_another_active_server(self):
+        with socket.socket() as listener:
+            listener.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+            listener.bind(("127.0.0.1", 0))
+            listener.listen()
+            with (
+                patch.object(report.subprocess, "Popen") as spawn,
+                self.assertRaisesRegex(environment.DeploymentError, "Could not start"),
+            ):
+                report.run(report.ReportSettings(port=listener.getsockname()[1]))
         spawn.assert_not_called()
 
 

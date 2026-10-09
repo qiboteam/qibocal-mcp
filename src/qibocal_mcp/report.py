@@ -117,6 +117,8 @@ def run(settings: ReportSettings) -> None:
         ready.set()
     try:
         with socket.socket() as listener:
+            # Match the HTTP server's reuse policy for connections in TIME_WAIT.
+            listener.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
             listener.bind(("127.0.0.1", settings.port))
         process = subprocess.Popen(
             [launch.command, *launch.args], env=launch.env, cwd=launch.cwd,
