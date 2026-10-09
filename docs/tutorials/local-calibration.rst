@@ -17,35 +17,20 @@ and an operator-approved instrument allocation.
    platform update. This original diagram describes control flow, not measured
    hardware performance.
 
-1. Inspect and set defaults
----------------------------
+1. Confirm the local setup
+--------------------------
 
-The server and agent have independent configuration sections.
-Set the agent section for this workflow; setting ``server.platform`` alone
-does not configure the agent.
-
-.. code-block:: sh
-
-   uv run qibocal-mcp-config path
-   uv run qibocal-mcp-config show
-   uv run qibocal-mcp-config set agent.platform YOUR_PLATFORM
-   uv run qibocal-mcp-config set agent.model openai:gpt-4.1
-   uv run qibocal-mcp-config set agent.output runs
-   export QIBOLAB_PLATFORMS=/absolute/path/to/your/platforms
-   export OPENAI_API_KEY=...
-
-``show`` displays stored values, not effective defaults. Inspect any stored
-``ssh``, ``partition`` or ``slurm_arg`` settings before treating a configured
-launch as local. This tutorial uses ``--no-config`` below to make the direct
-execution mode explicit and avoid inheriting a previous cluster setup.
-For normal use, review :doc:`../guides/configuration` and omit ``--no-config``
-only once the stored defaults match your intended workflow.
+Complete the minimal setup in :doc:`../installation` and confirm your
+platform definitions, drivers, Chrome and model credentials are available.
+No persistent configuration or separate MCP client is required.
+This tutorial uses ``--no-config`` below to make direct local execution
+explicit, even if you previously stored cluster settings.
 
 2. Run a bounded objective
 --------------------------
 
-Check that the platform's target ID is actually ``0``; use
-``qibocal://context`` through your MCP client if you need to discover it first.
+Check that the platform's target ID is actually ``0`` using your site's
+platform definition. The agent reads platform context before planning.
 The following numbers are examples, not recommendations for an arbitrary
 device:
 
@@ -107,3 +92,24 @@ saves a snapshot without overwriting source platform files. Promoting that
 snapshot to your authoritative platform definition is a separate manual
 operation. See :doc:`../guides/artifacts` for file layout and
 :doc:`../guides/safety` for failure recovery and stale runs.
+
+Advanced: optional persistent defaults
+--------------------------------------
+
+For repeated sessions, store reviewed agent defaults instead of repeating
+them on the command line:
+
+.. code-block:: sh
+
+   uv run qibocal-mcp-config path
+   uv run qibocal-mcp-config show
+   uv run qibocal-mcp-config set agent.platform YOUR_PLATFORM
+   uv run qibocal-mcp-config set agent.model openai:gpt-4.1
+   uv run qibocal-mcp-config set agent.output runs
+
+``show`` displays stored values, not effective defaults. Inspect any stored
+``ssh``, ``partition`` or ``slurm_arg`` settings before treating a configured
+launch as local. The agent and standalone server have independent configuration
+sections; setting ``server.platform`` alone does not configure the agent.
+For normal use, review :doc:`../guides/configuration` and omit ``--no-config``
+only once stored defaults match your intended workflow.

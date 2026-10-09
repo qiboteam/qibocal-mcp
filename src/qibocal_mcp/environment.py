@@ -114,7 +114,7 @@ def source_payload() -> str:
         files["pyproject.toml"] = (root / "pyproject.toml").read_bytes()
         files["README.md"] = (root / "README.md").read_bytes()
     else:
-        distribution = metadata.distribution("qibocal-mcp-servers")
+        distribution = metadata.distribution("qibocal-agent")
         dependencies = [
             requirement
             for requirement in distribution.requires or []
@@ -125,12 +125,12 @@ def source_payload() -> str:
             for requirement in dependencies
         ):
             raise DeploymentError(
-                "Reinstall qibocal-mcp-servers with its pinned Git dependency "
+                "Reinstall qibocal-agent with its pinned Git dependency "
                 "before managed deployment"
             )
         manifest = (
             "[project]\n"
-            'name = "qibocal-mcp-servers"\n'
+            'name = "qibocal-agent"\n'
             f"version = {json.dumps(distribution.version)}\n"
             f"requires-python = {json.dumps(distribution.metadata['Requires-Python'])}\n"
             f"dependencies = {json.dumps(dependencies)}\n"

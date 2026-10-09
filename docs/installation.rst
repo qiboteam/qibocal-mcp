@@ -1,50 +1,62 @@
-Installation
-============
+Agent installation
+==================
 
-Requirements
-------------
+Minimal installation
+--------------------
 
-* Python 3.12 or 3.13 and ``uv`` for the checkout-based installation below.
-* Qibolab platform definitions (installed locally or supplied by a trusted
-  ``--platform-repo``) and the drivers required by your
-  instruments.
-* Chrome for Kaleido's Plotly image export.
-* For the agent: a vision-capable Pydantic AI model and its provider credentials.
-* For queued execution: SSH access, SLURM and shared paths as described in
-  :doc:`guides/networking`.
-
-Run these commands from a checkout of this repository:
+For a standard local setup, you need ``uv``, Python 3.12 or 3.13, Chrome,
+and a working Qibolab platform with its hardware drivers. Assume your site
+has already set ``QIBOLAB_PLATFORMS`` to the platform definitions.
+From a checkout of this repository:
 
 .. code-block:: sh
 
    uv sync --extra agent
-   # Skip this if Chrome is already available.
-   uv run plotly_get_chrome -y
+   export OPENAI_API_KEY=...
 
-``uv sync`` alone installs the server. Only the machine running the agent
-needs ``--extra agent`` and model credentials. The optional agent extra
-includes the OpenAI provider; install other Pydantic AI provider extras
-yourself if you select a different provider. The same extra also supports
-GitHub Copilot subscriptions and OpenWebUI's OpenAI-compatible API;
-see :doc:`guides/model-providers` for authentication and launch commands.
+Skip the export if your OpenAI credentials are already configured.
+``uv`` installs Qibocal and all required Python dependencies, including the
+agent's OpenAI provider. There is no separate MCP installation or server
+launch step. Continue directly to :doc:`getting-started`.
 
-Alternatively, ``devenv shell`` configures Python 3.12 and syncs all extras,
-following Qibolab's Python/uv setup. It also installs Chrome through Nix and
-sets ``BROWSER_PATH`` for Kaleido, so no separate ``plotly_get_chrome`` step is
-needed in that environment. The documentation extra and build commands are
-in :doc:`development`.
+Only use the sections below if the standard setup does not match your site
+or you want to customize it.
 
-Platform and model setup
-------------------------
+Advanced installation and customization
+---------------------------------------
+
+Missing prerequisites and alternative installation
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+If your platform paths or credentials are not already configured:
 
 .. code-block:: sh
 
    export QIBOLAB_PLATFORMS=/absolute/path/to/your/platforms
    export OPENAI_API_KEY=...
 
-Replace the path and supply credentials through your provider's recommended
-environment or credential settings. Do not put API keys in command objectives
-or in ``qibocal-mcp.json``. The server itself makes no model API calls.
+For another provider, use its recommended environment or credential settings.
+The same agent extra supports GitHub Copilot subscriptions and OpenWebUI's
+OpenAI-compatible API; see :doc:`guides/model-providers` for authentication
+and launch commands. Install other Pydantic AI provider extras yourself if
+you select a provider not included in the agent extra. Do not put API keys
+in command objectives or in ``qibocal-mcp.json``.
+
+If Chrome is missing, install it for Kaleido's Plotly image export:
+
+.. code-block:: sh
+
+   uv run plotly_get_chrome -y
+
+Alternatively, ``devenv shell`` configures Python 3.12 and syncs all extras,
+following Qibolab's Python/uv setup. It also installs Chrome through Nix and
+sets ``BROWSER_PATH`` for Kaleido, so no separate ``plotly_get_chrome`` step is
+needed in that environment. The documentation extra and build commands are
+in :doc:`development`. Only the machine running the agent needs the agent
+extra and model credentials; SSH server deployment is handled automatically.
+
+Platform selection and repositories
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 A platform name is required at runtime. Qibocal's test-only ``mock`` platform
 is not included in its installed package; it is not a ready-to-run hardware
@@ -58,13 +70,12 @@ environment value is left untouched. See :doc:`guides/configuration` for
 repository formats, dependency discovery and persistent defaults.
 
 Managed execution environments
-------------------------------
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 An SSH agent launch without ``--server-python`` provisions a managed environment
 named ``qibocal-mcp`` by default. Use ``--venv NAME_OR_PATH`` to choose another
-environment. Local agent launches and standalone ``qibocal-mcp`` launches manage
-an environment only when ``--venv`` is supplied; otherwise they use an existing
-interpreter.
+environment. Local agent launches manage an environment only when ``--venv``
+is supplied; otherwise they use an existing interpreter.
 
 Named environments live on the execution host under
 ``$XDG_CACHE_HOME/qibocal-mcp/envs/NAME`` or, when unset/empty,
@@ -110,14 +121,10 @@ see :doc:`guides/configuration` for the complete dependency-selection rules.
 
 ``--server-python`` selects an externally managed interpreter that must already
 contain the server. It bypasses automatic environment creation and core-server
-installation and cannot coexist with ``--venv``. On a standalone server,
-``--worker-python`` cannot coexist with ``--venv`` either. Repository/dependency
+installation and cannot coexist with ``--venv``. Repository/dependency
 options without a managed environment install into the selected existing
 interpreter, intentionally modifying it. Prefer ``--venv`` for isolation.
-For a standalone gateway with a distinct explicit ``--worker-python``, these
-dependencies are provisioned into both gateway and worker interpreters. Both
-must already contain the server; this does not install the core server into
-externally managed interpreters.
+The agent uses the server interpreter for queued workers as well.
 
 Chrome and system-level instrument drivers remain site-managed; managed
 environments do not install them. Python driver packages can be supplied with
@@ -125,7 +132,7 @@ repeatable ``--dependency REQUIREMENT``. Configure only trusted repositories
 and dependencies: package metadata and requirements may execute code.
 
 Pinned Qibocal API
-------------------
+~~~~~~~~~~~~~~~~~~
 
 Qibocal is pinned to commit
 ``87abd3350612b72e64b09db115ee0cf22886b507`` of
@@ -138,10 +145,12 @@ disabled; accepted updates call ``Executor.update(completed)`` explicitly.
 Changing the pin requires checking those APIs and the saved artifact format.
 
 Cluster installation
---------------------
+~~~~~~~~~~~~~~~~~~~~
 
 Provision a managed environment on shared storage, or install the server in an
 externally managed shared interpreter (``uv sync`` suffices for a checkout).
+An SSH agent provisions the managed environment automatically; see
+:doc:`tutorials/ssh-slurm` for the launch command and site prerequisites.
 The Python environment, working directory, cached source snapshots and
 repository clones, platform definitions and output directory must be available
 at identical absolute paths on access and compute nodes. Ensure the execution

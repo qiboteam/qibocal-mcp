@@ -9,7 +9,7 @@ gateway on an access node dispatches one SLURM job per operation.
 This follows Qibocal's
 `interactive infrastructure <https://qibo.science/qibocal/stable/tutorials/interactive.html>`_.
 
-First complete :doc:`../installation` on the appropriate hosts and confirm:
+First complete :doc:`../installation` on the machine running the agent and confirm:
 
 * Noninteractive SSH authentication works through your SSH configuration,
   including any ``ProxyJump``. Configure keys or an SSH agent beforehand.
@@ -131,8 +131,8 @@ If your site already provides a shared server interpreter, select it explicitly:
    uv run qibocal-agent --no-config \
      --model openai:gpt-4.1 --platform YOUR_PLATFORM \
      --ssh ACCESS_NODE --partition PARTITION \
-     --server-python /shared/qibocal-mcp-servers/.venv/bin/python \
-     --workdir /shared/qibocal-mcp-servers \
+     --server-python /shared/qibocal-agent/.venv/bin/python \
+     --workdir /shared/qibocal-agent \
      --platforms /shared/qibolab-platforms \
      --output /shared/calibration-runs \
      --slurm-arg=--account=YOUR_ACCOUNT --slurm-arg=--time=00:15:00 \
@@ -146,7 +146,7 @@ importability without hardware using:
 .. code-block:: sh
 
    ssh -T -o BatchMode=yes ACCESS_NODE \
-     'cd /shared/qibocal-mcp-servers && .venv/bin/python -m qibocal_mcp.server --help'
+     'cd /shared/qibocal-agent && .venv/bin/python -m qibocal_mcp.server --help'
 
 Do not combine ``--server-python`` with ``--venv``, including stored settings.
 Repository/dependency options can also be used with this alternative, but they
@@ -200,8 +200,8 @@ failed acquisitions or partially applied updates blindly. Timeout/cancellation
 and allocation release depend on SLURM/site signal handling; see
 :doc:`../guides/safety`.
 
-Other agent locations and clients
----------------------------------
+Other agent locations
+---------------------
 
 **Agent on the access node:** use the managed launch command without ``--ssh``,
 retaining ``--venv`` for managed provisioning. Unlike SSH mode, a local agent
@@ -214,23 +214,3 @@ your site's procedure, then omit ``--ssh``, ``--partition`` and ``--slurm-arg``.
 This is direct mode with one persistent hardware connection and no nested jobs.
 Use ``--no-config`` or a reviewed configuration file so stored queue settings
 do not accidentally re-enable dispatch.
-
-**Other MCP clients:** launch the queued gateway directly:
-
-.. code-block:: sh
-
-   uv run qibocal-mcp --no-config --platform YOUR_PLATFORM \
-     --partition PARTITION --venv /shared/YOUR_USER/qibocal-mcp/env \
-     --platform-repo 'https://github.com/YOUR_ORG/platforms.git#ref=COMMIT&subdirectory=platforms' \
-     --output /shared/calibration-runs
-
-Run this from the shared working directory on the access node, where the
-standalone server itself is installed; configure its source/clone cache on shared
-storage as above. It manages an environment only because ``--venv`` is supplied.
-For an externally managed gateway, omit ``--venv`` and use ``--platforms`` for
-existing platforms; ``--worker-python`` may select another shared worker
-interpreter, but cannot coexist with ``--venv``. Your client must set its own
-operation timeout; the standalone server has no ``--timeout`` option. If
-repository/dependency options are supplied with a distinct explicit
-``--worker-python``, dependencies are provisioned into both gateway and worker
-interpreters, and both must already contain the server.

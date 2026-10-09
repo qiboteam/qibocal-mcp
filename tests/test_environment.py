@@ -66,6 +66,7 @@ class EnvironmentTests(unittest.TestCase):
         source = environment.unpack_source(first)
         self.assertEqual(source, environment.unpack_source(first))
         manifest = tomllib.loads((source / "pyproject.toml").read_text())
+        self.assertEqual(manifest["project"]["name"], "qibocal-agent")
         self.assertIn(
             "qibocal @ git+https://github.com/qiboteam/qibocal@87abd3350612b72e64b09db115ee0cf22886b507",
             manifest["project"]["dependencies"],
@@ -92,10 +93,12 @@ class EnvironmentTests(unittest.TestCase):
         )
         with (
             patch.object(environment, "__file__", str(module / "environment.py")),
-            patch.object(environment.metadata, "distribution", return_value=distribution),
+            patch.object(environment.metadata, "distribution", return_value=distribution) as lookup,
         ):
             source = environment.unpack_source(environment.source_payload())
+        lookup.assert_called_once_with("qibocal-agent")
         manifest = tomllib.loads((source / "pyproject.toml").read_text())
+        self.assertEqual(manifest["project"]["name"], "qibocal-agent")
         self.assertEqual(
             manifest["project"]["dependencies"], distribution.requires[:2]
         )

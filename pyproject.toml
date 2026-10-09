@@ -1,7 +1,7 @@
 [project]
-name = "qibocal-mcp-servers"
+name = "qibocal-agent"
 version = "0.1.0"
-description = "A minimal Qibocal MCP bridge and autonomous calibration agent."
+description = "An autonomous Qibocal calibration agent with a standalone MCP server."
 readme = "README.md"
 requires-python = ">=3.12,<3.14"
 dependencies = [

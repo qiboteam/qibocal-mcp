@@ -8,7 +8,7 @@ and path semantics are detailed in :doc:`../guides/configuration`.
 Common runtime options
 ----------------------
 
-Both ``qibocal-mcp`` and ``qibocal-agent`` accept:
+Both ``qibocal-agent`` and ``qibocal-mcp`` accept:
 
 .. list-table::
    :header-rows: 1
@@ -61,31 +61,6 @@ intentionally modify the selected existing interpreter. Use ``--venv`` for
 isolation and trusted sources only. See :doc:`../guides/configuration` for
 lookup precedence, dependency discovery and cache/reconciliation semantics.
 
-qibocal-mcp
------------
-
-.. code-block:: text
-
-   qibocal-mcp [--config FILE | --no-config] [--platform NAME]
-               [--output PATH] [--platforms PATH] [--partition NAME]
-               [--venv NAME_OR_PATH] [--platform-repo REPOSITORY ...]
-               [--dependency REQUIREMENT ...]
-               [--worker-python EXECUTABLE] [--workdir PATH]
-               [--slurm-arg VALUE ...]
-
-``--worker-python`` selects the SLURM worker interpreter and defaults to the
-current Python interpreter. Direct mode does not launch workers.
-It cannot be combined with ``--venv``. With ``--venv``, server and queued
-workers use the same managed environment.
-Without ``--venv``, repository/dependency options with a distinct explicit
-``--worker-python`` provision dependencies into both the gateway and worker
-interpreters. Both must already contain the server.
-
-The command runs a single-platform stdio server or queued gateway; it takes
-no objective, model or SSH option, and has no ``--timeout`` option.
-Other clients launch it as their subprocess and configure their own timeouts.
-No model API call is made by this command.
-
 qibocal-agent
 -------------
 
@@ -137,6 +112,31 @@ bootstrap transfers the launching installation's server source and metadata
 (from a checkout or installed distribution), not configuration or model keys;
 target-host configuration is not read. Managed environments check dependencies
 and import the server before launch.
+
+qibocal-mcp
+-----------
+
+.. code-block:: text
+
+   qibocal-mcp [--config FILE | --no-config] [--platform NAME]
+               [--output PATH] [--platforms PATH] [--partition NAME]
+               [--venv NAME_OR_PATH] [--platform-repo REPOSITORY ...]
+               [--dependency REQUIREMENT ...]
+               [--worker-python EXECUTABLE] [--workdir PATH]
+               [--slurm-arg VALUE ...]
+
+``--worker-python`` selects the SLURM worker interpreter and defaults to the
+current Python interpreter. Direct mode does not launch workers.
+It cannot be combined with ``--venv``. With ``--venv``, server and queued
+workers use the same managed environment.
+Without ``--venv``, repository/dependency options with a distinct explicit
+``--worker-python`` provision dependencies into both the gateway and worker
+interpreters. Both must already contain the server.
+
+The command runs a single-platform stdio server or queued gateway; it takes
+no objective, model or SSH option, and has no ``--timeout`` option.
+Other clients launch it as their subprocess and configure their own timeouts.
+No model API call is made by this command.
 
 qibocal-mcp-config
 ------------------

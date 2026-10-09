@@ -4,9 +4,9 @@ Development and documentation builds
 Source layout
 -------------
 
-* ``src/qibocal_mcp/server.py``: direct platform server and runtime entry point.
 * ``src/qibocal_mcp/agent.py``: model instructions, local/SSH transport and loop.
 * ``src/qibocal_mcp/models.py``: native Copilot and OpenWebUI model selection.
+* ``src/qibocal_mcp/server.py``: direct platform server and runtime entry point.
 * ``src/qibocal_mcp/slurm.py``: gateway serialization, dispatch and accepted-state
   handoff.
 * ``src/qibocal_mcp/worker.py``: one internal operation per allocation, with
@@ -17,6 +17,9 @@ Source layout
 * ``tests/``: ``unittest`` coverage for configuration, transports, direct server
   behavior and queued state handoff.
 
+The distribution is named ``qibocal-agent``. The ``qibocal_mcp`` module and
+existing MCP commands, configuration paths and caches keep their names.
+Installed-source deployment reads ``qibocal-agent`` distribution metadata.
 Review :doc:`installation` before changing the pinned Qibocal API.
 Preserve stdout for MCP/worker protocols, and keep model API calls out of the
 server. Operational invariants are described in :doc:`guides/architecture`
@@ -110,9 +113,12 @@ Sphinx reads static documentation without importing project modules, connecting
 to hardware or requesting model credentials. Generated output is not source
 and should remain untracked.
 
-Pages are organized by purpose: installation/getting started, practical
-tutorials, conceptual guides and CLI/MCP reference. Add new pages to a toctree
-so readers can navigate to them.
+Basic documentation has two independent tracks: ``agent/index`` comes first,
+with agent installation, getting started and tutorials; ``mcp/index`` has
+standalone server installation and getting started. Each installation page
+puts minimal setup before advanced customization. Shared conceptual guides
+and CLI/MCP reference follow both tracks. Add new pages to a toctree so readers
+can navigate to them.
 
 Illustrations and accessibility
 -------------------------------
