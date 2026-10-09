@@ -28,6 +28,7 @@ REPORT_REQUIREMENT = (
     "qibocal-report @ git+https://github.com/qiboteam/qibocal-report.git"
     "@9ebca656a21fb926c943191a1fc86330a70e6fe9"
 )
+REPORT_READY_MARKER = "qibocal-mcp:report-listening"
 
 
 def cache_home() -> Path:
@@ -614,6 +615,23 @@ def launch_report(options: dict, report_arguments: list[str]) -> None:
     directory.mkdir(parents=True, exist_ok=True)
     python, env = provision_report(options)
     expression = "from qibocal_report.cli import main; main()"
+    if "notify_ready" in options:
+        expression = f"""
+import socket
+import threading
+import time
+
+def notify_ready():
+    while True:
+        try:
+            with socket.create_connection(("127.0.0.1", {options["notify_ready"]!r}), timeout=1):
+                break
+        except (ConnectionError, TimeoutError):
+            time.sleep(0.2)
+    print("\\n" + {REPORT_READY_MARKER!r}, flush=True)
+
+threading.Thread(target=notify_ready, daemon=True).start()
+""" + expression
     os.execvpe(
         python,
         [python, "-c", expression, "report", "server", *report_arguments],

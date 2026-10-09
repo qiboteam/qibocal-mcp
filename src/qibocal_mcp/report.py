@@ -8,15 +8,17 @@ import signal
 import socket
 import subprocess
 import sys
+import threading
 import time
 from dataclasses import dataclass, fields
 from pathlib import Path
+from typing import TextIO
 from urllib.error import HTTPError, URLError
 from urllib.request import ProxyHandler, build_opener
 
 from .config import ConfigError, parse_settings, validate_value
 from .deployment import ServerLaunch
-from .environment import DeploymentError
+from .environment import REPORT_READY_MARKER, DeploymentError
 
 
 @dataclass(frozen=True)
@@ -55,6 +57,8 @@ def launch_for(settings: ReportSettings) -> ServerLaunch:
         "application": "report",
         "options": {"venv": settings.venv},
     }
+    if settings.ssh:
+        request["options"]["notify_ready"] = settings.remote_port
     python = "python3" if settings.ssh else sys.executable
     command = [
         python, "-c", bootstrap, json.dumps(request),
@@ -85,20 +89,43 @@ def launch_for(settings: ReportSettings) -> ServerLaunch:
     )
 
 
+def relay_output(stream: TextIO, ready: threading.Event) -> None:
+    """Forward remote logs, consuming only the bootstrap's listening signal."""
+    for line in stream:
+        if line.strip() == REPORT_READY_MARKER:
+            ready.set()
+        else:
+            sys.stderr.write(line)
+            sys.stderr.flush()
+
+
 def run(settings: ReportSettings) -> None:
     """Wait for HTTP readiness, print the registration URL, and own the process."""
     launch = launch_for(settings)
     url = f"http://127.0.0.1:{settings.port}"
     process = None
+    relay = None
+    ready = threading.Event()
+    if settings.ssh is None:
+        ready.set()
     try:
         with socket.socket() as listener:
             listener.bind(("127.0.0.1", settings.port))
         process = subprocess.Popen(
             [launch.command, *launch.args], env=launch.env, cwd=launch.cwd,
-            stdout=sys.stderr, start_new_session=True,
+            stdout=subprocess.PIPE if settings.ssh else sys.stderr,
+            start_new_session=True,
+            **({"text": True} if settings.ssh else {}),
         )
+        if settings.ssh:
+            relay = threading.Thread(
+                target=relay_output, args=(process.stdout, ready), daemon=True,
+            )
+            relay.start()
         opener = build_opener(ProxyHandler({}))
         while process.poll() is None:
+            if not ready.wait(timeout=0.2):
+                continue
             try:
                 with opener.open(url + "/api/health", timeout=1) as response:
                     if response.status == 200:
@@ -108,7 +135,7 @@ def run(settings: ReportSettings) -> None:
                     f"Report server health endpoint returned HTTP {error.code}"
                 ) from error
             except (URLError, TimeoutError, ConnectionError):
-                # Installation and SSH forwarding can precede HTTP startup.
+                # Local startup and HTTP readiness can precede a health response.
                 time.sleep(0.2)
         if process.poll() is None:
             print(url, flush=True)
@@ -131,6 +158,9 @@ def run(settings: ReportSettings) -> None:
             except subprocess.TimeoutExpired:
                 os.killpg(process.pid, signal.SIGKILL)
                 process.wait()
+        if relay is not None:
+            relay.join()
+            process.stdout.close()
 
 
 def main(argv: list[str] | None = None) -> None:

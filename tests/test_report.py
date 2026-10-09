@@ -9,6 +9,8 @@ import shlex
 import subprocess
 import sys
 import tempfile
+import threading
+import types
 import unittest
 from pathlib import Path
 from unittest.mock import MagicMock, Mock, patch
@@ -54,6 +56,7 @@ class ReportLaunchTests(unittest.TestCase):
         self.assertIn("def launch_report", tokens[6])
         request = json.loads(tokens[7])
         self.assertEqual(request["options"]["venv"], "/shared/report-env")
+        self.assertEqual(request["options"]["notify_ready"], 9000)
         self.assertEqual(tokens[-5:], [
             "/shared/runs", "--host", "127.0.0.1", "--port", "9000",
         ])
@@ -96,6 +99,67 @@ class ReportLaunchTests(unittest.TestCase):
         ):
             report.run(report.ReportSettings())
         self.assertEqual(output.getvalue(), "")
+
+    def test_remote_logs_are_preserved_and_listening_signal_is_consumed(self):
+        ready = threading.Event()
+        logs = io.StringIO()
+        with contextlib.redirect_stderr(logs):
+            report.relay_output(io.StringIO(
+                "Installing report server\r\n"
+                + environment.REPORT_READY_MARKER + "\r\n"
+                + "channel 2: open failed: connect failed: Connection refused\r\n"
+            ), ready)
+        self.assertTrue(ready.is_set())
+        self.assertEqual(logs.getvalue(), (
+            "Installing report server\r\n"
+            "channel 2: open failed: connect failed: Connection refused\r\n"
+        ))
+
+    def test_remote_http_probe_waits_for_listening_signal(self):
+        process = Mock()
+        process.poll.side_effect = [None, None, None, 0]
+        process.wait.return_value = 0
+        opener = MagicMock()
+        opener.open.return_value.__enter__.return_value.status = 200
+        ready = Mock()
+        ready.wait.side_effect = [False, True]
+        with (
+            patch.object(report.socket, "socket"),
+            patch.object(report.subprocess, "Popen", return_value=process) as spawn,
+            patch.object(report, "build_opener", return_value=opener),
+            patch.object(report.threading, "Event", return_value=ready),
+            patch.object(report.threading, "Thread") as thread,
+            contextlib.redirect_stdout(io.StringIO()),
+        ):
+            report.run(report.ReportSettings(ssh="access"))
+        self.assertEqual(ready.wait.call_count, 2)
+        ready.set.assert_not_called()
+        opener.open.assert_called_once_with(
+            "http://127.0.0.1:8000/api/health", timeout=1,
+        )
+        self.assertEqual(spawn.call_args.kwargs["stdout"], subprocess.PIPE)
+        self.assertTrue(spawn.call_args.kwargs["text"])
+        thread.assert_called_once_with(
+            target=report.relay_output, args=(process.stdout, ready), daemon=True,
+        )
+        thread.return_value.start.assert_called_once_with()
+        thread.return_value.join.assert_called_once_with()
+        process.stdout.close.assert_called_once_with()
+
+    def test_remote_failure_before_listening_does_not_probe_tunnel(self):
+        process = Mock()
+        process.poll.return_value = 7
+        process.wait.return_value = 7
+        opener = Mock()
+        with (
+            patch.object(report.socket, "socket"),
+            patch.object(report.subprocess, "Popen", return_value=process),
+            patch.object(report, "build_opener", return_value=opener),
+            patch.object(report.threading, "Thread"),
+            self.assertRaisesRegex(environment.DeploymentError, "status 7"),
+        ):
+            report.run(report.ReportSettings(ssh="access"))
+        opener.open.assert_not_called()
 
     def test_interrupt_stops_the_owned_process_group(self):
         process = Mock(pid=1234)
@@ -335,6 +399,45 @@ class ReportProvisionTests(unittest.TestCase):
         self.assertEqual(arguments[-5:], [
             directory + "/runs", "--host", "127.0.0.1", "--port", "8000",
         ])
+
+    def test_remote_bootstrap_signals_only_after_port_is_listening(self):
+        with (
+            patch.object(
+                environment, "provision_report",
+                return_value=("/env/bin/python", {}),
+            ),
+            patch.object(environment.os, "execvpe") as execute,
+            tempfile.TemporaryDirectory() as directory,
+        ):
+            environment.launch_report(
+                {"venv": "reports", "notify_ready": 9000},
+                [directory, "--host", "127.0.0.1", "--port", "9000"],
+            )
+        expression = execute.call_args.args[1][2]
+        cli = types.ModuleType("qibocal_report.cli")
+        cli.main = Mock()
+        output = io.StringIO()
+        with (
+            patch.dict(sys.modules, {
+                "qibocal_report": types.ModuleType("qibocal_report"),
+                "qibocal_report.cli": cli,
+            }),
+            patch.object(threading, "Thread") as thread,
+            patch.object(report.socket, "create_connection", side_effect=[
+                ConnectionRefusedError(), TimeoutError(), MagicMock(),
+            ]) as connect,
+            patch.object(report.time, "sleep") as sleep,
+            contextlib.redirect_stdout(output),
+        ):
+            exec(expression, {})
+            self.assertEqual(output.getvalue(), "")
+            cli.main.assert_called_once_with()
+            self.assertTrue(thread.call_args.kwargs["daemon"])
+            thread.call_args.kwargs["target"]()
+        self.assertEqual(connect.call_count, 3)
+        connect.assert_called_with(("127.0.0.1", 9000), timeout=1)
+        self.assertEqual(sleep.call_count, 2)
+        self.assertEqual(output.getvalue(), "\n" + environment.REPORT_READY_MARKER + "\n")
 
 
 if __name__ == "__main__":

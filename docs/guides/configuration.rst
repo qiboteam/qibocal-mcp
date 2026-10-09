@@ -181,6 +181,8 @@ The ``report`` section accepts only:
 
 The report server binds to loopback only. SSH automatically forwards
 ``127.0.0.1:port`` locally to ``127.0.0.1:remote_port`` on the report host.
+Health checks through the tunnel begin only after the remote server signals
+that it is listening, avoiding SSH connection-refused messages during startup.
 The URL is printed after the health endpoint responds; installation and server
 logs go to stderr. The server and tunnel remain attached until Ctrl+C.
 With SLURM, serve the shared output directory on the access node, not a
