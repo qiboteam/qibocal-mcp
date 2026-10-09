@@ -2,9 +2,11 @@
 
 import argparse
 import asyncio
+import json
 import os
 import shlex
 import sys
+from pathlib import Path
 
 from fastmcp import Client
 from fastmcp.client.transports import StdioTransport
@@ -12,7 +14,8 @@ from pydantic_ai import Agent
 from pydantic_ai.exceptions import UserError
 from pydantic_ai.mcp import MCPToolset
 
-from .config import parse_settings
+from .config import add_deployment_arguments, parse_settings
+from .environment import DeploymentError, source_payload
 from .models import resolve_model
 
 
@@ -45,11 +48,30 @@ def transport_for(args: argparse.Namespace) -> StdioTransport:
         "--platform", args.platform,
         "--output", args.output,
     ]
-    if args.platforms is not None:
-        command += ["--platforms", args.platforms]
     if args.partition is not None:
         command += ["--partition", args.partition]
     command += [f"--slurm-arg={arg}" for arg in args.slurm_arg]
+    venv = getattr(args, "venv", None)
+    if args.ssh and args.server_python is None and venv is None:
+        venv = "qibocal-mcp"
+    repositories = getattr(args, "platform_repo", [])
+    dependencies = getattr(args, "dependency", [])
+    if venv is not None or repositories or dependencies:
+        options = {
+            "venv": venv,
+            "python": python,
+            "platform": args.platform,
+            "platforms": args.platforms,
+            "platform_repo": repositories,
+            "dependency": dependencies,
+        }
+        request = {"options": options}
+        if venv is not None:
+            request["source"] = source_payload()
+        bootstrap = Path(__file__).with_name("environment.py").read_text(encoding="utf-8")
+        command = [python, "-c", bootstrap, json.dumps(request), *command[3:]]
+    elif args.platforms is not None:
+        command += ["--platforms", args.platforms]
     if args.ssh:
         remote = "exec " + shlex.join(command)
         if args.workdir is not None:
@@ -65,7 +87,7 @@ def transport_for(args: argparse.Namespace) -> StdioTransport:
             keep_alive=False,
         )
     return StdioTransport(
-        command=python,
+        command=command[0],
         args=command[1:],
         # StdioTransport otherwise drops platform/driver environment settings.
         env=dict(os.environ),
@@ -114,6 +136,7 @@ def main(argv: list[str] | None = None):
     parser.add_argument("--workdir", help="Working directory on the server/compute nodes")
     parser.add_argument("--platforms", help="QIBOLAB_PLATFORMS on the server/compute nodes")
     parser.add_argument("--slurm-arg", action="append", help="Extra srun option")
+    add_deployment_arguments(parser)
     parser.add_argument(
         "--timeout", type=float,
         help="Seconds per operation, including queue wait",
@@ -121,7 +144,7 @@ def main(argv: list[str] | None = None):
     args = parse_settings(parser, "agent", argv)
     try:
         asyncio.run(run(args))
-    except UserError as error:
+    except (UserError, DeploymentError) as error:
         parser.error(str(error))
 
 

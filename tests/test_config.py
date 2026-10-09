@@ -333,3 +333,71 @@ class ConfigTests(unittest.TestCase):
                     lambda: agent.main(["--partition", "qpu", "--timeout", value, "Inspect"]),
                     "positive finite number",
                 )
+
+    def test_deployment_settings_round_trip_and_list_replacement(self):
+        self.command("set", "agent.platform", "qpu")
+        self.command("set", "agent.model", "test")
+        self.command("set", "agent.venv", "/shared/env")
+        self.command("set", "agent.platform_repo", '["git@host:repo#subdirectory=platforms"]')
+        self.command("set", "agent.dependency", '["driver>=1", "other-driver"]')
+        with patch("qibocal_mcp.agent.run", new_callable=AsyncMock) as run:
+            agent.main(["--platform-repo", "https://host/other", "--dependency", "explicit-driver", "Inspect"])
+        args = run.call_args.args[0]
+        self.assertEqual(args.venv, "/shared/env")
+        self.assertEqual(args.platform_repo, ["https://host/other"])
+        self.assertEqual(args.dependency, ["explicit-driver"])
+        self.assertEqual(
+            json.loads(self.command("get", "agent.dependency")),
+            ["driver>=1", "other-driver"],
+        )
+
+    def test_deployment_errors_are_checked_before_startup(self):
+        for key, value in (
+            ("agent.venv", "not/a/name"),
+            ("agent.platform_repo", '["repo#subdirectory=../outside"]'),
+            ("server.platform_repo", '"not an array"'),
+            ("agent.dependency", '["--target=/elsewhere"]'),
+        ):
+            with self.subTest(key=key):
+                self.assert_cli_error(lambda: self.command("set", key, value), "error:")
+        config.save_config({"agent": {
+            "platform": "qpu", "model": "test",
+            "server_python": "/existing/python",
+        }})
+        with patch("qibocal_mcp.agent.run", new_callable=AsyncMock) as run:
+            self.assert_cli_error(
+                lambda: agent.main(["--venv", "lab", "Inspect"]),
+                "cannot be combined",
+            )
+        run.assert_not_called()
+        with patch("qibocal_mcp.environment.launch") as launch:
+            self.assert_cli_error(
+                lambda: server.main(["--no-config", "--platform", "qpu", "--venv", "lab", "--worker-python", "/other/python"]),
+                "cannot be combined",
+            )
+        launch.assert_not_called()
+
+    def test_standalone_managed_server_reexec_preserves_resolved_settings(self):
+        with (
+            patch("qibocal_mcp.environment.launch") as launch,
+            patch("qibocal_mcp.server.create_server") as create,
+        ):
+            server.main([
+                "--no-config", "--platform", "qpu", "--venv", "/shared/env",
+                "--platform-repo", "git@host:repo", "--platforms", "/explicit",
+                "--partition", "quantum", "--workdir", "/shared/project",
+                "--dependency", "driver", "--slurm-arg=--account=lab",
+            ])
+        create.assert_not_called()
+        options, command, payload = launch.call_args.args
+        self.assertEqual(options["venv"], "/shared/env")
+        self.assertEqual(options["platforms"], "/explicit")
+        self.assertEqual(options["platform_repo"], ["git@host:repo"])
+        self.assertEqual(options["dependency"], ["driver"])
+        self.assertIsNone(options["worker_python"])
+        self.assertIn("--no-config", command)
+        self.assertIn("/shared/project", command)
+        self.assertIn("--slurm-arg=--account=lab", command)
+        self.assertNotIn("--platforms", command)
+        self.assertNotIn("--worker-python", command)
+        self.assertTrue(payload)

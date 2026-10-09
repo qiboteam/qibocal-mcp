@@ -21,7 +21,7 @@ from qibocal.auto.task import Completed, Targets
 from qibocal.calibration.calibration import Calibration
 from qibocal.protocols import PROTOCOLS
 
-from .config import parse_settings
+from .config import add_deployment_arguments, parse_settings
 
 
 def create_server(
@@ -238,7 +238,39 @@ def main(argv: list[str] | None = None):
     parser.add_argument("--worker-python")
     parser.add_argument("--workdir")
     parser.add_argument("--slurm-arg", action="append")
+    add_deployment_arguments(parser)
     args = parse_settings(parser, "server", argv)
+    if args.venv is not None or args.platform_repo or args.dependency:
+        from .environment import DeploymentError, launch, source_payload
+
+        command = [
+            "--no-config", "--platform", args.platform, "--output", args.output,
+        ]
+        if args.partition is not None:
+            command += [
+                "--partition", args.partition,
+                "--workdir", args.workdir,
+            ]
+            if args.venv is None:
+                command += ["--worker-python", args.worker_python]
+        command += [f"--slurm-arg={arg}" for arg in args.slurm_arg]
+        try:
+            launch(
+                {
+                    "venv": args.venv,
+                    "python": sys.executable,
+                    "platform": args.platform,
+                    "platforms": args.platforms,
+                    "platform_repo": args.platform_repo,
+                    "dependency": args.dependency,
+                    "worker_python": args.worker_python if args.partition is not None and args.venv is None else None,
+                },
+                command,
+                source_payload() if args.venv is not None else None,
+            )
+        except (DeploymentError, OSError, ValueError) as error:
+            parser.error(str(error))
+        return
     if args.platforms is not None:
         os.environ["QIBOLAB_PLATFORMS"] = args.platforms
     with redirect_stdout(sys.stderr):

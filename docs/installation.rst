@@ -4,8 +4,9 @@ Installation
 Requirements
 ------------
 
-* Python 3.12 or 3.13 and ``uv``.
-* Installed Qibolab platform definitions and the drivers required by your
+* Python 3.12 or 3.13 and ``uv`` for the checkout-based installation below.
+* Qibolab platform definitions (installed locally or supplied by a trusted
+  ``--platform-repo``) and the drivers required by your
   instruments.
 * Chrome for Kaleido's Plotly image export.
 * For the agent: a vision-capable Pydantic AI model and its provider credentials.
@@ -50,8 +51,78 @@ is not included in its installed package; it is not a ready-to-run hardware
 substitute. Use the qubit IDs discovered from your own platform.
 
 ``--platforms`` can supply ``QIBOLAB_PLATFORMS`` on the execution host.
-Leaving it unset preserves that host's existing environment value.
-See :doc:`guides/configuration` for persistent defaults.
+Repository roots supplied by repeatable ``--platform-repo`` are added after
+explicit ``--platforms`` paths. Without explicit paths, the execution host's
+inherited ``QIBOLAB_PLATFORMS`` follows those roots. With neither option, its
+environment value is left untouched. See :doc:`guides/configuration` for
+repository formats, dependency discovery and persistent defaults.
+
+Managed execution environments
+------------------------------
+
+An SSH agent launch without ``--server-python`` provisions a managed environment
+named ``qibocal-mcp`` by default. Use ``--venv NAME_OR_PATH`` to choose another
+environment. Local agent launches and standalone ``qibocal-mcp`` launches manage
+an environment only when ``--venv`` is supplied; otherwise they use an existing
+interpreter.
+
+Named environments live on the execution host under
+``$XDG_CACHE_HOME/qibocal-mcp/envs/NAME`` or, when unset/empty,
+``~/.cache/qibocal-mcp/envs/NAME``. Absolute paths, ``./`` and ``../`` paths are
+resolved on that host; ``--venv`` also expands ``~`` there, including remotely.
+These environments are separate from Qibocal notebook environments:
+``qibocal/envs`` is not used or modified.
+Managed deployment requires POSIX. An existing environment must contain
+``pyvenv.cfg`` and executable ``bin/python``; conda/system interpreters should
+be selected with the agent's ``--server-python`` instead.
+
+For SSH provisioning, the remote host needs ``python3`` version 3.12 or 3.13,
+``git``, and an installer/bootstrap route: Python's ``pip``/``ensurepip``,
+``uv``, or external ``pip>=22.3``. A standard-library bootstrap transfers the
+launching installation's server package source and package metadata over SSH,
+using the checkout when available or installed distribution metadata otherwise,
+not user configuration or model keys. It installs the server dependencies and
+pinned Qibocal in the environment. No remote checkout, preinstalled ``qibocal-mcp``
+or agent extra is required. A wheel-installed agent is supported: the bootstrap
+reconstructs minimal installation metadata from the distribution's declared
+requirements, retaining the Qibocal pin. Source snapshots and repository clones
+are cached on the execution host; provisioning messages go to stderr, preserving MCP
+stdout. The agent resolves its model provider before deployment or hardware
+access.
+
+Environments are reused. Successful dependency state is fingerprinted, including
+nested local ``-r``/``-c`` files, root packaging metadata and repository Git
+``HEAD``; source, dependency or requirements changes reconcile installation.
+All package metadata, dependency specifications and requirements are installed
+in one resolver request. Managed environments run an installer dependency check
+and import the server before launch. Installation is additive, not an exact
+sync: removing a configured dependency does not
+uninstall it. Errors stop startup rather than silently continuing. Existing
+broken or custom environments are never automatically deleted or recreated.
+The Qibocal pin from the source ``pyproject.toml`` or installed distribution
+metadata is honored in managed environments; incompatible dependencies produce
+installer resolver errors.
+Its installed Git commit is verified, including when another source reports
+the same package version. Package-state changes and environment-expanded local
+requirements also trigger reconciliation. Local project references and includes
+are rebased relative to their original requirements file in cached copies;
+see :doc:`guides/configuration` for the complete dependency-selection rules.
+
+``--server-python`` selects an externally managed interpreter that must already
+contain the server. It bypasses automatic environment creation and core-server
+installation and cannot coexist with ``--venv``. On a standalone server,
+``--worker-python`` cannot coexist with ``--venv`` either. Repository/dependency
+options without a managed environment install into the selected existing
+interpreter, intentionally modifying it. Prefer ``--venv`` for isolation.
+For a standalone gateway with a distinct explicit ``--worker-python``, these
+dependencies are provisioned into both gateway and worker interpreters. Both
+must already contain the server; this does not install the core server into
+externally managed interpreters.
+
+Chrome and system-level instrument drivers remain site-managed; managed
+environments do not install them. Python driver packages can be supplied with
+repeatable ``--dependency REQUIREMENT``. Configure only trusted repositories
+and dependencies: package metadata and requirements may execute code.
 
 Pinned Qibocal API
 ------------------
@@ -59,6 +130,8 @@ Pinned Qibocal API
 Qibocal is pinned to commit
 ``87abd3350612b72e64b09db115ee0cf22886b507`` of
 `qiboteam/qibocal#1716 <https://github.com/qiboteam/qibocal/pull/1716>`_.
+The pin is a PEP 508 direct Git requirement in ``project.dependencies``, not a
+uv-only source override, so pip and built distributions honor the same commit.
 This project uses that commit's API, not the PR description's older examples.
 Protocol execution calls ``Executor.__call__()`` with automatic fitted updates
 disabled; accepted updates call ``Executor.update(completed)`` explicitly.
@@ -67,8 +140,13 @@ Changing the pin requires checking those APIs and the saved artifact format.
 Cluster installation
 --------------------
 
-Install the server on the access and compute nodes (``uv sync`` suffices).
-The server Python environment, project working directory, platform definitions
-and output directory must be available at the same paths on both node types.
+Provision a managed environment on shared storage, or install the server in an
+externally managed shared interpreter (``uv sync`` suffices for a checkout).
+The Python environment, working directory, cached source snapshots and
+repository clones, platform definitions and output directory must be available
+at identical absolute paths on access and compute nodes. Ensure the execution
+host's cache location is also shared; selecting a shared ``--venv`` alone is
+not sufficient if its cache remains node-local. There is no automatic
+node-local staging or compute-node provisioning.
 Chrome and instrument drivers must be available on compute nodes, where
 reports and acquisitions actually run.

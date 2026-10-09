@@ -1,6 +1,7 @@
 """Check launch commands and SSH quoting without opening a network connection."""
 
 import argparse
+import json
 import os
 import shlex
 import sys
@@ -65,6 +66,42 @@ class TransportTests(unittest.TestCase):
         )
         self.assertEqual(transport.cwd, "relative/project")
         self.assertNotIn("--workdir", transport.args)
+
+    def test_ssh_defaults_to_managed_environment(self):
+        transport = transport_for(self.options(ssh="access-node", platforms="/explicit"))
+        tokens = shlex.split(transport.args[-1])
+        self.assertEqual(tokens[:3], ["exec", "python3", "-c"])
+        request = json.loads(tokens[4])
+        self.assertEqual(request["options"]["venv"], "qibocal-mcp")
+        self.assertEqual(request["options"]["platforms"], "/explicit")
+        self.assertIn("source", request)
+        self.assertIn("--no-config", tokens[5:])
+        # The bootstrap sets the combined environment; the server must not replace it.
+        self.assertNotIn("--platforms", tokens[5:])
+
+    def test_local_managed_environment_and_dependency_options(self):
+        transport = transport_for(self.options(
+            venv="lab", platform_repo=["git@host:repo#subdirectory=platforms"],
+            dependency=["driver>=1"], workdir="relative/project",
+        ))
+        self.assertEqual(transport.command, sys.executable)
+        self.assertEqual(transport.args[0], "-c")
+        request = json.loads(transport.args[2])
+        self.assertEqual(request["options"]["venv"], "lab")
+        self.assertEqual(request["options"]["platform_repo"], ["git@host:repo#subdirectory=platforms"])
+        self.assertEqual(request["options"]["dependency"], ["driver>=1"])
+        self.assertEqual(transport.cwd, "relative/project")
+
+    def test_explicit_interpreter_provisions_repositories_without_core_install(self):
+        transport = transport_for(self.options(
+            ssh="access-node", server_python="/existing/python",
+            platform_repo=["git@host:repo"], dependency=["driver"],
+        ))
+        tokens = shlex.split(transport.args[-1])
+        request = json.loads(tokens[4])
+        self.assertIsNone(request["options"]["venv"])
+        self.assertNotIn("source", request)
+        self.assertEqual(request["options"]["python"], "/existing/python")
 
 
 class AgentProviderTests(unittest.IsolatedAsyncioTestCase):

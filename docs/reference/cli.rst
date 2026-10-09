@@ -25,8 +25,19 @@ Both ``qibocal-mcp`` and ``qibocal-agent`` accept:
    * - ``--output PATH``
      - Output directory; defaults to ``runs``.
    * - ``--platforms PATH``
-     - Set ``QIBOLAB_PLATFORMS`` on the execution host; unset preserves its
-       environment value.
+     - Explicit ``QIBOLAB_PLATFORMS`` path list, searched before managed
+       repositories; when unset, inherited host paths follow repository roots.
+   * - ``--venv NAME_OR_PATH``
+     - Managed environment on the execution host. Unset for local/standalone
+       execution; SSH agents default to ``qibocal-mcp`` without an explicit
+       server interpreter.
+   * - ``--platform-repo REPOSITORY``
+     - Repeatable trusted repository URL, Git SSH source or deployment-host
+       local source, optionally ``#ref=REF&subdirectory=PATH``. Replaces the
+       configured list; roots are searched in argument order.
+   * - ``--dependency REQUIREMENT``
+     - Repeatable additional pip requirement specification; replaces the
+       configured list. Resolves together with repository dependency sources.
    * - ``--partition NAME``
      - Dispatch each operation through ``srun``; unset means direct mode.
    * - ``--workdir PATH``
@@ -39,6 +50,17 @@ Both ``qibocal-mcp`` and ``qibocal-agent`` accept:
 Use ``--slurm-arg=--account=ACCOUNT`` for dashed values. Do not redirect
 stdio, change task count or detach jobs through extra scheduling options.
 
+``--venv`` accepts a name, absolute path or ``./``/``../`` path and expands
+``~`` on the execution host. Named environments use that host's
+``$XDG_CACHE_HOME/qibocal-mcp/envs`` or ``~/.cache/qibocal-mcp/envs``.
+Other existing path options remain literal. Repository fragments must have
+URL-encoded values as needed; quote arguments containing ``&``.
+Cached clones are reused without automatic pull/fetch/reset; pin a commit for
+reproducibility. Without a managed environment, repository/dependency options
+intentionally modify the selected existing interpreter. Use ``--venv`` for
+isolation and trusted sources only. See :doc:`../guides/configuration` for
+lookup precedence, dependency discovery and cache/reconciliation semantics.
+
 qibocal-mcp
 -----------
 
@@ -46,11 +68,18 @@ qibocal-mcp
 
    qibocal-mcp [--config FILE | --no-config] [--platform NAME]
                [--output PATH] [--platforms PATH] [--partition NAME]
+               [--venv NAME_OR_PATH] [--platform-repo REPOSITORY ...]
+               [--dependency REQUIREMENT ...]
                [--worker-python EXECUTABLE] [--workdir PATH]
                [--slurm-arg VALUE ...]
 
 ``--worker-python`` selects the SLURM worker interpreter and defaults to the
 current Python interpreter. Direct mode does not launch workers.
+It cannot be combined with ``--venv``. With ``--venv``, server and queued
+workers use the same managed environment.
+Without ``--venv``, repository/dependency options with a distinct explicit
+``--worker-python`` provision dependencies into both the gateway and worker
+interpreters. Both must already contain the server.
 
 The command runs a single-platform stdio server or queued gateway; it takes
 no objective, model or SSH option, and has no ``--timeout`` option.
@@ -65,6 +94,8 @@ qibocal-agent
    qibocal-agent [--config FILE | --no-config] [--model MODEL]
                  [--model-base-url URL]
                  [--platform NAME] [--output PATH] [--platforms PATH]
+                 [--venv NAME_OR_PATH] [--platform-repo REPOSITORY ...]
+                 [--dependency REQUIREMENT ...]
                  [--ssh HOST] [--partition NAME]
                  [--server-python EXECUTABLE] [--workdir PATH]
                  [--slurm-arg VALUE ...] [--timeout SECONDS] OBJECTIVE
@@ -86,8 +117,11 @@ qibocal-agent
    * - ``--ssh HOST``
      - SSH host/alias for the access node. Unset launches locally.
    * - ``--server-python EXECUTABLE``
-     - Server interpreter. If unset, the current interpreter locally or
-       ``python3`` with SSH. Remote paths are interpreted remotely.
+     - Externally managed server interpreter, already containing the server.
+       Bypasses automatic environment/core-server installation; cannot coexist
+       with ``--venv``. If unset, uses the current interpreter locally unless
+       ``--venv`` is supplied, or a managed environment with SSH. Remote paths
+       are interpreted remotely.
    * - ``--timeout SECONDS``
      - Positive finite number, default 3600. Per-operation timeout including
        queue wait; not an entire-session budget.
@@ -98,6 +132,11 @@ qibocal-agent
 The agent owns one server subprocess and supplies resolved settings with
 ``--no-config``. It has no ``--worker-python`` option; queued workers use the
 server interpreter. Model credentials remain in environment/provider settings.
+The provider is resolved before deployment or hardware access. SSH managed
+bootstrap transfers the launching installation's server source and metadata
+(from a checkout or installed distribution), not configuration or model keys;
+target-host configuration is not read. Managed environments check dependencies
+and import the server before launch.
 
 qibocal-mcp-config
 ------------------
@@ -119,16 +158,23 @@ directories when needed. ``unset`` errors on missing settings and removes
 empty sections.
 
 Values for string settings are literal, not JSON-quoted. Use a JSON number for
-``timeout`` and a JSON array for ``slurm_arg``:
+``timeout`` and JSON arrays for ``slurm_arg``, ``platform_repo`` and
+``dependency``:
 
 .. code-block:: sh
 
    uv run qibocal-mcp-config set server.platform YOUR_PLATFORM
    uv run qibocal-mcp-config set agent.platform YOUR_PLATFORM
    uv run qibocal-mcp-config set agent.model openai:gpt-4.1
+   uv run qibocal-mcp-config set agent.venv /shared/qibocal-mcp/env
+   uv run qibocal-mcp-config set agent.platform_repo '["https://github.com/YOUR_ORG/platforms.git#ref=COMMIT"]'
+   uv run qibocal-mcp-config set agent.dependency '["YOUR_DRIVER_PACKAGE==VERSION"]'
    uv run qibocal-mcp-config set agent.slurm_arg '["--account=quantum", "--time=00:15:00"]'
 
 Set ``agent.partition`` before using that scheduling list at runtime.
+``get`` returns these lists as JSON; ``unset`` restores their empty-list defaults
+(or the unset default for ``venv``), subject to CLI overrides and the SSH managed
+environment default.
 The utility has no ``--no-config``, profile or clean command. Full key lists,
 file-selection rules and error behavior are in
 :doc:`../guides/configuration`.

@@ -7,7 +7,7 @@ requires-python = ">=3.12,<3.14"
 dependencies = [
     "fastmcp>=3.0,<4",
     "kaleido>=1.0,<2",
-    "qibocal",
+    "qibocal @ git+https://github.com/qiboteam/qibocal@87abd3350612b72e64b09db115ee0cf22886b507",
 ]
 
 [project.optional-dependencies]
@@ -18,9 +18,6 @@ docs = ["sphinx>=8,<9"]
 qibocal-mcp = "qibocal_mcp.server:main"
 qibocal-agent = "qibocal_mcp.agent:main"
 qibocal-mcp-config = "qibocal_mcp.config:main"
-
-[tool.uv.sources]
-qibocal = { git = "https://github.com/qiboteam/qibocal", rev = "87abd3350612b72e64b09db115ee0cf22886b507" }
 
 [build-system]
 requires = ["uv_build>=0.12,<0.13"]

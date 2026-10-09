@@ -19,6 +19,9 @@ COMMON_FIELDS = {
     "partition": str,
     "workdir": str,
     "slurm_arg": list,
+    "venv": str,
+    "platform_repo": list,
+    "dependency": list,
 }
 FIELDS = {
     "server": {**COMMON_FIELDS, "worker_python": str},
@@ -75,6 +78,23 @@ def validate_value(key: str, value: object) -> None:
         or not math.isfinite(value)
     ):
         raise ConfigError(f"{key} must be a positive finite number")
+    if key.endswith(".venv"):
+        from .environment import DeploymentError, environment_path
+
+        try:
+            environment_path(value)
+        except DeploymentError as error:
+            raise ConfigError(f"{key}: {error}") from error
+    elif key.endswith(".platform_repo"):
+        from .environment import DeploymentError, repository_spec
+
+        for item in value:
+            try:
+                repository_spec(item)
+            except DeploymentError as error:
+                raise ConfigError(f"{key}: {error}") from error
+    elif key.endswith(".dependency") and any(item.startswith("-") for item in value):
+        raise ConfigError(f"{key} must contain requirements, not installer options")
 
 
 def validate_config(data: object) -> None:
@@ -155,6 +175,9 @@ def parse_settings(
             "partition": None,
             "workdir": None,
             "slurm_arg": [],
+            "venv": None,
+            "platform_repo": [],
+            "dependency": [],
         }
         if section == "server":
             defaults.update(worker_python=sys.executable, workdir=str(Path.cwd()))
@@ -172,9 +195,27 @@ def parse_settings(
                 parser.error(f"--{name} is required (or set {section}.{name})")
         if values["slurm_arg"] and values["partition"] is None:
             parser.error("--slurm-arg requires --partition")
+        interpreter = "server_python" if section == "agent" else "worker_python"
+        if values["venv"] is not None and (
+            interpreter in data.get(section, {}) or interpreter in vars(args)
+        ):
+            parser.error(f"--venv cannot be combined with --{interpreter.replace('_', '-')}")
     except ConfigError as error:
         parser.error(str(error))
     return argparse.Namespace(**values)
+
+
+def add_deployment_arguments(parser: argparse.ArgumentParser) -> None:
+    """Keep deployment options identical for the server and the agent."""
+    parser.add_argument("--venv", help="Managed environment name or path on the execution host")
+    parser.add_argument(
+        "--platform-repo", action="append",
+        help="Git source; optional #ref=REV&subdirectory=PATH (repeatable)",
+    )
+    parser.add_argument(
+        "--dependency", action="append",
+        help="Additional Python requirement on the execution host (repeatable)",
+    )
 
 
 def main(argv: list[str] | None = None) -> None:

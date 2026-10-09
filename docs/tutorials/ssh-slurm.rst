@@ -13,8 +13,15 @@ First complete :doc:`../installation` on the appropriate hosts and confirm:
 
 * Noninteractive SSH authentication works through your SSH configuration,
   including any ``ProxyJump``. Configure keys or an SSH agent beforehand.
-* The Python environment, working directory, platforms and output storage
-  are accessible at identical absolute paths on access and compute nodes.
+* The managed Python environment, working directory, cached source snapshots
+  and repository clones, platforms and output storage are accessible at
+  identical absolute paths on access and compute nodes. Configure the access
+  node's noninteractive ``XDG_CACHE_HOME`` to shared storage, for example
+  ``/shared/YOUR_USER/cache``; choosing a shared ``--venv`` alone does not move
+  the source/clone cache.
+* The access node has ``python3`` 3.12/3.13, Git and ``pip``/``ensurepip``,
+  ``uv`` or external ``pip>=22.3``. It needs no checkout or preinstalled server.
+  Clone/package-index authentication and network access work on that node.
 * Compute nodes can reach the instruments, and have Chrome and drivers.
 * Your partition, account, resource requests and hardware limits are approved.
 
@@ -33,17 +40,23 @@ Replace the placeholders and run:
 .. code-block:: sh
 
    ssh -T -o BatchMode=yes ACCESS_NODE \
-     'cd /shared/qibocal-mcp-servers && .venv/bin/python -m qibocal_mcp.server --help'
+     'python3 --version && git --version && test -d /shared/calibration-work && test -w /shared/YOUR_USER/cache'
 
-This checks login, the working directory and server importability. It does not
-prove compute-node path availability, instrument access or Chrome availability;
-verify those through your site's normal allocation procedure.
+Create the shared working/cache directories through your site's normal setup
+first. This checks login, bootstrap tools and shared directory availability.
+Also confirm one of the installer routes above is available. It does not prove
+compute-node path availability, instrument access or Chrome availability;
+verify those through your site's normal allocation procedure. There is no
+automatic compute-node provisioning or node-local staging.
 
 Set driver environment variables on the access node using your site's supported
-noninteractive setup. ``--platforms`` explicitly supplies remote
-``QIBOLAB_PLATFORMS``; other driver settings are exported from the gateway
-environment to SLURM. The laptop's environment and model credentials are
-not forwarded over SSH. See :doc:`../guides/networking`.
+noninteractive setup, including ``XDG_CACHE_HOME`` if the default cache is not
+shared. Repository roots supply remote ``QIBOLAB_PLATFORMS``; optional
+``--platforms`` paths precede them. Without explicit paths, inherited remote
+platform paths follow them. Other driver settings are exported from the gateway
+environment to SLURM. The laptop's environment, model credentials and
+``SSH_AUTH_SOCK`` are not automatically forwarded for remote Git authentication.
+See :doc:`../guides/networking`.
 
 2. Launch the laptop agent
 --------------------------
@@ -54,9 +67,10 @@ not forwarded over SSH. See :doc:`../guides/networking`.
    uv run qibocal-agent --no-config \
      --model openai:gpt-4.1 --platform YOUR_PLATFORM \
      --ssh ACCESS_NODE --partition PARTITION \
-     --server-python /shared/qibocal-mcp-servers/.venv/bin/python \
-     --workdir /shared/qibocal-mcp-servers \
-     --platforms /shared/qibolab-platforms \
+     --venv /shared/YOUR_USER/qibocal-mcp/env \
+     --workdir /shared/calibration-work \
+     --platform-repo 'https://github.com/YOUR_ORG/platforms.git#ref=COMMIT&subdirectory=platforms' \
+     --dependency 'YOUR_DRIVER_PACKAGE==VERSION' \
      --output /shared/calibration-runs \
      --slurm-arg=--account=YOUR_ACCOUNT --slurm-arg=--time=00:15:00 \
      --timeout 7200 \
@@ -69,6 +83,33 @@ not forwarded over SSH. See :doc:`../guides/networking`.
 
 Replace the target and limits before executing; conditional wording is not a
 safety check. ``--no-config`` makes this example independent of stored defaults.
+Replace the repository, commit, subdirectory and Python driver requirement with
+trusted site-specific values, or omit the subdirectory/dependency when unneeded.
+You can repeat ``--platform-repo`` for additional platform roots in lookup order,
+and ``--dependency`` for additional requirement specifications. Quote ``&`` in
+repository fragments and URL-encode fragment values as needed.
+
+The agent resolves the model provider first, then transfers the launching
+installation's server source and metadata (from this checkout or installed
+distribution metadata) over SSH and installs the server dependencies and
+pinned Qibocal in the managed environment. It checks dependencies and imports
+the server before launch. Configuration and model keys are not
+transferred. Without ``--venv`` an SSH launch still manages an environment named
+``qibocal-mcp``, but its default cache/env location must be shared for SLURM.
+An existing environment is reused, not automatically deleted or recreated;
+installation errors stop startup. Dependencies are additive: removing a
+configured requirement does not uninstall it.
+
+Clones are reused without automatic pull/fetch/reset on later launches. Pin
+an actual commit to keep hardware definitions reproducible; choose a new ref
+or explicitly review/maintain the cache to refresh. Requirements are discovered
+at every checkout/subdirectory root and only the first matching selected platform
+in the effective search paths. Local project references and includes are rebased
+relative to their original requirements file. Packaged repository roots are
+installed editable. All dependency
+sources resolve together, with conflicts reported as errors; see
+:doc:`../guides/configuration`. Chrome and system drivers remain site-managed.
+
 ``--timeout`` is a per-operation limit including queue wait, not a limit on the
 entire objective. ``--slurm-arg=--time=00:15:00`` sets a scheduler limit rather
 than replacing the MCP timeout.
@@ -79,6 +120,38 @@ allocation. An accepted update is another job that restores the saved execution,
 applies its results and saves a snapshot. Later jobs use the latest accepted
 Qibolab parameters *and* Qibocal calibration, not the most recent rejected fit.
 See :doc:`../guides/architecture` for the lifecycle.
+
+Externally managed server alternative
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+If your site already provides a shared server interpreter, select it explicitly:
+
+.. code-block:: sh
+
+   uv run qibocal-agent --no-config \
+     --model openai:gpt-4.1 --platform YOUR_PLATFORM \
+     --ssh ACCESS_NODE --partition PARTITION \
+     --server-python /shared/qibocal-mcp-servers/.venv/bin/python \
+     --workdir /shared/qibocal-mcp-servers \
+     --platforms /shared/qibolab-platforms \
+     --output /shared/calibration-runs \
+     --slurm-arg=--account=YOUR_ACCOUNT --slurm-arg=--time=00:15:00 \
+     --timeout 7200 "YOUR_BOUNDED_OBJECTIVE"
+
+Replace the objective with reviewed hardware limits and a stopping budget.
+``--server-python`` bypasses automatic environment/core-server installation;
+that interpreter must already contain the server and its dependencies. Check
+importability without hardware using:
+
+.. code-block:: sh
+
+   ssh -T -o BatchMode=yes ACCESS_NODE \
+     'cd /shared/qibocal-mcp-servers && .venv/bin/python -m qibocal_mcp.server --help'
+
+Do not combine ``--server-python`` with ``--venv``, including stored settings.
+Repository/dependency options can also be used with this alternative, but they
+intentionally install into the selected existing interpreter. Use managed
+``--venv`` isolation unless that modification is approved.
 
 3. Optional persistent cluster defaults
 ---------------------------------------
@@ -91,9 +164,10 @@ Store reviewed agent settings rather than repeating paths every time:
    uv run qibocal-mcp-config set agent.model openai:gpt-4.1
    uv run qibocal-mcp-config set agent.ssh ACCESS_NODE
    uv run qibocal-mcp-config set agent.partition PARTITION
-   uv run qibocal-mcp-config set agent.server_python /shared/qibocal-mcp-servers/.venv/bin/python
-   uv run qibocal-mcp-config set agent.workdir /shared/qibocal-mcp-servers
-   uv run qibocal-mcp-config set agent.platforms /shared/qibolab-platforms
+   uv run qibocal-mcp-config set agent.venv /shared/YOUR_USER/qibocal-mcp/env
+   uv run qibocal-mcp-config set agent.workdir /shared/calibration-work
+   uv run qibocal-mcp-config set agent.platform_repo '["https://github.com/YOUR_ORG/platforms.git#ref=COMMIT&subdirectory=platforms"]'
+   uv run qibocal-mcp-config set agent.dependency '["YOUR_DRIVER_PACKAGE==VERSION"]'
    uv run qibocal-mcp-config set agent.output /shared/calibration-runs
    uv run qibocal-mcp-config set agent.timeout 7200
    uv run qibocal-mcp-config set agent.slurm_arg '["--account=quantum", "--time=00:15:00"]'
@@ -104,6 +178,10 @@ the file, a normal ``uv run qibocal-agent "YOUR_BOUNDED_OBJECTIVE"`` uses those
 defaults. Explicit CLI settings override the agent section. The agent passes
 resolved settings and ``--no-config`` to its server, so configuration stored on
 the access node cannot silently inject another platform or partition.
+Unset an existing ``agent.server_python`` before storing ``agent.venv``.
+CLI repository/dependency lists replace the entire corresponding configured
+list. ``get`` returns arrays as JSON, and ``unset`` restores built-in defaults;
+see :doc:`../guides/configuration`.
 
 4. Inspect results and retain cluster artifacts
 -----------------------------------------------
@@ -125,9 +203,11 @@ and allocation release depend on SLURM/site signal handling; see
 Other agent locations and clients
 ---------------------------------
 
-**Agent on the access node:** use the launch command without ``--ssh``.
-Omit ``--server-python`` if the agent and workers use the same shared Python
-environment. Install the agent extra and provide credentials on that node.
+**Agent on the access node:** use the managed launch command without ``--ssh``,
+retaining ``--venv`` for managed provisioning. Unlike SSH mode, a local agent
+does not automatically manage an environment when ``--venv`` is omitted; it
+uses its current interpreter unless ``--server-python`` selects another.
+Install the agent extra and provide credentials on that node.
 
 **Agent on an allocated compute node:** first acquire an allocation through
 your site's procedure, then omit ``--ssh``, ``--partition`` and ``--slurm-arg``.
@@ -140,10 +220,17 @@ do not accidentally re-enable dispatch.
 .. code-block:: sh
 
    uv run qibocal-mcp --no-config --platform YOUR_PLATFORM \
-     --partition PARTITION --platforms /shared/qibolab-platforms \
+     --partition PARTITION --venv /shared/YOUR_USER/qibocal-mcp/env \
+     --platform-repo 'https://github.com/YOUR_ORG/platforms.git#ref=COMMIT&subdirectory=platforms' \
      --output /shared/calibration-runs
 
-Run this on the access node, with the shared repository as the working directory.
-Use ``--worker-python`` if workers need a different shared interpreter. Your
-client must set its own operation timeout; the standalone server has no
-``--timeout`` option.
+Run this from the shared working directory on the access node, where the
+standalone server itself is installed; configure its source/clone cache on shared
+storage as above. It manages an environment only because ``--venv`` is supplied.
+For an externally managed gateway, omit ``--venv`` and use ``--platforms`` for
+existing platforms; ``--worker-python`` may select another shared worker
+interpreter, but cannot coexist with ``--venv``. Your client must set its own
+operation timeout; the standalone server has no ``--timeout`` option. If
+repository/dependency options are supplied with a distinct explicit
+``--worker-python``, dependencies are provisioned into both gateway and worker
+interpreters, and both must already contain the server.

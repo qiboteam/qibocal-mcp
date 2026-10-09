@@ -52,7 +52,18 @@ must be supplied by configuration or CLI at runtime.
      - ``runs``. Artifact output directory.
    * - ``platforms``
      - Nonempty string
-     - Unset; leaves ``QIBOLAB_PLATFORMS`` in the execution environment alone.
+     - Unset; inherits execution-host ``QIBOLAB_PLATFORMS`` after any managed
+       repository roots. Explicit path lists take precedence over those roots.
+   * - ``venv``
+     - Nonempty string
+     - Unset; managed environment name or path. SSH agents without explicit
+       ``server_python`` use the managed name ``qibocal-mcp`` by default.
+   * - ``platform_repo``
+     - JSON array of nonempty strings
+     - ``[]``. Trusted platform repositories, in lookup order.
+   * - ``dependency``
+     - JSON array of nonempty strings
+     - ``[]``. Additional Python requirement specifications.
    * - ``partition``
      - Nonempty string
      - Unset; direct execution rather than SLURM dispatch.
@@ -88,8 +99,9 @@ must be supplied by configuration or CLI at runtime.
      - Unset; SSH host/alias when provided.
    * - ``agent.server_python``
      - Nonempty string
-     - Unset; resolves to the current interpreter locally or ``python3``
-       with SSH.
+     - Unset; current interpreter locally, managed environment with SSH.
+       Explicit values select a preinstalled server and bypass automatic
+       environment/core-server installation.
    * - ``agent.timeout``
      - Positive finite JSON number
      - ``3600`` seconds per operation, including queue waiting.
@@ -111,8 +123,9 @@ The order is **explicit CLI > command's own section > built-in default**.
 There is no server-to-agent or agent-to-server inheritance. For example,
 ``server.platform`` does not satisfy the agent's required platform.
 
-An explicit ``--slurm-arg`` list replaces the configured list rather than
-appending to it. Repeated CLI occurrences form the replacement list:
+An explicit ``--slurm-arg``, ``--platform-repo`` or ``--dependency`` list
+replaces its entire configured list rather than appending to it. Repeated CLI
+occurrences form the replacement list:
 
 .. code-block:: sh
 
@@ -128,19 +141,128 @@ The agent launches its server with ``--no-config`` and resolved settings.
 Target-host server configuration cannot inject settings. Internal SLURM
 workers do not read user configuration.
 
-Paths are literal
------------------
+Execution-host paths and environment selection
+----------------------------------------------
 
-Path settings are not expanded or rebased relative to the JSON file.
-In particular, ``~`` and environment-variable strings in stored values are
-not expanded. Relative ``output`` and ``workdir`` paths use the execution
-host's current working directory; remote paths are interpreted remotely.
+Existing path settings are literal, not expanded or rebased relative to the
+JSON file. In particular, ``~`` and environment-variable strings in ``output``,
+``workdir``, ``platforms`` and executable settings are not expanded.
+Relative ``output`` and ``workdir`` paths use the execution host's current
+working directory; remote paths are interpreted remotely.
 The agent's working-directory override determines where its server is launched.
 The standalone server's ``workdir`` controls its SLURM worker directory,
 not a directory change for direct execution.
 
 Prefer absolute shared paths for SSH/SLURM. A Python executable setting should
 name an executable, not a shell command such as ``uv run python``.
+
+``venv`` is the exception: it expands ``~`` on the execution host. A simple
+name selects ``$XDG_CACHE_HOME/qibocal-mcp/envs/NAME``, falling back to
+``~/.cache/qibocal-mcp/envs/NAME`` for unset/empty ``XDG_CACHE_HOME``. An absolute
+path or a path starting ``./`` or ``../`` selects that host's explicit location.
+It does not access Qibocal notebook environments under ``qibocal/envs``.
+
+SSH agents without explicit ``server_python`` provision the named
+``qibocal-mcp`` environment even when ``venv`` is unset. Local agents and
+standalone servers manage environments only with an effective ``venv``.
+``agent.server_python`` and ``agent.venv`` are mutually exclusive, as are
+``server.worker_python`` and ``server.venv``; this avoids split environments.
+An explicit server interpreter must already contain the server. Repository and
+dependency settings still install into that interpreter, or the selected
+existing interpreter when no managed environment is requested. This is an
+intentional modification; use ``venv`` for isolation.
+On a standalone server with a distinct explicit ``worker_python``, repositories
+and dependencies are provisioned into both gateway and worker interpreters,
+not just the gateway. Both must already contain the server. The agent instead
+uses the same installed interpreter for its server and workers.
+
+Platform repositories and dependency sources
+-------------------------------------------
+
+Each ``platform_repo`` entry is a repository URL, Git SSH source or local
+source path; local source paths are interpreted on the deployment host, not
+the laptop when using SSH. An optional fragment selects a ref and platform
+root:
+
+.. code-block:: sh
+
+   --platform-repo 'https://github.com/YOUR_ORG/platforms.git#ref=COMMIT&subdirectory=platforms'
+   --platform-repo 'git@YOUR_GIT_HOST:YOUR_ORG/platforms.git#ref=release%2Fv1'
+   --platform-repo /shared/repositories/site-platforms
+
+Replace these illustrative sources with reviewed repositories. URL-encode ref
+and subdirectory values as needed, and quote shell arguments containing ``&``.
+``ref`` may name a branch, tag or commit.
+Without ``subdirectory``, platform folders are looked up at the checkout root.
+A subdirectory must be relative and stay inside the checkout: traversal,
+absolute paths and symlink escapes are rejected.
+
+Each URL/ref combination has its own cached clone under the execution host's
+``qibocal-mcp`` cache. Omitting the ref captures the repository's default branch
+on the first clone. Subsequent launches reuse clones **without automatic
+pull, fetch or reset**, preventing unexpected hardware-definition changes.
+Pin a commit for reproducibility. To refresh, choose a new ref or explicitly
+review and maintain the cache; changing a branch upstream alone does not refresh
+an existing clone. Array/CLI order determines repository lookup order.
+
+The effective ``QIBOLAB_PLATFORMS`` search path is:
+
+1. Explicit ``--platforms``/``platforms`` path-list entries, if present.
+2. Managed repository roots in their configured order.
+3. Inherited execution-host ``QIBOLAB_PLATFORMS``, only when explicit
+   ``platforms`` is absent.
+
+With neither repositories nor explicit ``platforms``, the variable is untouched.
+An explicit path list replaces the inherited value, not the managed roots.
+Across SSH, the inherited value is remote, not the laptop's environment.
+
+A repository with root packaging metadata (``pyproject.toml`` containing
+``[project]`` or ``[build-system]``, ``setup.py`` or ``setup.cfg``) is installed
+editable for its dependencies and imports. ``requirements.txt`` at each
+checkout root and configured subdirectory root is honored. Per-platform
+requirements are read only from the first matching platform across the
+effective lookup paths, including explicit or inherited paths when provisioning
+is active. Duplicate files are removed; unrelated platforms are not scanned.
+Cached copies rebase local projects, editable references, wheels,
+``--find-links`` and local ``-r``/``-c`` includes relative to their original
+requirements file, not the server working directory. Recursive include cycles
+are errors. Remote includes are handled by the installer; their changing
+contents are not locally fingerprinted.
+
+``dependency`` entries are pip requirement specifications, installed together
+with packaged repositories and discovered requirements. None of these sources
+overrides another: the installer resolves them together, and conflicts are
+errors. Managed environments also honor the core Qibocal pin in this checkout's
+``pyproject.toml`` (or installed distribution metadata when no checkout is
+available). All package metadata, dependency and requirements sources are
+installed in one resolver request. Installation is additive, not exact
+synchronization;
+removing a configured dependency does not uninstall it. Successful dependency
+state is fingerprinted, including nested local ``-r``/``-c`` files, root
+packaging metadata and repository Git ``HEAD``. Environment-variable substitutions
+and installed package names, versions and direct-source metadata are also
+fingerprinted, so manual uninstall/upgrades trigger reconciliation.
+Managed Qibocal's installed Git commit is verified explicitly; a different
+source reporting the same package version is selectively reinstalled before
+combined dependency resolution and checked again before recording success.
+Managed environments run an installer dependency
+check and import the server before launch; failed installation/checks do not
+silently continue. Existing broken or custom environments are never automatically
+deleted or recreated.
+
+Managed deployment is POSIX-only and uses Python 3.12 or 3.13. Existing
+``--venv`` paths must contain ``pyvenv.cfg`` and executable ``bin/python``;
+use ``--server-python`` for an agent's conda/system interpreter instead.
+Provisioning locks serialize installation, not the server's entire lifetime.
+Use separate environment names or paths for concurrent deployments with
+different source/dependency settings.
+
+Only configure trusted sources: package metadata and requirements can execute
+code. Remote Git authentication must work independently; the laptop's
+``SSH_AUTH_SOCK`` is not automatically forwarded for remote cloning.
+Never store credentials in repository URLs or configuration. See
+:doc:`networking` for host environments and shared caches, and
+:doc:`../installation` for remote bootstrap prerequisites.
 
 Manage defaults without hardware
 --------------------------------
@@ -182,7 +304,8 @@ Writes preserve other valid stored settings; invalid existing files are
 reported rather than silently repaired. There are no profile or clean commands.
 
 String settings take literal text, **not JSON-quoted strings**.
-``timeout`` takes a JSON numeric value; ``slurm_arg`` takes a JSON array:
+``timeout`` takes a JSON numeric value; ``slurm_arg``, ``platform_repo`` and
+``dependency`` take JSON arrays:
 
 .. code-block:: sh
 
@@ -190,10 +313,15 @@ String settings take literal text, **not JSON-quoted strings**.
    uv run qibocal-mcp-config set agent.platform YOUR_PLATFORM
    uv run qibocal-mcp-config set agent.model openai:gpt-4.1
    uv run qibocal-mcp-config set agent.partition PARTITION
+   uv run qibocal-mcp-config set agent.venv /shared/qibocal-mcp/env
+   uv run qibocal-mcp-config set agent.platform_repo '["https://github.com/YOUR_ORG/platforms.git#ref=COMMIT&subdirectory=platforms"]'
+   uv run qibocal-mcp-config set agent.dependency '["YOUR_DRIVER_PACKAGE==VERSION"]'
    uv run qibocal-mcp-config set agent.timeout 7200
    uv run qibocal-mcp-config set agent.slurm_arg '["--account=quantum", "--time=00:15:00"]'
    uv run qibocal-mcp-config get agent.slurm_arg
    uv run qibocal-mcp-config unset agent.slurm_arg
+   uv run qibocal-mcp-config get agent.platform_repo
+   uv run qibocal-mcp-config unset agent.dependency
 
 For a separate project-specific file, put ``--config`` before the subcommand:
 
