@@ -55,15 +55,21 @@ Pass native Copilot options after ``--``:
 Use the exact model ID available to your Copilot subscription, not a Pydantic AI
 provider prefix. Choose an image- and tool-capable Copilot model. The native
 integration stages report PNGs locally for Copilot's ``view`` tool because the
-tested OpenAI/Anthropic adapters drop inline MCP image content.
-Image delivery depends on the selected model/client; successful file staging or
-a viewer call alone does not establish that the model received the pixels.
-The native viewer is not a provider-independent guarantee: the offline BYOK
-Anthropic adapter also omitted viewed pixels despite reporting success.
-Pixel delivery through a Copilot subscription model must be confirmed for the
-selected client/model. If rendered pixels are absent, stop and ask the operator
-to attach the report images to the conversation, or use the Pydantic AI path.
-Do not claim visual inspection or accept an update from text alone.
+previously tested BYOK OpenAI/Anthropic adapters dropped inline MCP image content.
+Pixel delivery is confirmed with **Copilot CLI 1.0.83 and the subscription model
+``gpt-5.4-mini``** (2026-10-09): the hardware-free probe used the generated
+calibration profile, the real report relay and native ``view``, and correctly
+identified all six randomly generated colored shapes. This subscription path
+also delivered inline MCP images.
+
+This is not a provider-independent guarantee: the offline BYOK Anthropic adapter
+omitted even viewed pixels despite reporting success. Image delivery depends on
+the selected model/client; successful staging or a viewer call alone does not
+establish that the model received pixels. Reconfirm delivery when changing the
+client, model or provider using the probe below. If rendered pixels are absent,
+stop and ask the operator to attach the report images to the conversation, or use
+the Pydantic AI path. Do not claim visual inspection or accept an update from text
+alone.
 
 The wrapper reads the existing ``agent`` configuration section and accepts
 the same hardware/deployment options as ``qibocal-agent``: platform, output,
@@ -161,6 +167,36 @@ Copilot's native path permissions can still prompt for ``view`` access; the
 wrapper adds neither ``--add-dir`` nor blanket permissions.
 The proxy marks inspection as required but does not enforce evidence checks or
 approval. Stop if an image-capable model or usable viewer is unavailable.
+
+Hardware-free subscription vision probe
+---------------------------------------
+
+From a checkout, explicitly opt in to a small subscription-model probe:
+
+.. code-block:: sh
+
+   QIBOCAL_COPILOT_VISION_MODEL=gpt-5.4-mini \
+     uv run python -m unittest discover -s tests -p test_copilot_vision.py -v
+
+The probe is skipped during ordinary test runs. It uses your existing Copilot
+login and removes BYOK provider environment overrides from the child process.
+It replaces the hardware server with a synthetic MCP fixture while retaining
+the generated calibration policy, tool restrictions and production report relay.
+Only the synthetic tools and ``view`` are preapproved; no blanket permission
+allowance is added.
+
+The fixture generates a random six-cell PNG and never sends the expected colors
+or shapes as text or image metadata. The test relay removes inline image copies
+after production staging, so inline delivery cannot mask a broken viewer.
+Success requires one discovery, one synthetic protocol, a successful ``view``
+of the staged PNG and an exact match for all six cells, with no platform update.
+Temporary plugins, images and answer files are removed afterwards. This confirms
+visual transport, not real-hardware calibration accuracy.
+
+The probe consumes subscription usage. It has a 180-second subprocess timeout
+and a native 30-AI-credit session ceiling, the minimum accepted by the tested CLI;
+the ceiling is not a usage estimate. Use an image- and tool-capable subscription
+model available to your account.
 
 Persistent plugin export
 ------------------------
