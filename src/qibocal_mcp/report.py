@@ -124,7 +124,8 @@ def run(settings: ReportSettings) -> None:
             [launch.command, *launch.args], env=launch.env, cwd=launch.cwd,
             stdout=subprocess.PIPE if settings.ssh else sys.stderr,
             start_new_session=True,
-            **({"text": True} if settings.ssh else {}),
+            # Keep SSH's remote PTY without putting our terminal into raw mode.
+            **({"stdin": subprocess.DEVNULL, "text": True} if settings.ssh else {}),
         )
         if settings.ssh:
             relay = threading.Thread(

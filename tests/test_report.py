@@ -5,11 +5,14 @@ import contextlib
 import io
 import json
 import os
+import pty
 import shlex
 import socket
 import subprocess
 import sys
 import tempfile
+import termios
+import textwrap
 import threading
 import types
 import unittest
@@ -139,6 +142,7 @@ class ReportLaunchTests(unittest.TestCase):
             "http://127.0.0.1:8000/api/health", timeout=1,
         )
         self.assertEqual(spawn.call_args.kwargs["stdout"], subprocess.PIPE)
+        self.assertEqual(spawn.call_args.kwargs["stdin"], subprocess.DEVNULL)
         self.assertTrue(spawn.call_args.kwargs["text"])
         thread.assert_called_once_with(
             target=report.relay_output, args=(process.stdout, ready), daemon=True,
@@ -146,6 +150,49 @@ class ReportLaunchTests(unittest.TestCase):
         thread.return_value.start.assert_called_once_with()
         thread.return_value.join.assert_called_once_with()
         process.stdout.close.assert_called_once_with()
+
+    def test_remote_launch_preserves_terminal_modes_and_log_newlines(self):
+        child = textwrap.dedent(f"""\
+            import os
+            import time
+            import tty
+            if os.isatty(0):
+                tty.setraw(0)
+            print({environment.REPORT_READY_MARKER!r}, flush=True)
+            print("First log line\\r\\nSecond log line", flush=True)
+            time.sleep(0.5)
+        """)
+        wrapper = textwrap.dedent(f"""\
+            import os
+            import sys
+            from unittest.mock import MagicMock, patch
+            from qibocal_mcp import report
+            launch = report.ServerLaunch(
+                command=sys.executable, args=["-c", {child!r}], env=dict(os.environ),
+            )
+            opener = MagicMock()
+            opener.open.return_value.__enter__.return_value.status = 200
+            with (
+                patch.object(report, "launch_for", return_value=launch),
+                patch.object(report.socket, "socket"),
+                patch.object(report, "build_opener", return_value=opener),
+            ):
+                report.run(report.ReportSettings(ssh="access"))
+        """)
+        master, slave = pty.openpty()
+        try:
+            modes = termios.tcgetattr(slave)
+            result = subprocess.run(
+                [sys.executable, "-c", wrapper],
+                stdin=slave, capture_output=True, text=True, timeout=10,
+            )
+            self.assertEqual(result.returncode, 0, result.stderr)
+            self.assertEqual(termios.tcgetattr(slave), modes)
+            self.assertEqual(result.stdout, "http://127.0.0.1:8000\n")
+            self.assertEqual(result.stderr, "First log line\nSecond log line\n")
+        finally:
+            os.close(slave)
+            os.close(master)
 
     def test_remote_failure_before_listening_does_not_probe_tunnel(self):
         process = Mock()
