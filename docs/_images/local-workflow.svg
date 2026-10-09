@@ -1,0 +1,44 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1000" height="570" viewBox="0 0 1000 570" role="img" aria-labelledby="title desc">
+  <title id="title">Local calibration: evidence before acceptance</title>
+  <desc id="desc">An objective with hardware limits and discovered platform context lead to a serialized acquisition. Data, fit, table and images are inspected. An accepted fit is explicitly applied and saved; a rejected fit leaves fitted settings unchanged. Another experiment is only allowed within the budget. Acquisition can itself affect hardware.</desc>
+  <defs>
+    <marker id="arrow" markerWidth="10" markerHeight="10" refX="8" refY="5" orient="auto"><path d="M0 0 L10 5 L0 10 Z" fill="#334155"/></marker>
+  </defs>
+  <rect width="1000" height="570" rx="14" fill="#f8fafc"/>
+  <g font-family="Arial, Helvetica, sans-serif" fill="#172033">
+    <text x="35" y="40" font-size="25" font-weight="bold">Local calibration: inspect, then decide</text>
+    <text x="35" y="66" font-size="16">One server session, one connected platform; no automatic fitted updates.</text>
+    <rect x="35" y="100" width="270" height="130" rx="10" fill="#e0f2fe" stroke="#075985" stroke-width="2"/>
+    <text x="55" y="130" font-size="20" font-weight="bold">1. Goal and context</text>
+    <text x="55" y="159" font-size="17">Limits, budget, stopping rules</text>
+    <text x="55" y="185" font-size="17">Platform IDs and protocol units</text>
+    <text x="55" y="211" font-size="16">Model chooses the experiment</text>
+    <rect x="355" y="100" width="275" height="130" rx="10" fill="#e0f2fe" stroke="#075985" stroke-width="2"/>
+    <text x="375" y="130" font-size="20" font-weight="bold">2. Acquire and report</text>
+    <text x="375" y="159" font-size="17">execute_protocol</text>
+    <text x="375" y="185" font-size="17">Data, fitted results and table</text>
+    <text x="375" y="211" font-size="17">PNG image + HTML on disk</text>
+    <rect x="680" y="100" width="285" height="130" rx="10" fill="#fff7ed" stroke="#9a3412" stroke-width="2"/>
+    <text x="700" y="130" font-size="20" font-weight="bold">3. Inspect evidence</text>
+    <text x="700" y="159" font-size="17">Signal and model agreement</text>
+    <text x="700" y="185" font-size="17">Uncertainty, units, sweep edges</text>
+    <text x="700" y="211" font-size="17">Is an update justified?</text>
+    <path d="M305 165 H350 M630 165 H675" stroke="#334155" stroke-width="3" fill="none" marker-end="url(#arrow)"/>
+    <path d="M820 230 V270 H285 V313" stroke="#334155" stroke-width="3" fill="none" marker-end="url(#arrow)"/>
+    <path d="M820 270 V313" stroke="#334155" stroke-width="3" fill="none" marker-end="url(#arrow)"/>
+    <text x="377" y="261" font-size="17" font-weight="bold">ACCEPT: evidence is sufficient</text>
+    <text x="845" y="295" font-size="17" font-weight="bold">REJECT</text>
+    <rect x="80" y="320" width="415" height="125" rx="10" fill="#ecfdf5" stroke="#166534" stroke-width="2"/>
+    <text x="100" y="351" font-size="20" font-weight="bold">4a. Explicit update</text>
+    <text x="100" y="381" font-size="17">update_platform(run_id), attempted once</text>
+    <text x="100" y="409" font-size="17">Live settings change; paired snapshot saved</text>
+    <rect x="560" y="320" width="405" height="125" rx="10" fill="#f1f5f9" stroke="#475569" stroke-width="2" stroke-dasharray="7 4"/>
+    <text x="580" y="351" font-size="20" font-weight="bold">4b. Do not apply the fit</text>
+    <text x="580" y="381" font-size="17">Keep accepted fitted settings unchanged</text>
+    <text x="580" y="409" font-size="17">Follow up only within the budget, or stop</text>
+    <path d="M80 383 H35 V250 H170 V235" stroke="#334155" stroke-width="2" stroke-dasharray="6 4" fill="none" marker-end="url(#arrow)"/>
+    <text x="100" y="483" font-size="17">Continue only if safe and within budget. Summarize run IDs, updates and artifact paths.</text>
+    <rect x="35" y="505" width="930" height="43" rx="7" fill="#fff7ed" stroke="#9a3412"/>
+    <text x="53" y="532" font-size="16" font-weight="bold">Caution: acquisition can affect hardware; objectives are not enforced instrument interlocks.</text>
+  </g>
+</svg>
