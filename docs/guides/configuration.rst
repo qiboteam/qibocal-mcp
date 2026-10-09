@@ -69,6 +69,11 @@ configuration or CLI at runtime. ``qibocal-agent`` also requires ``model``;
    * - ``partition``
      - Nonempty string
      - Unset; direct execution rather than SLURM dispatch.
+   * - ``report_rendering``
+     - Nonempty string: ``server`` or ``client``
+     - ``server`` renders PNGs on the execution host. ``client`` sends Plotly
+       figures for local rendering by the native Copilot relay; the Pydantic AI
+       agent rejects this mode. Only the rendering host needs Chrome.
    * - ``workdir``
      - Nonempty string
      - Server: current directory for SLURM workers. Agent: unset, so no

@@ -18,6 +18,8 @@ prescribed calibration sequence, fit acceptance threshold or workflow engine.
 Native Copilot uses a FastMCP proxy with one connected upstream client for the
 session. It preserves upstream schemas and response content while staging
 returned PNG bytes locally for Copilot's ``view`` tool, including with SSH/SLURM.
+With ``report_rendering=client``, the proxy instead renders embedded Plotly
+figures locally before staging PNGs, so workers do not need Chrome.
 This requires neither remote filesystem downloads nor a shell tool. Pydantic AI
 continues to consume the original inline MCP images.
 The proxy's inspection metadata is guidance, not an evidence or approval gate.

@@ -25,6 +25,10 @@ First complete :doc:`../installation` on the machine running the agent and confi
 * Compute nodes can reach the instruments, and have Chrome and drivers.
 * Your partition, account, resource requests and hardware limits are approved.
 
+For native Copilot with ``--report-rendering client``, Chrome is needed locally
+instead of on compute nodes; platform drivers remain in the shared managed
+execution environment. See :doc:`../agent/copilot`.
+
 .. figure:: ../_images/queued-workflow.svg
    :alt: A laptop agent sends MCP messages and report images through SSH stdio to a hardware-free access-node gateway. The gateway runs discovery, acquisition and explicit update as separate compute jobs. An accepted snapshot on shared storage feeds later jobs; rejected fits do not change that snapshot.
    :width: 100%

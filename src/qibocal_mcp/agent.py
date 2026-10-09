@@ -26,6 +26,8 @@ def transport_for(args: argparse.Namespace | DeploymentSettings) -> StdioTranspo
         args if isinstance(args, DeploymentSettings)
         else DeploymentSettings.from_namespace(args)
     )
+    if settings.report_rendering == "client":
+        raise UserError("Client report rendering requires qibocal-copilot")
     launch = launch_for(settings)
     return StdioTransport(
         command=launch.command, args=launch.args, env=launch.env,

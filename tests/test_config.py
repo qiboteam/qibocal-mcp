@@ -136,6 +136,8 @@ class ConfigTests(unittest.TestCase):
             {"agent": {"timeout": float("nan")}},
             {"agent": {"timeout": 10**400}},
             {"agent": {"timeout": -(10**400)}},
+            {"agent": {"report_rendering": "unknown"}},
+            {"server": {"report_rendering": "unknown"}},
         ]
         for data in invalid:
             with self.subTest(data=data):
@@ -163,6 +165,17 @@ class ConfigTests(unittest.TestCase):
                     lambda: self.command("set", key, value), "error:"
                 )
         self.assertFalse(self.path.exists())
+
+    def test_client_report_rendering_is_configurable_and_overridable(self):
+        self.command("set", "server.platform", "qpu")
+        self.command("set", "server.report_rendering", "client")
+        with patch("qibocal_mcp.server.create_server") as create:
+            server.main([])
+            create.assert_called_with(
+                "qpu", output=Path("runs"), report_rendering="client"
+            )
+            server.main(["--report-rendering", "server"])
+            create.assert_called_with("qpu", output=Path("runs"))
 
     def test_failed_atomic_write_preserves_original_and_cleans_temporary(self):
         config.save_config({"server": {"platform": "original"}})

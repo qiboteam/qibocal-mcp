@@ -13,8 +13,11 @@ from fastmcp.client.transports import StdioTransport
 from fastmcp.server import create_proxy
 from fastmcp.server.middleware import CallNext, Middleware, MiddlewareContext
 from fastmcp.tools import ToolResult
-from mcp.types import CallToolRequestParams, ImageContent, TextContent
+from mcp.types import (
+    CallToolRequestParams, EmbeddedResource, ImageContent, TextContent, TextResourceContents,
+)
 
+from .calibration import REPORT_FIGURE_MIME_TYPE
 from .deployment import ServerLaunch
 
 
@@ -58,8 +61,29 @@ class StageReports(Middleware):
         call_next: CallNext[CallToolRequestParams, ToolResult],
     ) -> ToolResult:
         result = await call_next(context)
-        images = [item for item in result.content if isinstance(item, ImageContent)]
-        if not images or result.is_error:
+        if result.is_error:
+            return result
+        content = []
+        for item in result.content:
+            if (
+                isinstance(item, EmbeddedResource)
+                and item.resource.mimeType == REPORT_FIGURE_MIME_TYPE
+            ):
+                if not isinstance(item.resource, TextResourceContents):
+                    raise ValueError("Plotly report must contain JSON text")
+                from plotly.io import from_json
+
+                figure = from_json(item.resource.text)
+                data = await asyncio.to_thread(
+                    figure.to_image, format="png", width=1200, height=700
+                )
+                item = ImageContent(
+                    type="image", data=base64.b64encode(data).decode("ascii"),
+                    mimeType="image/png",
+                )
+            content.append(item)
+        images = [item for item in content if isinstance(item, ImageContent)]
+        if not images:
             return result
         folder = self.directory / uuid4().hex
         folder.mkdir(parents=True, mode=0o700)
@@ -80,7 +104,7 @@ class StageReports(Middleware):
             "instruction": "Use view on every client-local PNG before considering an update.",
         }
         return ToolResult(
-            content=[*result.content, TextContent(type="text", text=json.dumps(staged))],
+            content=[*content, TextContent(type="text", text=json.dumps(staged))],
             structured_content=(
                 {**result.structured_content, **staged}
                 if result.structured_content is not None else None

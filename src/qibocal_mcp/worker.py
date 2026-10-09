@@ -19,11 +19,13 @@ async def run(
     output: Path,
     snapshot: Path | None,
     request: dict,
+    report_rendering: str = "server",
 ) -> CallToolResult:
     """Restore accepted state and execute exactly one requested operation."""
     with redirect_stdout(sys.stderr):
         server = create_server(
-            platform, output=output, snapshot=snapshot, restore_runs=True
+            platform, output=output, snapshot=snapshot, restore_runs=True,
+            report_rendering=report_rendering,
         )
         async with Client(server) as client:
             if request["operation"] == "context":
@@ -49,6 +51,7 @@ def main():
     parser.add_argument("--platform", required=True)
     parser.add_argument("--output", type=Path, required=True)
     parser.add_argument("--snapshot", type=Path)
+    parser.add_argument("--report-rendering", choices=("server", "client"), default="server")
     args = parser.parse_args()
     result = asyncio.run(
         run(
@@ -56,6 +59,7 @@ def main():
             output=args.output,
             snapshot=args.snapshot,
             request=json.load(sys.stdin),
+            report_rendering=args.report_rendering,
         )
     )
     print(result.model_dump_json(by_alias=True))

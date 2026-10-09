@@ -160,6 +160,18 @@ MCP bytes, not remote filesystem downloads, and requires no shell tool access.
 Original remote artifact paths remain remote. The Pydantic AI integration
 continues to consume original inline MCP images unchanged.
 
+For execution hosts without Chrome, use ``--report-rendering client`` or set
+``agent.report_rendering`` to ``client`` before exporting a plugin. The server
+then saves HTML and Plotly JSON reports and sends embedded figures over MCP,
+including through SLURM. The local Copilot relay renders those figures to PNGs
+and stages them at the same client-local paths. Chrome is needed only on the
+machine running Copilot; hardware drivers still belong in the execution-host
+environment. Rendering failures are tool errors, not successful image-free
+reports; do not blindly retry the acquisition after such an error.
+The default, ``server``, retains execution-host PNG rendering and remote PNG
+artifacts. Client rendering is supported by the native Copilot relay, not the
+Pydantic AI agent, and does not guarantee pixel delivery by a BYOK provider.
+
 PNG-containing folders are private (mode ``0700``). Staged artifacts persist for
 inspection; there is no automatic cache cleanup. Delete selected session
 directories after use according to your site's retention policy.
@@ -215,6 +227,10 @@ Export refuses an existing target. It requires no Copilot binary, login or
 hardware connection, and prints a launch command; it does not install anything.
 The printed command is authoritative and includes the required session-level
 tool exclusions.
+To use a local executable wrapper such as ``copilot-qrc`` for BYOK environment
+settings, replace only ``copilot`` in that printed command with the wrapper's
+name. Preserve every profile and permission flag. The normal direct launcher
+still looks up ``copilot`` on ``PATH``.
 Do not combine export with an objective or native Copilot arguments. Standard
 deployment/configuration validation still applies.
 

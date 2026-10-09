@@ -18,6 +18,7 @@ from qibocal.calibration.calibration import Calibration, QubitCalibration
 from qibocal.update import drive_frequency
 
 from qibocal_mcp.server import create_server
+from qibocal_mcp.calibration import REPORT_FIGURE_MIME_TYPE
 
 
 @dataclass
@@ -55,6 +56,32 @@ def update(results, platform, target):
 
 
 class ServerTests(unittest.IsolatedAsyncioTestCase):
+    async def test_client_reports_do_not_render_on_execution_host(self):
+        platform = CalibrationPlatform(
+            **vars(create_platform("dummy")),
+            calibration=Calibration(single_qubits={0: QubitCalibration()}),
+        )
+        with (
+            tempfile.TemporaryDirectory() as directory,
+            patch("qibocal_mcp.server.create_calibration_platform", return_value=platform),
+            patch("qibocal_mcp.server.PROTOCOLS", {"synthetic": Protocol(acquire, fit, report, update)}),
+            patch.object(go.Figure, "write_image", side_effect=AssertionError("Remote Chrome invoked")) as render,
+        ):
+            async with Client(create_server(
+                "synthetic", output=Path(directory), report_rendering="client",
+            )) as client:
+                result = await client.call_tool("execute_protocol", {
+                    "protocol": "synthetic", "parameters": {"value": 5e9}, "targets": [0],
+                })
+                resource = next(item.resource for item in result.content if item.type == "resource")
+                self.assertEqual(resource.mimeType, REPORT_FIGURE_MIME_TYPE)
+                self.assertIn("data", json.loads(resource.text))
+                folder = Path(result.structured_content["folder"])
+                self.assertEqual((folder / "report-0-0.json").read_text(), resource.text)
+                self.assertTrue((folder / "report-0-0.html").exists())
+                self.assertFalse(list(folder.glob("*.png")))
+                render.assert_not_called()
+
     async def test_execute_inspect_update(self):
         dummy = create_platform("dummy")
         platform = CalibrationPlatform(

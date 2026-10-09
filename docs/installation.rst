@@ -166,3 +166,6 @@ not sufficient if its cache remains node-local. There is no automatic
 node-local staging or compute-node provisioning.
 Chrome and instrument drivers must be available on compute nodes, where
 reports and acquisitions actually run.
+For native Copilot with ``--report-rendering client``, only the local Copilot
+host needs Chrome: workers return Plotly figures for local PNG rendering.
+Instrument drivers still need to be available in the shared worker environment.

@@ -40,6 +40,10 @@ Common runtime options
        configured list. Resolves together with repository dependency sources.
    * - ``--partition NAME``
      - Dispatch each operation through ``srun``; unset means direct mode.
+   * - ``--report-rendering server|client``
+     - Default ``server`` renders PNGs on the execution host. ``client`` sends
+       Plotly figures to the native Copilot relay, which uses local Chrome.
+       Not supported by the Pydantic AI agent.
    * - ``--workdir PATH``
      - Server: SLURM worker directory, default current directory.
        Agent: server launch directory, default unset.
@@ -142,6 +146,7 @@ qibocal-copilot
                    [--ssh HOST] [--partition NAME]
                    [--server-python EXECUTABLE] [--workdir PATH]
                    [--slurm-arg VALUE ...] [--timeout SECONDS]
+                   [--report-rendering server|client]
                    [--export-plugin DIRECTORY] [OBJECTIVE]
                    [-- COPILOT_OPTIONS ...]
 

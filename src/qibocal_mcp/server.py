@@ -13,7 +13,7 @@ from uuid import UUID, uuid4
 from fastmcp import Context, FastMCP
 from fastmcp.tools import ToolResult
 from fastmcp.utilities.types import Image
-from mcp.types import ContentBlock, TextContent
+from mcp.types import ContentBlock, EmbeddedResource, TextContent, TextResourceContents
 from qibocal import Executor, create_calibration_platform
 from qibocal.auto.operation import Protocol
 from qibocal.auto.serialize import serialize
@@ -22,6 +22,7 @@ from qibocal.calibration.calibration import Calibration
 from qibocal.protocols import PROTOCOLS
 
 from .config import add_deployment_arguments, parse_settings
+from .calibration import REPORT_FIGURE_MIME_TYPE
 
 
 def create_server(
@@ -30,8 +31,11 @@ def create_server(
     output: Path = Path("runs"),
     snapshot: Path | None = None,
     restore_runs: bool = False,
+    report_rendering: str = "server",
 ) -> FastMCP:
     """Create one server; execution handles live only for its lifetime."""
+    if report_rendering not in {"server", "client"}:
+        raise ValueError("report_rendering must be server or client")
     # Qibocal's registry also contains exported parameter/data classes.
     protocols = {
         name: protocol
@@ -176,12 +180,26 @@ def create_server(
                         for number, figure in enumerate(figures):
                             stem = folder / f"report-{index}-{number}"
                             figure.write_html(stem.with_suffix(".html"))
-                            figure.write_image(
-                                stem.with_suffix(".png"), width=1200, height=700
-                            )
-                            content.append(
-                                Image(path=stem.with_suffix(".png")).to_image_content()
-                            )
+                            if report_rendering == "client":
+                                serialized = figure.to_json()
+                                stem.with_suffix(".json").write_text(
+                                    serialized, encoding="utf-8"
+                                )
+                                content.append(EmbeddedResource(
+                                    type="resource",
+                                    resource=TextResourceContents(
+                                        uri=f"qibocal://reports/{run_id}/{index}/{number}",
+                                        mimeType=REPORT_FIGURE_MIME_TYPE,
+                                        text=serialized,
+                                    ),
+                                ))
+                            else:
+                                figure.write_image(
+                                    stem.with_suffix(".png"), width=1200, height=700
+                                )
+                                content.append(
+                                    Image(path=stem.with_suffix(".png")).to_image_content()
+                                )
                 completed_runs[run_id] = completed
                 return ToolResult(content=content, structured_content=metadata)
 
@@ -256,6 +274,8 @@ def main(argv: list[str] | None = None):
         command = [
             "--no-config", "--platform", args.platform, "--output", args.output,
         ]
+        if args.report_rendering != "server":
+            command += ["--report-rendering", args.report_rendering]
         if args.partition is not None:
             command += [
                 "--partition", args.partition,
@@ -284,8 +304,12 @@ def main(argv: list[str] | None = None):
     if args.platforms is not None:
         os.environ["QIBOLAB_PLATFORMS"] = args.platforms
     with redirect_stdout(sys.stderr):
+        rendering = (
+            {"report_rendering": args.report_rendering}
+            if args.report_rendering != "server" else {}
+        )
         if args.partition is None:
-            server = create_server(args.platform, output=Path(args.output))
+            server = create_server(args.platform, output=Path(args.output), **rendering)
         else:
             from .slurm import create_slurm_server
 
@@ -296,6 +320,7 @@ def main(argv: list[str] | None = None):
                 python=args.worker_python,
                 workdir=Path(args.workdir),
                 slurm_args=args.slurm_arg,
+                **rendering,
             )
     server.run(transport="stdio", show_banner=False)
 

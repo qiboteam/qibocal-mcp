@@ -22,6 +22,7 @@ COMMON_FIELDS = {
     "venv": str,
     "platform_repo": list,
     "dependency": list,
+    "report_rendering": str,
 }
 FIELDS = {
     "server": {**COMMON_FIELDS, "worker_python": str},
@@ -78,6 +79,8 @@ def validate_value(key: str, value: object) -> None:
         or not math.isfinite(value)
     ):
         raise ConfigError(f"{key} must be a positive finite number")
+    if key.endswith(".report_rendering") and value not in {"server", "client"}:
+        raise ConfigError(f"{key} must be server or client")
     if key.endswith(".venv"):
         from .environment import DeploymentError, environment_path
 
@@ -179,6 +182,7 @@ def parse_settings(
             "venv": None,
             "platform_repo": [],
             "dependency": [],
+            "report_rendering": "server",
         }
         if section == "server":
             defaults.update(worker_python=sys.executable, workdir=str(Path.cwd()))
@@ -209,6 +213,10 @@ def parse_settings(
 
 def add_deployment_arguments(parser: argparse.ArgumentParser) -> None:
     """Keep deployment options identical for the server and the agent."""
+    parser.add_argument(
+        "--report-rendering", choices=("server", "client"),
+        help="Render PNGs on the server (default), or send figures to the native Copilot client",
+    )
     parser.add_argument("--venv", help="Managed environment name or path on the execution host")
     parser.add_argument(
         "--platform-repo", action="append",

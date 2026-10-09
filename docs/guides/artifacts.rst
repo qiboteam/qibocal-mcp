@@ -32,6 +32,10 @@ serializer; they are not a single universal schema. Report indices enumerate
 targets and figures, not necessarily the target's literal qubit ID.
 HTML reports are interactive Plotly output. PNGs are exported at
 1200 by 700 pixels using Kaleido/Chrome.
+With native Copilot's ``--report-rendering client``, the execution host saves
+``report-I-J.json`` instead of PNGs alongside the HTML reports. Plotly figures
+travel over MCP and PNGs are rendered and retained only in the client cache.
+This avoids requiring Chrome on compute nodes.
 
 Run metadata
 ------------
@@ -65,6 +69,8 @@ add ``copilot_report_images`` and ``inspection_required`` to text and structured
 metadata without replacing original content. These local paths are separate
 from the execution host's ``folder`` and do not provide general access to
 remote files.
+In client-rendering mode, the proxy replaces embedded Plotly resources with
+locally rendered MCP images before adding the same inspection metadata.
 
 The native cache is
 ``$XDG_CACHE_HOME/qibocal-mcp/copilot-reports/<session>/<call>/report-N.png``,

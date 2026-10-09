@@ -21,10 +21,62 @@ from qibocal.calibration.calibration import Calibration, QubitCalibration
 
 from qibocal_mcp.slurm import SlurmJobs, create_slurm_server
 from qibocal_mcp.worker import run
+from qibocal_mcp.copilot_server import report_proxy
 from test_server import acquire, fit, report, update
 
 
 class SlurmTests(unittest.IsolatedAsyncioTestCase):
+    async def test_client_rendering_crosses_worker_and_gateway(self):
+        platform = CalibrationPlatform(
+            **vars(create_platform("dummy")),
+            calibration=Calibration(single_qubits={0: QubitCalibration()}),
+        )
+        png = bytes.fromhex(
+            "89504e470d0a1a0a0000000d49484452000000010000000108060000001f15c489"
+            "0000000b49444154789c636000020000050001a5f645400000000049454e44ae426082"
+        )
+
+        async def start(*command, **kwargs):
+            self.assertIn("--report-rendering", command)
+            self.assertEqual(command[command.index("--report-rendering") + 1], "client")
+
+            async def communicate(request):
+                result = await run(
+                    "synthetic", output=Path(command[command.index("--output") + 1]),
+                    snapshot=None, request=json.loads(request), report_rendering="client",
+                )
+                self.assertTrue(any(item.type == "resource" for item in result.content))
+                return result.model_dump_json(by_alias=True).encode(), b""
+
+            return SimpleNamespace(returncode=0, communicate=communicate)
+
+        with (
+            tempfile.TemporaryDirectory() as directory,
+            patch("qibocal_mcp.server.create_calibration_platform", return_value=platform),
+            patch("qibocal_mcp.server.PROTOCOLS", {"synthetic": Protocol(acquire, fit, report, update)}),
+            patch.object(go.Figure, "write_image", side_effect=AssertionError("Remote rendering")),
+            patch.object(go.Figure, "to_image", return_value=png) as local_render,
+            patch("asyncio.create_subprocess_exec", side_effect=start),
+        ):
+            gateway = create_slurm_server(
+                "synthetic", partition="qpu", output=Path(directory) / "remote",
+                python="/shared/bin/python", workdir=Path(directory), slurm_args=[],
+                report_rendering="client",
+            )
+            async with Client(gateway) as backend:
+                async with Client(report_proxy(backend, Path(directory) / "local")) as client:
+                    result = await client.call_tool("execute_protocol", {
+                        "protocol": "synthetic", "parameters": {"value": 5e9}, "targets": [0],
+                    })
+                    local_render.assert_called_once_with(format="png", width=1200, height=700)
+                    path = Path(result.structured_content["copilot_report_images"][0])
+                    self.assertEqual(path.read_bytes(), png)
+                    self.assertTrue(path.is_relative_to(Path(directory) / "local"))
+                    self.assertTrue(result.structured_content["inspection_required"])
+                    self.assertFalse(any(item.type == "resource" for item in result.content))
+                    self.assertTrue(any(item.type == "image" for item in result.content))
+                    self.assertFalse(list((Path(directory) / "remote").rglob("*.png")))
+
     async def test_fresh_jobs_restore_only_accepted_state(self):
         platforms = []
         commands = []

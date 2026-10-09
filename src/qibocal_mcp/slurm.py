@@ -24,6 +24,7 @@ class SlurmJobs:
         python: str,
         workdir: Path,
         slurm_args: list[str],
+        report_rendering: str = "server",
     ):
         self.platform = platform
         self.output = output.resolve() / "sessions" / uuid4().hex
@@ -42,6 +43,10 @@ class SlurmJobs:
             "--platform", platform,
             "--output", str(self.output),
         ]
+        if report_rendering not in {"server", "client"}:
+            raise ValueError("report_rendering must be server or client")
+        if report_rendering != "server":
+            self.command += ["--report-rendering", report_rendering]
         self.snapshot: Path | None = None
         self.runs: set[str] = set()
         self.lock = asyncio.Lock()
@@ -103,6 +108,7 @@ def create_slurm_server(
     python: str,
     workdir: Path,
     slurm_args: list[str],
+    report_rendering: str = "server",
 ) -> FastMCP:
     """Expose the same three tools without opening hardware on the access node."""
     jobs = SlurmJobs(
@@ -112,6 +118,7 @@ def create_slurm_server(
         python=python,
         workdir=workdir,
         slurm_args=slurm_args,
+        report_rendering=report_rendering,
     )
     mcp = FastMCP(
         "Qibocal SLURM",

@@ -5,6 +5,7 @@ DESCRIPTION = "Plan, execute and inspect bounded Qibocal calibrations."
 CONTEXT_RESOURCE = "qibocal://context"
 CONTEXT_TOOL = "get_calibration_context"
 TOOLS = (CONTEXT_TOOL, "execute_protocol", "update_platform")
+REPORT_FIGURE_MIME_TYPE = "application/vnd.plotly.v1+json"
 
 INSTRUCTIONS = """You are a quantum calibration agent.
 Use the user's objective and constraints to plan a calibration strategy.

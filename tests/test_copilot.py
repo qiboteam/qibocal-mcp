@@ -15,10 +15,11 @@ from unittest.mock import Mock, patch
 from fastmcp import Client, FastMCP
 from fastmcp.exceptions import ToolError
 from fastmcp.tools import ToolResult
-from mcp.types import ImageContent, TextContent
+from mcp.types import EmbeddedResource, ImageContent, TextContent, TextResourceContents
+from pydantic_ai.exceptions import UserError
 from qibocal_mcp import config, copilot, copilot_server
 from qibocal_mcp.agent import transport_for
-from qibocal_mcp.calibration import INSTRUCTIONS, NAME, TOOLS
+from qibocal_mcp.calibration import INSTRUCTIONS, NAME, TOOLS, REPORT_FIGURE_MIME_TYPE
 from qibocal_mcp.deployment import DeploymentSettings, launch_for
 
 
@@ -94,6 +95,15 @@ class CopilotProfileTests(unittest.TestCase):
             with self.subTest(timeout=timeout):
                 with self.assertRaisesRegex(copilot.CopilotError, "timeout"):
                     copilot.plugin_files(DeploymentSettings(platform="qpu", timeout=timeout))
+
+    def test_client_rendering_reaches_remote_bootstrap_and_rejects_pydantic_adapter(self):
+        settings = DeploymentSettings(
+            platform="qpu", ssh="qrc", partition="qpu", report_rendering="client",
+        )
+        relay = relay_launch(profile_for(settings)["mcp-servers"]["qibocal"])
+        self.assertIn("--report-rendering client", relay["args"][-1])
+        with self.assertRaisesRegex(UserError, "requires qibocal-copilot"):
+            transport_for(settings)
 
     def test_export_does_not_require_copilot_or_open_hardware(self):
         with tempfile.TemporaryDirectory() as directory:
@@ -261,6 +271,29 @@ class CopilotRelayTests(unittest.TestCase):
 
 
 class CopilotReportTests(unittest.IsolatedAsyncioTestCase):
+    async def test_client_rendering_failure_is_not_a_successful_report(self):
+        upstream = FastMCP("Client-rendered report")
+
+        @upstream.tool
+        def execute_protocol():
+            return ToolResult(content=[EmbeddedResource(
+                type="resource", resource=TextResourceContents(
+                    uri="qibocal://reports/synthetic/0/0",
+                    mimeType=REPORT_FIGURE_MIME_TYPE,
+                    text='{"data": [], "layout": {}}',
+                ),
+            )])
+
+        with (
+            tempfile.TemporaryDirectory() as directory,
+            patch("plotly.graph_objects.Figure.to_image", side_effect=RuntimeError("Chrome unavailable")),
+        ):
+            async with Client(upstream) as backend:
+                async with Client(copilot_server.report_proxy(backend, Path(directory))) as client:
+                    with self.assertRaisesRegex(ToolError, "Chrome unavailable"):
+                        await client.call_tool("execute_protocol")
+                    self.assertFalse(list(Path(directory).rglob("*.png")))
+
     async def test_proxy_rejects_a_disconnected_upstream(self):
         with self.assertRaisesRegex(ValueError, "connected upstream"):
             copilot_server.report_proxy(Client(FastMCP("Disconnected")), Path("/unused"))
