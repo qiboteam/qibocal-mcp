@@ -21,6 +21,8 @@ from qibocal.auto.task import Completed, Targets
 from qibocal.calibration.calibration import Calibration
 from qibocal.protocols import PROTOCOLS
 
+from .config import parse_settings
+
 
 def create_server(
     platform_name: str,
@@ -224,33 +226,33 @@ def create_server(
     return mcp
 
 
-def main():
+def main(argv: list[str] | None = None):
     """Run a direct hardware server or a SLURM gateway over stdio."""
-    parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--platform", required=True)
-    parser.add_argument("--output", type=Path, default=Path("runs"))
+    parser = argparse.ArgumentParser(
+        description=__doc__, argument_default=argparse.SUPPRESS
+    )
+    parser.add_argument("--platform")
+    parser.add_argument("--output")
     parser.add_argument("--platforms", help="QIBOLAB_PLATFORMS on the execution host")
     parser.add_argument("--partition", help="Dispatch each operation through srun")
-    parser.add_argument("--worker-python", default=sys.executable)
-    parser.add_argument("--workdir", type=Path, default=Path.cwd())
-    parser.add_argument("--slurm-arg", action="append", default=[])
-    args = parser.parse_args()
-    if args.slurm_arg and args.partition is None:
-        parser.error("--slurm-arg requires --partition")
+    parser.add_argument("--worker-python")
+    parser.add_argument("--workdir")
+    parser.add_argument("--slurm-arg", action="append")
+    args = parse_settings(parser, "server", argv)
     if args.platforms is not None:
         os.environ["QIBOLAB_PLATFORMS"] = args.platforms
     with redirect_stdout(sys.stderr):
         if args.partition is None:
-            server = create_server(args.platform, output=args.output)
+            server = create_server(args.platform, output=Path(args.output))
         else:
             from .slurm import create_slurm_server
 
             server = create_slurm_server(
                 args.platform,
-                output=args.output,
+                output=Path(args.output),
                 partition=args.partition,
                 python=args.worker_python,
-                workdir=args.workdir,
+                workdir=Path(args.workdir),
                 slurm_args=args.slurm_arg,
             )
     server.run(transport="stdio", show_banner=False)

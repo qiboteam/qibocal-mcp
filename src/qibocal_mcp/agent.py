@@ -11,6 +11,8 @@ from fastmcp.client.transports import StdioTransport
 from pydantic_ai import Agent
 from pydantic_ai.mcp import MCPToolset
 
+from .config import parse_settings
+
 
 INSTRUCTIONS = """You are a quantum calibration agent.
 Use the user's objective and constraints to plan a calibration strategy.
@@ -37,6 +39,7 @@ def transport_for(args: argparse.Namespace) -> StdioTransport:
     command = [
         python,
         "-m", "qibocal_mcp.server",
+        "--no-config",
         "--platform", args.platform,
         "--output", args.output,
     ]
@@ -85,13 +88,15 @@ async def run(args):
         print(result.output)
 
 
-def main():
+def main(argv: list[str] | None = None):
     """Run a calibration objective with a vision-capable model."""
-    parser = argparse.ArgumentParser(description=__doc__)
+    parser = argparse.ArgumentParser(
+        description=__doc__, argument_default=argparse.SUPPRESS
+    )
     parser.add_argument("objective", help="Calibration goal, limits and stopping criteria")
-    parser.add_argument("--model", required=True, help="Pydantic AI model identifier")
-    parser.add_argument("--platform", required=True)
-    parser.add_argument("--output", default="runs")
+    parser.add_argument("--model", help="Pydantic AI model identifier")
+    parser.add_argument("--platform")
+    parser.add_argument("--output")
     parser.add_argument("--ssh", help="SSH host/alias for the access node")
     parser.add_argument("--partition", help="New SLURM job for each protocol/update")
     parser.add_argument(
@@ -99,16 +104,12 @@ def main():
     )
     parser.add_argument("--workdir", help="Working directory on the server/compute nodes")
     parser.add_argument("--platforms", help="QIBOLAB_PLATFORMS on the server/compute nodes")
-    parser.add_argument("--slurm-arg", action="append", default=[], help="Extra srun option")
+    parser.add_argument("--slurm-arg", action="append", help="Extra srun option")
     parser.add_argument(
-        "--timeout", type=float, default=3600,
+        "--timeout", type=float,
         help="Seconds per operation, including queue wait",
     )
-    args = parser.parse_args()
-    if args.slurm_arg and args.partition is None:
-        parser.error("--slurm-arg requires --partition")
-    if args.timeout <= 0:
-        parser.error("--timeout must be positive")
+    args = parse_settings(parser, "agent", argv)
     asyncio.run(run(args))
 
 

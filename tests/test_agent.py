@@ -22,6 +22,7 @@ class TransportTests(unittest.TestCase):
     def test_direct_compute_node(self):
         transport = transport_for(self.options())
         self.assertEqual(transport.command, sys.executable)
+        self.assertIn("--no-config", transport.args)
         self.assertNotIn("--partition", transport.args)
         self.assertEqual(transport.env, dict(os.environ))
         self.assertFalse(transport.keep_alive)
