@@ -3,6 +3,7 @@
 import argparse
 import asyncio
 import os
+import shlex
 import sys
 
 from fastmcp import Client
@@ -25,22 +26,54 @@ budget is exhausted, or progress requires user input. Summarize what was run,
 which updates were applied, artifact locations, and remaining uncertainty.
 Follow the user's hardware limits. Do not treat synthetic data from a mock
 platform as evidence of a successful calibration.
+Queue waits are normal. Do not blindly retry failed acquisitions or updates:
+they may already have affected hardware. Stop when recovery needs user input.
 """
 
 
-async def run(args):
-    """Keep a single MCP process alive for the entire calibration."""
-    transport = StdioTransport(
-        command=sys.executable,
-        args=[
-            "-m", "qibocal_mcp.server",
-            "--platform", args.platform,
-            "--output", args.output,
-        ],
+def transport_for(args: argparse.Namespace) -> StdioTransport:
+    """Use stdio locally or carry it over SSH to an access-node gateway."""
+    python = args.server_python or ("python3" if args.ssh else sys.executable)
+    command = [
+        python,
+        "-m", "qibocal_mcp.server",
+        "--platform", args.platform,
+        "--output", args.output,
+    ]
+    if args.platforms is not None:
+        command += ["--platforms", args.platforms]
+    if args.partition is not None:
+        command += ["--partition", args.partition]
+    command += [f"--slurm-arg={arg}" for arg in args.slurm_arg]
+    if args.ssh:
+        remote = "exec " + shlex.join(command)
+        if args.workdir is not None:
+            remote = f"cd {shlex.quote(args.workdir)} && {remote}"
+        return StdioTransport(
+            command="ssh",
+            args=["-T", "-o", "BatchMode=yes", "--", args.ssh, remote],
+            env={
+                name: os.environ[name]
+                for name in ("SSH_AUTH_SOCK",)
+                if name in os.environ
+            },
+            keep_alive=False,
+        )
+    return StdioTransport(
+        command=python,
+        args=command[1:],
         # StdioTransport otherwise drops platform/driver environment settings.
         env=dict(os.environ),
+        cwd=args.workdir,
+        keep_alive=False,
     )
-    async with Client(transport, timeout=3600) as client:
+
+
+async def run(args):
+    """Keep one direct server or gateway alive for the entire calibration."""
+    async with Client(
+        transport_for(args), timeout=args.timeout, init_timeout=args.timeout
+    ) as client:
         context = await client.read_resource("qibocal://context")
         agent = Agent(
             args.model,
@@ -59,7 +92,24 @@ def main():
     parser.add_argument("--model", required=True, help="Pydantic AI model identifier")
     parser.add_argument("--platform", required=True)
     parser.add_argument("--output", default="runs")
-    asyncio.run(run(parser.parse_args()))
+    parser.add_argument("--ssh", help="SSH host/alias for the access node")
+    parser.add_argument("--partition", help="New SLURM job for each protocol/update")
+    parser.add_argument(
+        "--server-python", help="Server Python path, on the SSH host if remote"
+    )
+    parser.add_argument("--workdir", help="Working directory on the server/compute nodes")
+    parser.add_argument("--platforms", help="QIBOLAB_PLATFORMS on the server/compute nodes")
+    parser.add_argument("--slurm-arg", action="append", default=[], help="Extra srun option")
+    parser.add_argument(
+        "--timeout", type=float, default=3600,
+        help="Seconds per operation, including queue wait",
+    )
+    args = parser.parse_args()
+    if args.slurm_arg and args.partition is None:
+        parser.error("--slurm-arg requires --partition")
+    if args.timeout <= 0:
+        parser.error("--timeout must be positive")
+    asyncio.run(run(args))
 
 
 if __name__ == "__main__":

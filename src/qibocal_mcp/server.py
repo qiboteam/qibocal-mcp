@@ -4,10 +4,11 @@ import argparse
 import asyncio
 import inspect
 import json
+import os
 import sys
 from contextlib import asynccontextmanager, redirect_stdout
 from pathlib import Path
-from uuid import uuid4
+from uuid import UUID, uuid4
 
 from fastmcp import Context, FastMCP
 from fastmcp.tools import ToolResult
@@ -17,10 +18,17 @@ from qibocal import Executor, create_calibration_platform
 from qibocal.auto.operation import Protocol
 from qibocal.auto.serialize import serialize
 from qibocal.auto.task import Completed, Targets
+from qibocal.calibration.calibration import Calibration
 from qibocal.protocols import PROTOCOLS
 
 
-def create_server(platform_name: str, *, output: Path = Path("runs")) -> FastMCP:
+def create_server(
+    platform_name: str,
+    *,
+    output: Path = Path("runs"),
+    snapshot: Path | None = None,
+    restore_runs: bool = False,
+) -> FastMCP:
     """Create one server; execution handles live only for its lifetime."""
     # Qibocal's registry also contains exported parameter/data classes.
     protocols = {
@@ -38,6 +46,13 @@ def create_server(platform_name: str, *, output: Path = Path("runs")) -> FastMCP
         # Hardware drivers and Qibocal may print; stdout belongs to MCP.
         with redirect_stdout(sys.stderr):
             platform = create_calibration_platform(platform_name)
+            if snapshot is not None:
+                platform.parameters = type(platform.parameters).model_validate_json(
+                    (snapshot / "parameters.json").read_text(encoding="utf-8")
+                )
+                platform.calibration = Calibration.model_validate_json(
+                    (snapshot / "calibration.json").read_text(encoding="utf-8")
+                )
             executor = Executor(platform, update=False)
             platform.connect()
         try:
@@ -113,6 +128,8 @@ def create_server(platform_name: str, *, output: Path = Path("runs")) -> FastMCP
                     completed.results.save(folder)
                 metadata = {
                     "run_id": run_id,
+                    "platform": platform_name,
+                    "slurm_job_id": os.environ.get("SLURM_JOB_ID"),
                     "protocol": protocol,
                     "parameters": parameters,
                     "targets": selected,
@@ -124,6 +141,7 @@ def create_server(platform_name: str, *, output: Path = Path("runs")) -> FastMCP
                     ),
                     "supports_update": protocols[protocol].update is not None,
                     "updated": False,
+                    "update_started": False,
                 }
                 (folder / "run.json").write_text(
                     json.dumps(metadata, indent=2), encoding="utf-8"
@@ -161,25 +179,44 @@ def create_server(platform_name: str, *, output: Path = Path("runs")) -> FastMCP
 
         Updates the live platform used by subsequent executions and writes a
         platform snapshot under the run folder. Does not overwrite the source
-        platform in QIBOLAB_PLATFORMS. A run can be applied only once.
+        platform in QIBOLAB_PLATFORMS. A run's update can be attempted only once.
         """
         async with lock:
+            if run_id not in completed_runs and restore_runs:
+                if UUID(run_id).hex != run_id:
+                    raise ValueError("Invalid run_id")
+                folder = output / run_id
+                metadata = json.loads(
+                    (folder / "run.json").read_text(encoding="utf-8")
+                )
+                if metadata["platform"] != platform_name:
+                    raise ValueError("Run belongs to a different platform")
+                bound = protocols[metadata["protocol"]](**metadata["parameters"])
+                completed_runs[run_id] = Completed(
+                    path=folder, bound=bound, _targets=metadata["targets"]
+                )
+                if metadata["update_started"]:
+                    updated_runs.add(run_id)
             if run_id not in completed_runs:
                 raise ValueError(f"Unknown run_id in this server session: {run_id}")
             if run_id in updated_runs:
-                raise ValueError(f"Run already applied: {run_id}")
+                raise ValueError(f"Run already applied or update attempted: {run_id}")
             completed = completed_runs[run_id]
             if completed.results is None:
                 raise ValueError("Run has no fitted results")
+            if completed.bound is None or completed.bound.protocol.update is None:
+                raise ValueError("Protocol does not support updating")
             executor = ctx.lifespan_context["executor"]
             with redirect_stdout(sys.stderr):
-                executor.update(completed)
+                path = output / run_id / "run.json"
+                metadata = json.loads(path.read_text(encoding="utf-8"))
+                metadata["update_started"] = True
+                path.write_text(json.dumps(metadata, indent=2), encoding="utf-8")
                 updated_runs.add(run_id)
+                executor.update(completed)
                 snapshot = output / run_id / "platform"
                 snapshot.mkdir()
                 executor.platform.dump(snapshot)
-                path = output / run_id / "run.json"
-                metadata = json.loads(path.read_text(encoding="utf-8"))
                 metadata["updated"] = True
                 path.write_text(json.dumps(metadata, indent=2), encoding="utf-8")
             return {"run_id": run_id, "updated": True, "snapshot": str(snapshot)}
@@ -188,13 +225,34 @@ def create_server(platform_name: str, *, output: Path = Path("runs")) -> FastMCP
 
 
 def main():
-    """Run the server over stdio."""
+    """Run a direct hardware server or a SLURM gateway over stdio."""
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--platform", required=True)
     parser.add_argument("--output", type=Path, default=Path("runs"))
+    parser.add_argument("--platforms", help="QIBOLAB_PLATFORMS on the execution host")
+    parser.add_argument("--partition", help="Dispatch each operation through srun")
+    parser.add_argument("--worker-python", default=sys.executable)
+    parser.add_argument("--workdir", type=Path, default=Path.cwd())
+    parser.add_argument("--slurm-arg", action="append", default=[])
     args = parser.parse_args()
+    if args.slurm_arg and args.partition is None:
+        parser.error("--slurm-arg requires --partition")
+    if args.platforms is not None:
+        os.environ["QIBOLAB_PLATFORMS"] = args.platforms
     with redirect_stdout(sys.stderr):
-        server = create_server(args.platform, output=args.output)
+        if args.partition is None:
+            server = create_server(args.platform, output=args.output)
+        else:
+            from .slurm import create_slurm_server
+
+            server = create_slurm_server(
+                args.platform,
+                output=args.output,
+                partition=args.partition,
+                python=args.worker_python,
+                workdir=args.workdir,
+                slurm_args=args.slurm_arg,
+            )
     server.run(transport="stdio", show_banner=False)
 
 

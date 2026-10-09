@@ -72,10 +72,84 @@ engine. Select a **vision-capable** Pydantic AI model; the optional `agent` extr
 includes the OpenAI provider (install other provider extras yourself if needed).
 Put hardware limits, an execution budget and stopping criteria in the objective.
 
-This is a local, single-platform draft for a trusted agent, not a production
-hardware safety layer. Calls are serialized. Run handles exist only until the
-server exits; saved artifacts are not automatically resumed, and platform updates
-are not transactional. Automatic *fitted* updates are disabled, but a protocol's
+## SSH and SLURM
+
+The same agent can run at any of the three locations in Qibocal's
+[interactive infrastructure](https://qibo.science/qibocal/stable/tutorials/interactive.html).
+Use your SSH configuration for the access-node host, authentication and any
+`ProxyJump`. No HTTP port or tunnel is needed: MCP messages, including plot
+images, travel over SSH's stdio.
+
+| Agent location | Execution path | Options |
+| --- | --- | --- |
+| Laptop/local machine | SSH to access node, then one `srun` job per operation | `--ssh ACCESS_NODE --partition PARTITION` |
+| Access node | One `srun` job per operation | `--partition PARTITION` |
+| Allocated compute node | Direct execution with one persistent hardware connection | Neither option |
+
+**Local agent, remote queue:**
+
+```sh
+uv run qibocal-agent --model openai:gpt-4.1 --platform YOUR_PLATFORM \
+  --ssh ACCESS_NODE --partition PARTITION \
+  --server-python /shared/qibocal-mcp-servers/.venv/bin/python \
+  --workdir /shared/qibocal-mcp-servers \
+  --platforms /shared/qibolab-platforms \
+  --output /shared/calibration-runs \
+  --slurm-arg=--account=YOUR_ACCOUNT --slurm-arg=--time=00:15:00 \
+  --timeout 7200 \
+  "Calibrate qubit 0's drive frequency. Run at most two protocols,
+   respecting the hardware's allowed amplitudes and frequency range."
+```
+
+**Agent on the access node:** use the same command without `--ssh`; omit
+`--server-python` when the agent and workers use the same shared Python environment.
+**Agent on an allocated compute node:** omit `--ssh`, `--partition` and
+`--slurm-arg`; this keeps the original direct mode and does not submit nested jobs.
+Acquire the allocation through your site's usual procedure before running it.
+
+Install this project on the access/compute nodes (`uv sync` suffices for the
+server; only the machine running the agent needs `--extra agent` and model
+credentials). The server Python environment, working directory, platform
+definitions and output directory must be accessible at the **same paths on the
+access and compute nodes**. Chrome and instrument drivers must be available on
+compute nodes. `--platforms` supplies the remote `QIBOLAB_PLATFORMS`; other driver
+settings must be configured on the access node and are exported to SLURM.
+The laptop's environment and model credentials are not forwarded over SSH.
+SSH uses noninteractive authentication (`BatchMode=yes`); configure keys or an
+SSH agent beforehand.
+
+Queued mode starts a hardware-free MCP gateway on the access node. Reading
+`qibocal://context` submits an initial discovery job. Each `execute_protocol`
+submits a fresh job, connects, acquires/fits/reports, disconnects and releases its
+allocation. An accepted `update_platform` also runs in a separate job: it restores
+the saved execution, applies the update, and saves a platform snapshot. Subsequent
+jobs load the latest **accepted** snapshot, including both Qibolab parameters and
+Qibocal calibration; rejected fits never become the next job's platform state.
+There is no allocation held while the model inspects reports.
+
+Queued artifacts live under `OUTPUT/sessions/<session_id>/<run_id>/`, on the
+cluster, not the laptop. Images and results are returned over MCP; copying the
+remaining files is a separate operation. `--timeout` includes queue waiting and
+execution time; `--slurm-arg` may be repeated for scheduling options such as
+account, time, constraint, reservation or hardware resources. Do not use it to
+redirect stdin/stdout/stderr, change the task count, or detach the job.
+Queue/subprocess failures are surfaced to the model rather than treated as
+successful experiments. Cancellation terminates the local `srun` controller;
+SLURM/site signal handling governs how quickly its allocation is released.
+
+Other MCP clients can also run a queued gateway directly:
+
+```sh
+uv run qibocal-mcp --platform YOUR_PLATFORM --partition PARTITION \
+  --platforms /shared/qibolab-platforms --output /shared/calibration-runs
+```
+
+This is a single-platform draft for a trusted agent, not a production hardware
+safety layer. Calls are serialized. Run handles exist only until the direct
+server or queue gateway exits; resuming an entire agent session is not supported.
+Platform updates are not transactional; once an update is attempted, retries of
+that run are blocked, even after failure, to avoid repeating a partial update.
+Automatic *fitted* updates are disabled, but a protocol's
 acquisition may itself alter hardware state. Errors are exposed as MCP errors;
 do not blindly retry acquisitions or failed/partially applied updates.
 Source platform files remain untouched; promoting a saved snapshot is a manual

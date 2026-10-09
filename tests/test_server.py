@@ -15,6 +15,7 @@ from qibolab import create_platform
 from qibocal.auto.operation import Data, Parameters, Protocol, Results
 from qibocal.calibration import CalibrationPlatform
 from qibocal.calibration.calibration import Calibration, QubitCalibration
+from qibocal.update import drive_frequency
 
 from qibocal_mcp.server import create_server
 
@@ -50,6 +51,7 @@ def update(results, platform, target):
     platform.calibration.single_qubits[target].qubit.frequency_01 = (
         results.frequency[target]
     )
+    drive_frequency(results.frequency[target], platform, target)
 
 
 class ServerTests(unittest.IsolatedAsyncioTestCase):
