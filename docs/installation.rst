@@ -144,14 +144,15 @@ Pinned Qibocal API
 ~~~~~~~~~~~~~~~~~~
 
 Qibocal is pinned to commit
-``87abd3350612b72e64b09db115ee0cf22886b507`` of
-`qiboteam/qibocal#1716 <https://github.com/qiboteam/qibocal/pull/1716>`_.
+``ae0e797a8c93a1110737f7f75586e628e4a2e543`` on the ``protodev`` branch of
+`qiboteam/qibocal#1722 <https://github.com/qiboteam/qibocal/pull/1722>`_.
 The pin is a PEP 508 direct Git requirement in ``project.dependencies``, not a
 uv-only source override, so pip and built distributions honor the same commit.
 This project uses that commit's API, not the PR description's older examples.
 Protocol execution calls ``Executor.__call__()`` with automatic fitted updates
 disabled; accepted updates call ``Executor.update(completed)`` explicitly.
 Changing the pin requires checking those APIs and the saved artifact format.
+Session and protocol comments use its ``Note`` model and ``notes.json`` format.
 
 Cluster installation
 ~~~~~~~~~~~~~~~~~~~~

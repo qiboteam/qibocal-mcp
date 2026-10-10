@@ -61,6 +61,7 @@ class SlurmJobs:
             if (
                 operation == "update_platform"
                 or (operation == "start_session" and arguments.get("source") == "run")
+                or (operation in {"append_note", "get_notes"} and arguments.get("run_id") is not None)
             ) and arguments.get("run_id") not in self.runs:
                 raise ValueError("Unknown run_id in this gateway session")
             command = list(self.command)
@@ -107,6 +108,11 @@ class SlurmJobs:
                 if result.structuredContent is None:
                     raise ValueError("Worker response has no platform snapshot")
                 self.snapshot = Path(result.structuredContent["snapshot"])
+            elif operation == "append_note":
+                if result.structuredContent is None:
+                    raise ValueError("Worker response has no notes history")
+                if self.snapshot is None:
+                    self.snapshot = Path(result.structuredContent["report_folder"]) / "platform"
             elif operation == "start_session":
                 if result.structuredContent is None:
                     raise ValueError("Worker response has no session metadata")
@@ -149,6 +155,8 @@ def create_slurm_server(
             "patch_platform accepts explicit session edits. Use platform_overrides "
             "on execute_protocol for isolated trials. "
             "start_session selects a new baseline and report folder. "
+            "Use append_note to record session plans and inspected per-run findings; "
+            "get_notes reads their append-only histories. "
             "Run handles expire on a session switch or gateway exit; "
             "paths are on the cluster."
         ),
@@ -196,6 +204,40 @@ def create_slurm_server(
         result = await jobs.call("patch_platform", {"changes": changes})
         if result.structuredContent is None:
             raise ValueError("Worker response has no edit metadata")
+        return result.structuredContent
+
+    @mcp.tool
+    async def get_notes(run_id: str | None = None) -> dict:
+        """Read session comments, or one execution's comments using its run_id.
+
+        Returns session_id, report_folder, run_id and notes in append order.
+        Each note has content, a UTC timestamp and an optional author.
+        Reading session notes alone creates no report folder.
+        Old run handles expire on a session switch or gateway exit.
+        """
+        result = await jobs.call("get_notes", {"run_id": run_id})
+        if result.structuredContent is None:
+            raise ValueError("Worker response has no notes history")
+        return result.structuredContent
+
+    @mcp.tool
+    async def append_note(
+        content: str, run_id: str | None = None, author: str | None = None,
+    ) -> dict:
+        """Append a session comment, or a comment on one execution via run_id.
+
+        content must be nonblank. The worker generates a UTC timestamp.
+        author is an optional caller-supplied label, not authenticated identity.
+        Earlier comments are retained; append follow-up findings rather than edit.
+        Returns session_id, report_folder, run_id and the complete notes history.
+        Creates the report if needed, without changing calibration state.
+        Old run handles expire on a session switch or gateway exit.
+        """
+        result = await jobs.call("append_note", {
+            "content": content, "run_id": run_id, "author": author,
+        })
+        if result.structuredContent is None:
+            raise ValueError("Worker response has no notes history")
         return result.structuredContent
 
     @mcp.tool

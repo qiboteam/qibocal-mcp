@@ -40,6 +40,7 @@ async def run(
             if request["operation"] not in {
                 "execute_protocol", "update_platform", "start_session",
                 "get_platform_state", "patch_platform",
+                "append_note", "get_notes",
             }:
                 raise ValueError(f"Unknown worker operation: {request['operation']}")
             result = await client.call_tool(

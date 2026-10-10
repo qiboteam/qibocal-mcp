@@ -25,6 +25,7 @@ A session report contains, depending on protocol support and execution success:
    <session_id>/
      meta.json
      history.json
+     notes.json                # append-only session comments
      session.json              # selected baseline provenance, for start_session
      platform/                 # initial session platform, never overwritten
      new_platform/             # current session platform
@@ -37,6 +38,7 @@ A session report contains, depending on protocol support and execution success:
        <protocol>-0/
          action.yml
          run.json
+         notes.json            # comments for this exact protocol iteration
          ... protocol data files ...
          ... fitted results files, if present ...
          report-0-0.html
@@ -60,6 +62,15 @@ its update flag becomes true only after an accepted update.
 ``new_platform/`` initially matches ``platform/`` and is refreshed as successful
 executions and accepted updates change the live session state.
 Serve ``OUTPUT`` with ``qibocal-report-server`` to discover these session reports.
+
+``append_note`` stores session plans/summaries or per-run findings as Qibocal
+notes with content, UTC timestamp and optional caller-supplied author.
+``get_notes`` reads them; follow-up comments preserve earlier conclusions.
+Regular protocol execution leaves histories empty until comments are supplied.
+Notes survive later acquisitions, updates, edits and fresh SLURM workers.
+New sessions start empty and leave old report histories unchanged.
+Author labels from MCP are not authenticated identities. The report viewer
+provides display and permission-controlled editing separately.
 
 Data and fitted-result filenames are owned by the pinned Qibocal protocol and
 serializer; they are not a single universal schema. Report indices enumerate

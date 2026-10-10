@@ -23,6 +23,8 @@ Source layout
   directly inside SLURM workers.
 * ``src/qibocal_mcp/artifacts.py``: incremental task-backed Qibocal report storage
   shared by direct execution and successive SLURM workers.
+* ``src/qibocal_mcp/notes.py``: atomic Qibocal note appends using the report
+  server's per-directory ``.notes.lock``.
 * ``src/qibocal_mcp/sessions.py``: paired calibration checkpoints and repository
   revision selection, with explicit configured-remote fetching and no checkout.
 * ``src/qibocal_mcp/slurm.py``: gateway serialization, dispatch and accepted-state
@@ -44,6 +46,12 @@ Review :doc:`installation` before changing the pinned Qibocal API.
 Preserve stdout for MCP/worker protocols, and keep model API calls out of the
 server. Operational invariants are described in :doc:`guides/architecture`
 and :doc:`guides/safety`.
+Incremental report saves must not call ``Output.dump`` on existing histories:
+it replaces note files from possibly stale in-memory lists. Save metadata,
+history and platform separately; note appends reload under ``.notes.lock`` and
+atomically replace only ``notes.json``.
+Likewise, persist an accepted update's action through ``Task.dump``, not
+``Completed.dump_parameters``, which also replaces its note history.
 
 Provisioning invariants
 -----------------------

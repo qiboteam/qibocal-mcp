@@ -25,7 +25,7 @@ continues to consume the original inline MCP images.
 The proxy's inspection metadata is guidance, not an evidence or approval gate.
 See :doc:`../agent/copilot` for native image and permission constraints.
 
-``qibocal-mcp`` exposes six tools and one context resource.
+``qibocal-mcp`` exposes eight tools and one context resource.
 ``get_calibration_context`` aliases ``qibocal://context`` for clients without
 resource support; discovery through either interface has the same execution
 effects.
@@ -37,6 +37,9 @@ fit and generate reports. ``update_platform`` explicitly calls
 validated scalar edits and saves immutable snapshots for subsequent calls.
 ``execute_protocol(platform_overrides=...)`` uses isolated model copies for
 one trial while retaining the accepted baseline and shared hardware connection.
+``append_note`` and ``get_notes`` persist and inspect append-only session and
+per-execution comment histories. Both agent runtimes share instructions to
+record their plans and inspected findings; the server does not infer comments.
 
 See :doc:`../reference/mcp` for the wire-facing interface and :doc:`safety`
 for the limits of this separation.
@@ -58,7 +61,8 @@ All executions share a standard Qibocal report under
 ``OUTPUT/sessions/<session_id>/`` with separate protocol/iteration folders.
 Accepted updates also refresh the report's ``new_platform/``.
 Report folders are created only when executing, restoring a run or explicitly
-starting a calibration session or accepting explicit edits, not during startup,
+starting a calibration session, accepting explicit edits or appending session
+comments, not during startup,
 context discovery or state inspection.
 ``start_session`` replaces the active session's paired calibration models and
 report folder while keeping the direct hardware connection. Prior execution
@@ -92,6 +96,8 @@ The gateway serializes operations and launches ``srun`` workers:
    for that run, applies the update and writes a snapshot.
 4. ``patch_platform`` launches a separate job for explicit edits, while
    ``get_platform_state`` inspects the currently accepted snapshot in a worker.
+   Comment tools also run in workers; a first session comment pins the initial
+   platform snapshot for subsequent jobs without accepting fitted changes.
 5. Only a successful update or edit response advances the gateway's accepted snapshot.
    Subsequent jobs restore both ``parameters.json`` and ``calibration.json``.
 

@@ -7,7 +7,7 @@ requires-python = ">=3.12,<3.14"
 dependencies = [
     "fastmcp>=3.0,<4",
     "kaleido>=1.0,<2",
-    "qibocal @ git+https://github.com/qiboteam/qibocal@87abd3350612b72e64b09db115ee0cf22886b507",
+    "qibocal @ git+https://github.com/qiboteam/qibocal@ae0e797a8c93a1110737f7f75586e628e4a2e543",
 ]
 
 [project.optional-dependencies]

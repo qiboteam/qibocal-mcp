@@ -147,7 +147,7 @@ class EnvironmentTests(unittest.TestCase):
         manifest = tomllib.loads((source / "pyproject.toml").read_text())
         self.assertEqual(manifest["project"]["name"], "qibocal-agent")
         self.assertIn(
-            "qibocal @ git+https://github.com/qiboteam/qibocal@87abd3350612b72e64b09db115ee0cf22886b507",
+            "qibocal @ git+https://github.com/qiboteam/qibocal@ae0e797a8c93a1110737f7f75586e628e4a2e543",
             manifest["project"]["dependencies"],
         )
         self.assertTrue((source / "src/qibocal_mcp/server.py").is_file())
@@ -359,7 +359,7 @@ class EnvironmentTests(unittest.TestCase):
         source = environment.source_payload()
         expected = {
             "url": "https://github.com/qiboteam/qibocal",
-            "vcs_info": {"commit_id": "87abd3350612b72e64b09db115ee0cf22886b507"},
+            "vcs_info": {"commit_id": "ae0e797a8c93a1110737f7f75586e628e4a2e543"},
         }
         wrong = {**expected, "vcs_info": {"commit_id": "a" * 40}}
         options = self.options(venv=str(self.directory / "managed"))
@@ -421,7 +421,7 @@ class EnvironmentTests(unittest.TestCase):
             patch.object(environment, "installed_fingerprint", return_value="installed"),
             patch.object(environment, "installed_qibocal_source", return_value={
                 "url": "https://github.com/qiboteam/qibocal",
-                "vcs_info": {"commit_id": "87abd3350612b72e64b09db115ee0cf22886b507"},
+                "vcs_info": {"commit_id": "ae0e797a8c93a1110737f7f75586e628e4a2e543"},
             }),
             patch.object(environment, "command", side_effect=run),
             patch.dict(os.environ, {"QIBOLAB_PLATFORMS": "/inherited"}),

@@ -1556,7 +1556,7 @@ wheels = [
 [[package]]
 name = "qibocal"
 version = "0.2.7"
-source = { git = "https://github.com/qiboteam/qibocal?rev=87abd3350612b72e64b09db115ee0cf22886b507#87abd3350612b72e64b09db115ee0cf22886b507" }
+source = { git = "https://github.com/qiboteam/qibocal?rev=ae0e797a8c93a1110737f7f75586e628e4a2e543#ae0e797a8c93a1110737f7f75586e628e4a2e543" }
 dependencies = [
     { name = "click" },
     { name = "jinja2" },
@@ -1597,7 +1597,7 @@ requires-dist = [
     { name = "furo", marker = "extra == 'docs'", specifier = ">=2024.8.6" },
     { name = "kaleido", specifier = ">=1.0,<2" },
     { name = "pydantic-ai-slim", extras = ["mcp", "openai"], marker = "extra == 'agent'", specifier = ">=2.54,<3" },
-    { name = "qibocal", git = "https://github.com/qiboteam/qibocal?rev=87abd3350612b72e64b09db115ee0cf22886b507" },
+    { name = "qibocal", git = "https://github.com/qiboteam/qibocal?rev=ae0e797a8c93a1110737f7f75586e628e4a2e543" },
     { name = "sphinx", marker = "extra == 'docs'", specifier = ">=8,<9" },
 ]
 provides-extras = ["agent", "docs"]

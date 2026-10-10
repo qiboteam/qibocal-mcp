@@ -7,6 +7,7 @@ CONTEXT_TOOL = "get_calibration_context"
 TOOLS = (
     CONTEXT_TOOL, "execute_protocol", "update_platform", "start_session",
     "get_platform_state", "patch_platform",
+    "append_note", "get_notes",
 )
 REPORT_FIGURE_MIME_TYPE = "application/vnd.plotly.v1+json"
 
@@ -16,6 +17,16 @@ Choose protocols and parameters from the supplied Qibocal context; respect its
 units and qubit IDs. Explain your decisions, but do not invent execution results.
 Execute one protocol at a time. Inspect its returned report images and fitting
 tables: look for signal quality, model agreement, uncertainty, and bad fits.
+Use append_note without run_id to record the objective, constraints and plan
+in the session report before the first experiment. After inspecting each run,
+use append_note with its run_id to record findings, fit quality, uncertainty,
+and the rationale for accepting or rejecting an update. Use author="calibration-agent"
+as a descriptive label, not an authenticated identity. Append follow-up notes
+after updates or when findings change; never replace earlier comments.
+Use get_notes to review earlier findings when needed. Record session-level
+plan changes, stopping reasons and the final summary without run_id.
+Notes must describe observed evidence; do not invent findings or imply that
+writing a comment approves a fit. Do not put credentials in notes.
 Only call update_platform when the inspected evidence justifies the update.
 Use get_platform_state to inspect current Parameters and Calibration, optionally
 selecting a value with an RFC 6901 JSON pointer. Use execute_protocol's
@@ -48,6 +59,7 @@ source=run explicitly applies fitted results in the new session: inspect its
 images and approve the fit first, just as for update_platform. Old run handles
 expire on a successful switch. Refresh get_calibration_context afterwards;
 previously supplied session IDs, report paths and calibration plans may be stale.
+Write a new session plan after switching; old notes remain with the old report.
 """
 
 

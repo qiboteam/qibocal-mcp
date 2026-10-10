@@ -7,9 +7,11 @@ from pathlib import Path
 from qibo.backends import construct_backend
 from qibocal.auto.history import History
 from qibocal.auto.operation import DEFAULT_PARENT_PARAMETERS, Protocol
-from qibocal.auto.output import Metadata, Output
+from qibocal.auto.output import META, Metadata, Output, TaskStats
 from qibocal.auto.task import Action, Completed, Task, TaskId, Targets
 from qibocal.calibration import CalibrationPlatform
+
+from .notes import read_notes
 
 
 class SessionReport:
@@ -37,6 +39,7 @@ class SessionReport:
                     path=folder,
                     data_time=stats["acquisition"],
                     results_time=stats["fit"],
+                    notes=read_notes(folder),
                 )
                 task_id = history.push(completed)
                 if str(task_id) != name:
@@ -51,7 +54,7 @@ class SessionReport:
             path.mkdir(parents=True)
             Output(history, meta, platform).dump(path)
             Output.update_platform(platform, path)
-        self.output = Output(history, meta)
+        self.output = Output(history, meta, notes=read_notes(path))
 
     def add(
         self, completed: Completed, protocol: str, parameters: dict, targets: Targets
@@ -93,7 +96,16 @@ class SessionReport:
         """Refresh metadata, execution order and the session's current platform."""
         self.output.meta.end()
         self.output.platform = platform
-        self.output.dump(self.path)
+        # Output.dump also replaces notes; those histories have independent writers.
+        self.output.meta.stats = {
+            str(task_id): TaskStats(completed.data_time, completed.results_time)
+            for task_id, completed in self.output.history.items()
+        }
+        (self.path / META).write_text(
+            json.dumps(self.output.meta.dump(), indent=4), encoding="utf-8"
+        )
+        self.output.history.dump(self.path)
+        Output.update_platform(platform, self.path)
 
     def find_run(self, run_id: str) -> Completed:
         """Restore a run from this report only, not from arbitrary output paths."""

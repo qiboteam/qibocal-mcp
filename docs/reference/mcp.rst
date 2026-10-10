@@ -5,7 +5,7 @@ Transport and session
 ---------------------
 
 The server and queued gateway expose the same stdio interface, with exactly
-six tools and one resource. Calls are serialized. Run handles belong to the
+eight tools and one resource. Calls are serialized. Run handles belong to the
 current calibration session and cannot be reused after switching sessions or
 after the server/gateway exits.
 Errors are exposed as MCP errors; failed acquisitions and updates are not
@@ -20,8 +20,8 @@ Its text content is a JSON object containing:
 
 * ``platform``: selected platform name.
 * ``session_id`` and ``report_folder``: session identifier and execution-host
-  path for the shared report, created on the first execution or an explicit
-  ``start_session`` call.
+  path for the shared report, created on the first execution, accepted edit,
+  session comment or an explicit ``start_session`` call.
 * ``qubits``: platform qubit IDs.
 * ``protocols``: built-in protocol names mapped to ``parameters`` (the
   parameter class source, including definitions/units), ``two_qubit_gates``
@@ -183,6 +183,56 @@ or reports. In queued mode, each call is a fresh job that restores the latest
 accepted platform snapshot and releases the allocation when done.
 Report content comes directly from the protocol callback through
 ``Executor.report``; the bridge does not render a full report-page template.
+
+get_notes(run_id=None)
+-----------------------
+
+Read the current session's comment history, or one protocol execution's history
+by supplying the ``run_id`` returned by ``execute_protocol``. Repeated protocol
+executions have independent histories. The response contains ``session_id``,
+``report_folder``, ``run_id`` (null for session notes) and ``notes`` in append
+order. Each note has ``content``, a timezone-aware UTC ``timestamp`` and
+``author`` (possibly null). Missing notes files mean an empty history;
+malformed stored histories are errors, not silently discarded.
+Reading session notes alone does not create a report folder.
+
+append_note(content, run_id=None, author=None)
+----------------------------------------------
+
+Append a comment to the current session, or to one protocol execution using its
+``run_id``. ``content`` must be nonblank; surrounding whitespace is stripped.
+The server generates the UTC timestamp. ``author`` is an optional descriptive
+label supplied by the caller, **not authenticated identity**; this stdio server
+does not authenticate authors. The response has the same fields as
+``get_notes`` and includes the complete history after appending.
+
+.. code-block:: json
+
+   {"content": "Plan: inspect spectroscopy before accepting a frequency update.", "author": "calibration-agent"}
+   {"content": "Fit rejected: resonance is at the sweep boundary.", "run_id": "RUN_ID_FROM_EXECUTE_PROTOCOL", "author": "calibration-agent"}
+   {"content": "Follow-up: widen the next sweep.", "run_id": "RUN_ID_FROM_EXECUTE_PROTOCOL"}
+
+Comments are append-only through MCP. Append follow-up findings rather than
+replace earlier conclusions. Session comments live in ``notes.json`` at the
+report root; execution comments live in ``data/<protocol>-<iteration>/notes.json``.
+Appending a session comment creates the report and initial platform snapshot
+if necessary, but changes no accepted calibration state, fitted results, update
+flags or acquisition data. It does not approve a fit or execute an update.
+Later acquisitions, edits and updates leave comment files untouched.
+
+Writers use the same per-directory ``.notes.lock`` as the report server and
+atomically replace only ``notes.json``, preserving concurrent report UI appends.
+Other writers must honor that lock; Qibocal's generic ``Output.dump`` and
+``dump_notes`` APIs alone do not coordinate concurrent writes.
+Notes and lock symlinks are rejected. Persistence errors are surfaced.
+
+Both tools wait for hardware initialization in direct mode and submit a worker
+job in queued mode, including a platform connection but no acquisition.
+Only run handles from the active session are accepted. After ``start_session``,
+the new session starts with empty histories; the old report's notes remain.
+Both agent integrations are instructed to record plans, inspected findings,
+update decisions, follow-ups and final session summaries through these tools.
+The server itself does not infer findings or make model calls.
 
 update_platform(run_id)
 -----------------------

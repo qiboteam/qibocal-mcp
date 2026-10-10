@@ -16,13 +16,14 @@ from fastmcp.tools import ToolResult
 from fastmcp.utilities.types import Image
 from mcp.types import ContentBlock, EmbeddedResource, TextContent, TextResourceContents
 with redirect_stdout(sys.stderr):
-    from qibocal import Executor, create_calibration_platform
+    from qibocal import Executor, Note, create_calibration_platform
     from qibocal.auto.operation import Protocol
     from qibocal.auto.serialize import serialize
     from qibocal.auto.task import Completed, Targets
     from qibocal.protocols import PROTOCOLS
 
     from .artifacts import SessionReport
+    from .notes import append_note as persist_note, read_notes
 from .calibration import REPORT_FIGURE_MIME_TYPE
 from .sessions import (
     PlatformState, SessionSource, pointer_tokens, pointer_value, repository_state,
@@ -97,6 +98,8 @@ def create_server(
             "patch_platform accepts explicit session edits. Use platform_overrides "
             "on execute_protocol for isolated trials. "
             "start_session selects a new baseline and report folder. "
+            "Use append_note to record session plans and inspected per-run findings; "
+            "get_notes reads their append-only histories. "
             "Run handles expire on a session switch or server exit."
         ),
         lifespan=lifespan,
@@ -205,6 +208,59 @@ def create_server(
         if run_id not in completed_runs:
             raise ValueError(f"Unknown run_id in this server session: {run_id}")
         return completed_runs[run_id]
+
+    @mcp.tool
+    async def get_notes(ctx: Context, run_id: str | None = None) -> dict:
+        """Read session comments, or one execution's comments using its run_id.
+
+        Returns session_id, report_folder, run_id and notes in append order.
+        Each note has content, a UTC timestamp and an optional author.
+        Reading session notes alone creates no report folder.
+        Old run handles expire on a session switch or server exit.
+        """
+        async with lock:
+            executor = ctx.lifespan_context["executor"]
+            folder = (
+                report_folder if run_id is None else find_run(executor, run_id).path
+            )
+            return {
+                "session_id": session_id, "report_folder": str(report_folder),
+                "run_id": run_id,
+                "notes": [note.model_dump(mode="json") for note in read_notes(folder)],
+            }
+
+    @mcp.tool
+    async def append_note(
+        content: str, ctx: Context, run_id: str | None = None,
+        author: str | None = None,
+    ) -> dict:
+        """Append a session comment, or a comment on one execution via run_id.
+
+        content must be nonblank. The server generates a UTC timestamp.
+        author is an optional caller-supplied label, not authenticated identity.
+        Earlier comments are retained; append follow-up findings rather than edit.
+        Returns session_id, report_folder, run_id and the complete notes history.
+        Creates the report if needed, without changing calibration state.
+        Old run handles expire on a session switch or server exit.
+        """
+        note = Note(content=content, author=author)
+        async with lock:
+            executor = ctx.lifespan_context["executor"]
+            completed = None if run_id is None else find_run(executor, run_id)
+            with redirect_stdout(sys.stderr):
+                report = report_for(executor)
+                notes = persist_note(
+                    report_folder if completed is None else completed.path, note,
+                )
+            if completed is None:
+                report.output.notes = notes
+            else:
+                completed.notes = notes
+            return {
+                "session_id": session_id, "report_folder": str(report_folder),
+                "run_id": run_id,
+                "notes": [entry.model_dump(mode="json") for entry in notes],
+            }
 
     @mcp.tool
     async def start_session(
@@ -438,7 +494,8 @@ def create_server(
                 executor.platform.dump(snapshot)
                 report_for(executor).save(executor.platform)
                 completed.task.action.update = True
-                completed.dump_parameters()
+                # Completed.dump_parameters also replaces potentially stale notes.
+                completed.task.dump(completed.path)
                 metadata["updated"] = True
                 path.write_text(json.dumps(metadata, indent=2), encoding="utf-8")
                 accepted_state = PlatformState.capture(executor.platform)

@@ -170,7 +170,7 @@ class ServerTests(unittest.IsolatedAsyncioTestCase):
                 self.assertEqual(
                     {t.name for t in await client.list_tools()},
                     {"get_calibration_context", "execute_protocol", "update_platform", "start_session",
-                     "get_platform_state", "patch_platform"},
+                     "get_platform_state", "patch_platform", "append_note", "get_notes"},
                 )
                 context_text = (
                     await client.read_resource("qibocal://context")
