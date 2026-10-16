@@ -20,7 +20,7 @@ from pathlib import Path
 from unittest.mock import MagicMock, Mock, patch
 from urllib.error import URLError
 
-from qibocal_mcp import config, environment, report
+from qibocal_agent import config, environment, report
 
 
 class ReportLaunchTests(unittest.TestCase):
@@ -166,7 +166,7 @@ class ReportLaunchTests(unittest.TestCase):
             import os
             import sys
             from unittest.mock import MagicMock, patch
-            from qibocal_mcp import report
+            from qibocal_agent import report
             launch = report.ServerLaunch(
                 command=sys.executable, args=["-c", {child!r}], env=dict(os.environ),
             )

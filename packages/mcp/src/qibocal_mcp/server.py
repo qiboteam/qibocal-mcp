@@ -15,7 +15,6 @@ from fastmcp.tools import ToolResult
 from mcp.types import TextResourceContents
 
 from .calibration import register_calibration_prompt
-from .config import add_deployment_arguments, parse_settings
 from .sessions import SessionSource
 from .targets import Targets
 
@@ -265,49 +264,23 @@ def create_server(
 
 def main(argv: list[str] | None = None):
     """Run a direct hardware server or a SLURM gateway over stdio."""
-    parser = argparse.ArgumentParser(
-        description=__doc__, argument_default=argparse.SUPPRESS
-    )
-    parser.add_argument("--platform")
-    parser.add_argument("--output")
-    parser.add_argument("--platforms", help="QIBOLAB_PLATFORMS on the execution host")
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--platform", required=True, help="Qibolab platform name")
+    parser.add_argument("--output", default="runs", help="Report output directory")
+    parser.add_argument("--platforms", help="QIBOLAB_PLATFORMS for this process")
     parser.add_argument("--partition", help="Dispatch each operation through srun")
-    parser.add_argument("--worker-python")
-    parser.add_argument("--workdir")
-    parser.add_argument("--slurm-arg", action="append")
-    add_deployment_arguments(parser)
-    args = parse_settings(parser, "server", argv)
-    if args.venv is not None or args.platform_repo or args.dependency:
-        from .environment import DeploymentError, launch, source_payload
-
-        command = [
-            "--no-config", "--platform", args.platform, "--output", args.output,
-        ]
-        if args.partition is not None:
-            command += [
-                "--partition", args.partition,
-                "--workdir", args.workdir,
-            ]
-            if args.venv is None:
-                command += ["--worker-python", args.worker_python]
-        command += [f"--slurm-arg={arg}" for arg in args.slurm_arg]
-        try:
-            launch(
-                {
-                    "venv": args.venv,
-                    "python": sys.executable,
-                    "platform": args.platform,
-                    "platforms": args.platforms,
-                    "platform_repo": args.platform_repo,
-                    "dependency": args.dependency,
-                    "worker_python": args.worker_python if args.partition is not None and args.venv is None else None,
-                },
-                command,
-                source_payload() if args.venv is not None else None,
-            )
-        except (DeploymentError, OSError, ValueError) as error:
-            parser.error(str(error))
-        return
+    parser.add_argument(
+        "--worker-python", default=sys.executable,
+        help="Python interpreter for compute-node jobs",
+    )
+    parser.add_argument(
+        "--workdir", default=str(Path.cwd()),
+        help="Working directory for compute-node jobs",
+    )
+    parser.add_argument("--slurm-arg", action="append", default=[], help="Extra srun option")
+    args = parser.parse_args(argv)
+    if args.slurm_arg and args.partition is None:
+        parser.error("--slurm-arg requires --partition")
     if args.platforms is not None:
         os.environ["QIBOLAB_PLATFORMS"] = args.platforms
     with redirect_stdout(sys.stderr):

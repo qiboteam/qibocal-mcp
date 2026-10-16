@@ -11,7 +11,7 @@ import unittest
 from pathlib import Path
 from unittest.mock import AsyncMock, Mock, patch
 
-from qibocal_mcp import agent, config, environment, server
+from qibocal_agent import agent, config, environment, remote
 
 
 class ConfigTests(unittest.TestCase):
@@ -99,7 +99,7 @@ class ConfigTests(unittest.TestCase):
                 },
             },
         })
-        with patch("qibocal_mcp.agent.run", new_callable=AsyncMock) as run:
+        with patch("qibocal_agent.agent.run", new_callable=AsyncMock) as run:
             agent.main(["local"])
             args = run.call_args.args[0]
             self.assertEqual(args.platform, "local-qpu")
@@ -113,7 +113,6 @@ class ConfigTests(unittest.TestCase):
             self.assertEqual(args.objective, "Explicit inspect only")
             self.assertEqual(args.output, "explicit-runs")
             self.assertEqual(args.directories, {"workdir": "remote"})
-            self.assertIn("--no-config", agent.transport_for(args).args[-1])
         self.assert_cli_error(lambda: agent.main(["unknown"]), "Unknown agent: unknown")
         self.assert_cli_error(
             lambda: agent.main(["--no-config", "local", "Inspect"]), "Unknown agent"
@@ -121,7 +120,7 @@ class ConfigTests(unittest.TestCase):
 
     def test_named_agents_require_a_bounded_objective_for_one_shot_launch(self):
         config.save_config({"agents": {"local": {"platform": "qpu", "model": "test"}}})
-        with patch("qibocal_mcp.agent.run", new_callable=AsyncMock) as run:
+        with patch("qibocal_agent.agent.run", new_callable=AsyncMock) as run:
             self.assert_cli_error(lambda: agent.main(["local"]), "objective is required")
         run.assert_not_called()
 
@@ -145,11 +144,11 @@ class ConfigTests(unittest.TestCase):
         siblings = {"servers.json": "report servers", "auth.json": "report auth"}
         for name, text in siblings.items():
             (self.directory / name).write_text(text)
-        self.command("set", "server.platform", "qpu")
+        self.command("set", "agent.platform", "qpu")
         self.command("set", "agent.model", "openai:gpt-4.1")
         self.command("set", "agent.timeout", "7200")
         self.command("set", "agent.slurm_arg", '["--account=quantum"]')
-        self.assertEqual(self.command("get", "server.platform"), "qpu")
+        self.assertEqual(self.command("get", "agent.platform"), "qpu")
         self.assertEqual(self.command("get", "agent.timeout"), "7200")
         self.assertEqual(
             json.loads(self.command("get", "agent.slurm_arg")), ["--account=quantum"]
@@ -157,29 +156,29 @@ class ConfigTests(unittest.TestCase):
         self.assertEqual(
             json.loads(self.command("show")),
             {
-                "server": {"platform": "qpu"},
                 "agent": {
+                    "platform": "qpu",
                     "model": "openai:gpt-4.1",
                     "timeout": 7200,
                     "slurm_arg": ["--account=quantum"],
                 },
             },
         )
-        self.command("unset", "server.platform")
-        self.assertNotIn("server", config.load_config())
+        self.command("unset", "agent.platform")
+        self.assertNotIn("platform", config.load_config()["agent"])
         self.assert_cli_error(
-            lambda: self.command("get", "server.platform"), "not configured"
+            lambda: self.command("get", "agent.platform"), "not configured"
         )
         self.assert_cli_error(
-            lambda: self.command("unset", "server.platform"), "not configured"
+            lambda: self.command("unset", "agent.platform"), "not configured"
         )
         for name, text in siblings.items():
             self.assertEqual((self.directory / name).read_text(), text)
 
     def test_explicit_path_does_not_write_default_file(self):
         selected = self.directory / "other/settings.json"
-        self.command("--config", str(selected), "set", "server.platform", "other")
-        self.assertEqual(config.load_config(selected)["server"]["platform"], "other")
+        self.command("--config", str(selected), "set", "agent.platform", "other")
+        self.assertEqual(config.load_config(selected)["agent"]["platform"], "other")
         self.assertFalse(self.path.exists())
         self.assertEqual(
             self.command("--config", str(selected), "path"), str(selected)
@@ -192,15 +191,16 @@ class ConfigTests(unittest.TestCase):
         invalid = [
             [],
             {"other": {}},
-            {"server": []},
-            {"server": {"platfrom": "qpu"}},
+            {"server": {"platform": "qpu"}},
+            {"agent": []},
+            {"agent": {"platfrom": "qpu"}},
             {"agent": {"objective": "calibrate"}},
             {"agent": {"api_key": "not-a-key"}},
-            {"server": {"platform": 5}},
-            {"server": {"platform": ""}},
-            {"server": {"platform": None}},
-            {"server": {"slurm_arg": "--account=quantum"}},
-            {"server": {"slurm_arg": [1]}},
+            {"agent": {"platform": 5}},
+            {"agent": {"platform": ""}},
+            {"agent": {"platform": None}},
+            {"agent": {"slurm_arg": "--account=quantum"}},
+            {"agent": {"slurm_arg": [1]}},
             {"agent": {"timeout": True}},
             {"agent": {"timeout": "10"}},
             {"agent": {"timeout": 0}},
@@ -220,7 +220,7 @@ class ConfigTests(unittest.TestCase):
             config.load_config()
         original = self.path.read_bytes()
         self.assert_cli_error(
-            lambda: self.command("set", "server.platform", "qpu"), "Could not read"
+            lambda: self.command("set", "agent.platform", "qpu"), "Could not read"
         )
         self.assertEqual(self.path.read_bytes(), original)
         self.path.unlink()
@@ -228,8 +228,9 @@ class ConfigTests(unittest.TestCase):
             ("agent.timeout", "abc"),
             ("agent.timeout", "true"),
             ("agent.slurm_arg", '"not an array"'),
-            ("server.unknown", "value"),
-            ("server.platform", ""),
+            ("agent.unknown", "value"),
+            ("server.platform", "qpu"),
+            ("agent.platform", ""),
         ):
             with self.subTest(key=key, value=value):
                 self.assert_cli_error(
@@ -238,91 +239,56 @@ class ConfigTests(unittest.TestCase):
         self.assertFalse(self.path.exists())
 
     def test_failed_atomic_write_preserves_original_and_cleans_temporary(self):
-        config.save_config({"server": {"platform": "original"}})
-        with patch("qibocal_mcp.config.os.replace", side_effect=OSError("write denied")):
+        config.save_config({"agent": {"platform": "original"}})
+        with patch("qibocal_agent.config.os.replace", side_effect=OSError("write denied")):
             with self.assertRaisesRegex(config.ConfigError, "write denied"):
-                config.save_config({"server": {"platform": "replacement"}})
-        self.assertEqual(config.load_config()["server"]["platform"], "original")
+                config.save_config({"agent": {"platform": "replacement"}})
+        self.assertEqual(config.load_config()["agent"]["platform"], "original")
         self.assertEqual(list(self.directory.iterdir()), [self.path])
 
-    def test_invalid_agent_section_also_blocks_server(self):
-        self.path.write_text('{"server": {"platform": "qpu"}, "agent": {"timeout": 0}}')
-        with patch("qibocal_mcp.server.create_server") as create:
-            self.assert_cli_error(lambda: server.main([]), "agent.timeout")
-        create.assert_not_called()
-
-    def test_server_file_defaults_and_cli_override(self):
-        config.save_config(
-            {"server": {"platform": "configured", "output": "configured-runs"}}
-        )
-        instance = Mock()
-        with patch("qibocal_mcp.server.create_server", return_value=instance) as create:
-            server.main([])
-            create.assert_called_with(
-                "configured", output=environment.cache_home() / "runs/configured-runs"
-            )
-            instance.run.assert_called_with(transport="stdio", show_banner=False)
-            server.main(["--platform", "explicit", "--output", "explicit-runs"])
-            create.assert_called_with("explicit", output=Path("explicit-runs"))
-
-    def test_server_queue_settings_and_platforms_environment(self):
-        config.save_config(
-            {
-                "server": {
-                    "platform": "qpu",
-                    "partition": "quantum",
-                    "workdir": "/shared/project",
-                    "worker_python": "/shared/venv/bin/python",
-                    "platforms": "/shared/platforms",
-                    "slurm_arg": ["--account=configured"],
-                }
-            }
-        )
+    def test_remote_mcp_resolves_settings_and_execs_the_launch(self):
+        config.save_config({"agents": {"lab": {
+            "platform": "qpu", "ssh": "access-node", "partition": "quantum",
+        }}})
         with (
-            patch.dict(os.environ, {"QIBOLAB_PLATFORMS": "old"}),
-            patch("qibocal_mcp.slurm.create_slurm_server") as create,
+            patch("qibocal_agent.remote.os.execvpe") as execute,
+            patch("qibocal_agent.remote.os.chdir") as chdir,
         ):
-            server.main(["--slurm-arg=--account=explicit", "--slurm-arg=--time=00:10:00"])
-            create.assert_called_once_with(
-                "qpu", output=Path("runs"), partition="quantum",
-                python="/shared/venv/bin/python", workdir=Path("/shared/project"),
-                slurm_args=["--account=explicit", "--time=00:10:00"],
-            )
-            self.assertEqual(os.environ["QIBOLAB_PLATFORMS"], "/shared/platforms")
+            remote.main(["lab"])
+        command, arguments, environment_variables = execute.call_args.args
+        self.assertEqual(command, "ssh")
+        self.assertEqual(arguments[0], "ssh")
+        self.assertIn("access-node", arguments)
+        self.assertIn("--partition", arguments[-1])
+        self.assertIn("PATH", environment_variables)
+        chdir.assert_not_called()
 
-    def test_server_no_config_and_builtin_defaults(self):
-        self.path.write_text("{invalid")
-        with (
-            patch.dict(os.environ, {"QIBOLAB_PLATFORMS": "/existing/platforms"}),
-            patch("qibocal_mcp.server.create_server") as create,
-        ):
-            server.main(["--no-config", "--platform", "explicit"])
-            create.assert_called_with("explicit", output=Path("runs"))
-            self.assertEqual(os.environ["QIBOLAB_PLATFORMS"], "/existing/platforms")
+    def test_remote_mcp_requires_a_platform_but_no_model(self):
         self.assert_cli_error(
-            lambda: server.main(["--no-config"]), "--platform is required"
+            lambda: remote.main(["--no-config"]), "--platform is required"
         )
-        self.assert_cli_error(
-            lambda: server.main(["--no-config", "--config", str(self.path)]),
-            "not allowed",
-        )
+        with patch("qibocal_agent.remote.os.execvpe") as execute:
+            remote.main(["--no-config", "--platform", "qpu"])
+        command, arguments, _ = execute.call_args.args
+        self.assertEqual(command, sys.executable)
+        self.assertEqual(arguments[1:3], ["-m", "qibocal_mcp.server"])
 
-    def test_runtime_explicit_config_is_required_and_replaces_discovery(self):
-        config.save_config({"server": {"platform": "discovered"}})
+    def test_explicit_config_is_required_and_replaces_discovery(self):
+        config.save_config({"agent": {"platform": "discovered"}})
         selected = self.directory / "other.json"
         self.assert_cli_error(
-            lambda: server.main(["--config", str(selected), "--platform", "explicit"]),
+            lambda: remote.main(["--config", str(selected), "--platform", "explicit"]),
             "not found",
         )
-        config.save_config({"server": {"platform": "selected"}}, selected)
-        with patch("qibocal_mcp.server.create_server") as create:
-            server.main(["--config", str(selected)])
-        create.assert_called_once_with("selected", output=Path("runs"))
+        config.save_config({"agent": {"platform": "selected"}}, selected)
+        with patch("qibocal_agent.remote.os.execvpe") as execute:
+            remote.main(["--config", str(selected)])
+        _, arguments, _ = execute.call_args.args
+        self.assertIn("selected", arguments)
 
     def test_agent_defaults_and_child_configuration_isolation(self):
         config.save_config(
             {
-                "server": {"platform": "other-platform", "partition": "other-queue"},
                 "agent": {
                     "platform": "qpu",
                     "model": "openai:gpt-4.1",
@@ -336,7 +302,7 @@ class ConfigTests(unittest.TestCase):
                 },
             }
         )
-        with patch("qibocal_mcp.agent.run", new_callable=AsyncMock) as run:
+        with patch("qibocal_agent.agent.run", new_callable=AsyncMock) as run:
             agent.main(
                 ["--slurm-arg=--account=explicit", "--timeout", "600", "Inspect qubit 0"]
             )
@@ -349,16 +315,16 @@ class ConfigTests(unittest.TestCase):
         self.assertEqual(args.output, "runs")
         transport = agent.transport_for(args)
         self.assertEqual(transport.command, "ssh")
-        self.assertIn("--no-config", transport.args[-1])
-        self.assertNotIn("other-queue", transport.args[-1])
+        self.assertIn("--partition", transport.args[-1])
+        self.assertIn("quantum", transport.args[-1])
 
     def test_agent_no_section_inheritance_or_credentials_in_config(self):
-        config.save_config({"server": {"platform": "qpu"}})
+        config.save_config({"report": {"port": 8123}})
         self.assert_cli_error(
             lambda: agent.main(["--model", "openai:gpt-4.1", "Inspect"]),
             "--platform is required",
         )
-        with patch("qibocal_mcp.agent.run", new_callable=AsyncMock) as run:
+        with patch("qibocal_agent.agent.run", new_callable=AsyncMock) as run:
             agent.main(
                 ["--no-config", "--platform", "explicit", "--model", "test", "Inspect"]
             )
@@ -376,7 +342,7 @@ class ConfigTests(unittest.TestCase):
         self.assertEqual(
             self.command("get", "agent.model_base_url"), "http://localhost:3000/api"
         )
-        with patch("qibocal_mcp.agent.run", new_callable=AsyncMock) as run:
+        with patch("qibocal_agent.agent.run", new_callable=AsyncMock) as run:
             agent.main(["Inspect"])
             self.assertEqual(run.call_args.args[0].model_base_url, "http://localhost:3000/api")
             agent.main(["--model-base-url", "https://explicit.example/api", "Inspect"])
@@ -400,7 +366,7 @@ class ConfigTests(unittest.TestCase):
         self.assert_cli_error(
             lambda: agent.main(["Inspect"]), "--slurm-arg requires --partition"
         )
-        with patch("qibocal_mcp.agent.run", new_callable=AsyncMock):
+        with patch("qibocal_agent.agent.run", new_callable=AsyncMock):
             agent.main(["--partition", "qpu", "Inspect"])
         for value in ("0", "-1", "nan", "inf"):
             with self.subTest(value=value):
@@ -415,7 +381,7 @@ class ConfigTests(unittest.TestCase):
         self.command("set", "agent.venv", "/shared/env")
         self.command("set", "agent.platform_repo", '["git@host:repo#subdirectory=platforms"]')
         self.command("set", "agent.dependency", '["driver>=1", "other-driver"]')
-        with patch("qibocal_mcp.agent.run", new_callable=AsyncMock) as run:
+        with patch("qibocal_agent.agent.run", new_callable=AsyncMock) as run:
             agent.main(["--platform-repo", "https://host/other", "--dependency", "explicit-driver", "Inspect"])
         args = run.call_args.args[0]
         self.assertEqual(args.venv, "/shared/env")
@@ -429,7 +395,7 @@ class ConfigTests(unittest.TestCase):
     def test_deployment_errors_are_checked_before_startup(self):
         for key, value in (
             ("agent.platform_repo", '["repo#subdirectory=../outside"]'),
-            ("server.platform_repo", '"not an array"'),
+            ("agent.platform_repo", '"not an array"'),
             ("agent.dependency", '["--target=/elsewhere"]'),
         ):
             with self.subTest(key=key):
@@ -438,25 +404,19 @@ class ConfigTests(unittest.TestCase):
             "platform": "qpu", "model": "test",
             "server_python": "/existing/python",
         }})
-        with patch("qibocal_mcp.agent.run", new_callable=AsyncMock) as run:
+        with patch("qibocal_agent.agent.run", new_callable=AsyncMock) as run:
             self.assert_cli_error(
                 lambda: agent.main(["--venv", "lab", "Inspect"]),
                 "cannot be combined",
             )
         run.assert_not_called()
-        with patch("qibocal_mcp.environment.launch") as launch:
-            self.assert_cli_error(
-                lambda: server.main(["--no-config", "--platform", "qpu", "--venv", "lab", "--worker-python", "/other/python"]),
-                "cannot be combined",
-            )
-        launch.assert_not_called()
 
     def test_configured_directories_are_carried_to_the_execution_host(self):
         config.save_config({"agents": {"lab": {
             "platform": "qpu", "model": "test", "ssh": "node",
             "venv": "nested/env", "workdir": "./project", "output": "nested/runs",
         }}})
-        with patch("qibocal_mcp.agent.run", new_callable=AsyncMock) as run:
+        with patch("qibocal_agent.agent.run", new_callable=AsyncMock) as run:
             agent.main(["lab", "Inspect"])
         args = run.call_args.args[0]
         self.assertEqual(args.venv, "nested/env")
@@ -476,7 +436,7 @@ class ConfigTests(unittest.TestCase):
         config.save_config({"agents": {"lab": {
             "platform": "qpu", "model": "test", "server_python": "/existing/python",
         }}})
-        with patch("qibocal_mcp.agent.run", new_callable=AsyncMock) as run:
+        with patch("qibocal_agent.agent.run", new_callable=AsyncMock) as run:
             agent.main(["lab", "Inspect"])
         args = run.call_args.args[0]
         self.assertIsNone(args.venv)
@@ -485,46 +445,3 @@ class ConfigTests(unittest.TestCase):
         self.assertIsNone(request["options"]["venv"])
         self.assertNotIn("source", request)
         self.assertIsNone(transport.cwd)
-
-    def test_configured_server_directories_use_xdg_cache_and_cli_overrides_do_not(self):
-        config.save_config({"server": {
-            "platform": "qpu", "partition": "queue",
-            "output": "nested/runs", "workdir": "project",
-        }})
-        with (
-            patch.dict(os.environ, {"XDG_CACHE_HOME": str(self.directory / "cache")}),
-            patch("qibocal_mcp.slurm.create_slurm_server") as create,
-        ):
-            server.main([])
-            root = (self.directory / "cache/qibocal/agent").resolve()
-            self.assertEqual(create.call_args.kwargs["output"], root / "runs/nested/runs")
-            self.assertEqual(create.call_args.kwargs["workdir"], root / "work/project")
-            self.assertTrue((root / "work/project").is_dir())
-            server.main(["--output", "cli-runs", "--workdir", "cli-work"])
-            self.assertEqual(create.call_args.kwargs["output"], Path("cli-runs"))
-            self.assertEqual(create.call_args.kwargs["workdir"], Path("cli-work"))
-
-    def test_standalone_managed_server_reexec_preserves_resolved_settings(self):
-        with (
-            patch("qibocal_mcp.environment.launch") as launch,
-            patch("qibocal_mcp.server.create_server") as create,
-        ):
-            server.main([
-                "--no-config", "--platform", "qpu", "--venv", "/shared/env",
-                "--platform-repo", "git@host:repo", "--platforms", "/explicit",
-                "--partition", "quantum", "--workdir", "/shared/project",
-                "--dependency", "driver", "--slurm-arg=--account=lab",
-            ])
-        create.assert_not_called()
-        options, command, payload = launch.call_args.args
-        self.assertEqual(options["venv"], "/shared/env")
-        self.assertEqual(options["platforms"], "/explicit")
-        self.assertEqual(options["platform_repo"], ["git@host:repo"])
-        self.assertEqual(options["dependency"], ["driver"])
-        self.assertIsNone(options["worker_python"])
-        self.assertIn("--no-config", command)
-        self.assertIn("/shared/project", command)
-        self.assertIn("--slurm-arg=--account=lab", command)
-        self.assertNotIn("--platforms", command)
-        self.assertNotIn("--worker-python", command)
-        self.assertTrue(payload)

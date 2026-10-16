@@ -175,7 +175,7 @@ def delayed_transport(command, args, **kwargs):
     )
 
 server.StdioTransport = delayed_transport
-server.main(["--no-config", "--platform", "dummy", "--output", sys.argv[3]])
+server.main(["--platform", "dummy", "--output", sys.argv[3]])
 """
         with (
             tempfile.TemporaryDirectory() as directory,

@@ -15,7 +15,7 @@ from pydantic_ai.models.test import TestModel
 from pydantic_ai.providers.github_copilot import GitHubCopilotProvider
 from pydantic_ai.providers.openai import OpenAIProvider
 
-from qibocal_mcp.models import resolve_model
+from qibocal_agent.models import resolve_model
 
 
 class ModelTests(unittest.TestCase):
@@ -152,7 +152,7 @@ class ProviderRequestTests(unittest.IsolatedAsyncioTestCase):
                     with (
                         patch.dict(os.environ, environment, clear=True),
                         patch(
-                            f"qibocal_mcp.models.{constructor.__name__}",
+                            f"qibocal_agent.models.{constructor.__name__}",
                             side_effect=partial(constructor, http_client=client),
                         ),
                     ):
@@ -196,7 +196,7 @@ class ProviderRequestTests(unittest.IsolatedAsyncioTestCase):
             with (
                 patch.dict(os.environ, {"OPENWEBUI_API_KEY": "invalid"}, clear=True),
                 patch(
-                    "qibocal_mcp.models.OpenAIProvider",
+                    "qibocal_agent.models.OpenAIProvider",
                     side_effect=partial(OpenAIProvider, http_client=client),
                 ),
             ):

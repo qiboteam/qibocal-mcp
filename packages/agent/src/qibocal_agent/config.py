@@ -25,7 +25,6 @@ COMMON_FIELDS = {
     "dependency": list,
 }
 FIELDS = {
-    "server": {**COMMON_FIELDS, "worker_python": str},
     "agent": {
         **COMMON_FIELDS,
         "model": str,
@@ -251,11 +250,7 @@ def parse_settings(
             "platform_repo": [],
             "dependency": [],
         }
-        if section == "server":
-            defaults = common_defaults | {
-                "worker_python": sys.executable, "workdir": str(Path.cwd())
-            }
-        elif section == "agent":
+        if section == "agent":
             defaults = common_defaults | {
                 "model": None, "model_base_url": None, "ssh": None,
                 "server_python": None, "timeout": 3600,
@@ -321,24 +316,10 @@ def parse_settings(
         else:
             if values["slurm_arg"] and values["partition"] is None:
                 parser.error("--slurm-arg requires --partition")
-            interpreter = "server_python" if section == "agent" else "worker_python"
             if values["venv"] is not None and (
-                interpreter in section_defaults or interpreter in vars(args)
+                "server_python" in section_defaults or "server_python" in vars(args)
             ):
-                parser.error(f"--venv cannot be combined with --{interpreter.replace('_', '-')}")
-        if section == "server":
-            from .environment import directory_path
-
-            for name, value in values["directories"].items():
-                directory = directory_path(value, "runs" if name == "output" else "work")
-                if name == "workdir" and values["partition"] is not None:
-                    if not Path(value).expanduser().is_absolute():
-                        try:
-                            directory.mkdir(parents=True, exist_ok=True)
-                        except OSError as error:
-                            raise ConfigError(f"Could not create workdir {directory}: {error}") from error
-                values[name] = str(directory)
-            values["directories"] = {}
+                parser.error("--venv cannot be combined with --server-python")
     except ConfigError as error:
         parser.error(str(error))
     return argparse.Namespace(**values)

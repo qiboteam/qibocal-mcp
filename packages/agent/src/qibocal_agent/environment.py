@@ -128,8 +128,19 @@ def locked(path: Path):
 
 
 def source_payload() -> str:
-    """Ship our source, not a remote branch or the agent's private configuration."""
-    module = Path(__file__).resolve().parent
+    """Ship the qibocal-mcp server source, not local orchestration or settings."""
+    spec = util.find_spec("qibocal_mcp")
+    if spec is not None and spec.origin is not None:
+        module = Path(spec.origin).resolve().parent
+    else:
+        # A repository checkout can deploy without installing the server locally.
+        checkout = Path(__file__).resolve().parents[3] / "mcp"
+        module = checkout / "src" / "qibocal_mcp"
+        if not (checkout / "pyproject.toml").is_file():
+            raise DeploymentError(
+                "Managed deployment ships the qibocal-mcp source: install "
+                "qibocal-mcp locally or run from the repository checkout"
+            )
     root = module.parent.parent
     files = {
         f"src/qibocal_mcp/{path.name}": path.read_bytes()
@@ -139,7 +150,7 @@ def source_payload() -> str:
         files["pyproject.toml"] = (root / "pyproject.toml").read_bytes()
         files["README.md"] = (root / "README.md").read_bytes()
     else:
-        distribution = metadata.distribution("qibocal-agent")
+        distribution = metadata.distribution("qibocal-mcp")
         dependencies = [
             requirement
             for requirement in distribution.requires or []
@@ -150,12 +161,12 @@ def source_payload() -> str:
             for requirement in dependencies
         ):
             raise DeploymentError(
-                "Reinstall qibocal-agent with its pinned Git dependency "
+                "Reinstall qibocal-mcp with its pinned Git dependency "
                 "before managed deployment"
             )
         manifest = (
             "[project]\n"
-            'name = "qibocal-agent"\n'
+            'name = "qibocal-mcp"\n'
             f"version = {json.dumps(distribution.version)}\n"
             f"requires-python = {json.dumps(distribution.metadata['Requires-Python'])}\n"
             f"dependencies = {json.dumps(dependencies)}\n"

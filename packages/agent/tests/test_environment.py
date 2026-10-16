@@ -13,7 +13,7 @@ import unittest
 from pathlib import Path
 from unittest.mock import Mock, patch
 
-from qibocal_mcp import environment
+from qibocal_agent import environment
 
 
 class EnvironmentTests(unittest.TestCase):
@@ -145,43 +145,45 @@ class EnvironmentTests(unittest.TestCase):
         source = environment.unpack_source(first)
         self.assertEqual(source, environment.unpack_source(first))
         manifest = tomllib.loads((source / "pyproject.toml").read_text())
-        self.assertEqual(manifest["project"]["name"], "qibocal-agent")
+        self.assertEqual(manifest["project"]["name"], "qibocal-mcp")
         self.assertIn(
             "qibocal @ git+https://github.com/qiboteam/qibocal@ae0e797a8c93a1110737f7f75586e628e4a2e543",
             manifest["project"]["dependencies"],
         )
         self.assertTrue((source / "src/qibocal_mcp/server.py").is_file())
+        self.assertFalse((source / "src/qibocal_mcp/environment.py").exists())
+        self.assertFalse((source / "src/qibocal_mcp/config.py").exists())
         self.assertFalse((source / "agent.json").exists())
         with tarfile.open(fileobj=io.BytesIO(base64.b64decode(first)), mode="r:gz") as archive:
             self.assertFalse(any(".venv" in name or "config.json" in name for name in archive.getnames()))
 
-    def test_wheel_installed_agent_retains_pinned_dependencies(self):
+    def test_wheel_installed_server_retains_pinned_dependencies(self):
         module = self.directory / "site-packages/qibocal_mcp"
         module.mkdir(parents=True)
         (module / "__init__.py").write_text("")
-        (module / "environment.py").write_text("# installed bootstrap\n")
+        (module / "server.py").write_text("# installed server\n")
         distribution = Mock(
             version="0.1.0",
             requires=[
                 "fastmcp>=3,<4",
                 "qibocal @ git+https://github.com/qiboteam/qibocal@pinned",
-                'pydantic-ai-slim ; extra == "agent"',
             ],
             metadata={"Requires-Python": ">=3.12,<3.14"},
             entry_points=[],
         )
+        spec = Mock(origin=str(module / "__init__.py"))
         with (
-            patch.object(environment, "__file__", str(module / "environment.py")),
+            patch.object(environment.util, "find_spec", return_value=spec),
             patch.object(environment.metadata, "distribution", return_value=distribution) as lookup,
         ):
             source = environment.unpack_source(environment.source_payload())
-        lookup.assert_called_once_with("qibocal-agent")
+        lookup.assert_called_once_with("qibocal-mcp")
         manifest = tomllib.loads((source / "pyproject.toml").read_text())
-        self.assertEqual(manifest["project"]["name"], "qibocal-agent")
+        self.assertEqual(manifest["project"]["name"], "qibocal-mcp")
         self.assertEqual(
-            manifest["project"]["dependencies"], distribution.requires[:2]
+            manifest["project"]["dependencies"], distribution.requires
         )
-        self.assertTrue((source / "src/qibocal_mcp/environment.py").is_file())
+        self.assertTrue((source / "src/qibocal_mcp/server.py").is_file())
 
     def test_broken_environment_is_not_recreated(self):
         path = self.directory / "broken"

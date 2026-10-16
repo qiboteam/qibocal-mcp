@@ -126,7 +126,7 @@ def repository_state(
         raise ValueError("Repository ref must not be empty")
     selected_ref = "HEAD" if ref is None else ref
     if fetch:
-        from .environment import locked
+        from .locking import locked
 
         remote = "origin" if remote is None else remote
         if remote not in git(root, "remote").splitlines():

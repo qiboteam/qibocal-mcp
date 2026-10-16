@@ -1,28 +1,10 @@
-[project]
-name = "qibocal-agent"
-version = "0.1.0"
-description = "An autonomous Qibocal calibration agent with a standalone MCP server."
-readme = "README.md"
-requires-python = ">=3.12,<3.14"
-dependencies = [
-    "fastmcp>=3.0,<4",
-    "kaleido>=1.0,<2",
-    "qibocal @ git+https://github.com/qiboteam/qibocal@ae0e797a8c93a1110737f7f75586e628e4a2e543",
-]
+[tool.uv.workspace]
+members = ["packages/*"]
 
-[project.optional-dependencies]
-agent = ["pydantic-ai-slim[mcp,openai]>=2.54,<3"]
+[dependency-groups]
+dev = ["pytest>=8", "qibocal-mcp", "qibocal-agent[agent]"]
 docs = ["sphinx>=8,<9", "furo>=2024.8.6"]
 
-[project.scripts]
-qibocal-mcp = "qibocal_mcp.server:main"
-qibocal-agent = "qibocal_mcp.agent:main"
-qibocal-report-server = "qibocal_mcp.report:main"
-qibocal-mcp-config = "qibocal_mcp.config:main"
-
-[build-system]
-requires = ["uv_build>=0.12,<0.13"]
-build-backend = "uv_build"
-
-[tool.uv.build-backend]
-module-name = "qibocal_mcp"
+[tool.uv.sources]
+qibocal-mcp = { workspace = true }
+qibocal-agent = { workspace = true }

@@ -1,0 +1,21 @@
+[project]
+name = "qibocal-mcp"
+version = "0.1.0"
+description = "MCP servers exposing Qibocal calibration: direct hardware and SLURM gateway."
+readme = "README.md"
+requires-python = ">=3.12,<3.14"
+dependencies = [
+    "fastmcp>=3.0,<4",
+    "kaleido>=1.0,<2",
+    "qibocal @ git+https://github.com/qiboteam/qibocal@ae0e797a8c93a1110737f7f75586e628e4a2e543",
+]
+
+[project.scripts]
+qibocal-mcp = "qibocal_mcp.server:main"
+
+[build-system]
+requires = ["uv_build>=0.12,<0.13"]
+build-backend = "uv_build"
+
+[tool.uv.build-backend]
+module-name = "qibocal_mcp"

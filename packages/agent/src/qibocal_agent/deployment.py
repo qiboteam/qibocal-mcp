@@ -70,7 +70,6 @@ def launch_for(settings: DeploymentSettings) -> ServerLaunch:
     command = [
         python,
         "-m", "qibocal_mcp.server",
-        "--no-config",
         "--platform", settings.platform,
         "--output", settings.output,
     ]

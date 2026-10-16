@@ -8,12 +8,19 @@ import sys
 import unittest
 from unittest.mock import AsyncMock, Mock, patch
 
-from mcp.types import TextResourceContents
+from mcp.types import GetPromptResult, PromptMessage, TextContent, TextResourceContents
 from pydantic_ai.exceptions import UserError
 
-from qibocal_mcp.agent import open_calibration_agent, run, transport_for
-from qibocal_mcp.calibration import INSTRUCTIONS
-from qibocal_mcp.deployment import DeploymentSettings
+from qibocal_agent.agent import open_calibration_agent, run, transport_for
+from qibocal_agent.deployment import DeploymentSettings
+
+POLICY = "You are a quantum calibration agent (test policy)."
+
+
+def server_prompt(text=POLICY):
+    return GetPromptResult(messages=[
+        PromptMessage(role="user", content=TextContent(type="text", text=text))
+    ])
 
 
 class TransportTests(unittest.TestCase):
@@ -28,7 +35,7 @@ class TransportTests(unittest.TestCase):
     def test_direct_compute_node(self):
         transport = transport_for(self.options())
         self.assertEqual(transport.command, sys.executable)
-        self.assertIn("--no-config", transport.args)
+        self.assertEqual(transport.args[:2], ["-m", "qibocal_mcp.server"])
         self.assertNotIn("--partition", transport.args)
         self.assertEqual(transport.env, dict(os.environ))
         self.assertFalse(transport.keep_alive)
@@ -78,7 +85,7 @@ class TransportTests(unittest.TestCase):
         self.assertEqual(request["options"]["venv"], "qibocal-mcp")
         self.assertEqual(request["options"]["platforms"], "/explicit")
         self.assertIn("source", request)
-        self.assertIn("--no-config", tokens[5:])
+        self.assertIn("--platform", tokens[5:])
         # The bootstrap sets the combined environment; the server must not replace it.
         self.assertNotIn("--platforms", tokens[5:])
 
@@ -112,7 +119,7 @@ class AgentProviderTests(unittest.IsolatedAsyncioTestCase):
         args = argparse.Namespace(
             model="openwebui:model", model_base_url="http://localhost:3000/api"
         )
-        with patch.dict(os.environ, {}, clear=True), patch("qibocal_mcp.agent.Client") as client:
+        with patch.dict(os.environ, {}, clear=True), patch("qibocal_agent.agent.Client") as client:
             with self.assertRaisesRegex(UserError, "OPENWEBUI_API_KEY"):
                 await run(args)
         client.assert_not_called()
@@ -123,6 +130,7 @@ class AgentProviderTests(unittest.IsolatedAsyncioTestCase):
             platform="qpu", timeout=60, objective="Inspect without acquiring",
         )
         client = AsyncMock()
+        client.get_prompt.return_value = server_prompt()
         client.read_resource.return_value = [
             TextResourceContents(uri="qibocal://context", text="platform context")
         ]
@@ -130,11 +138,11 @@ class AgentProviderTests(unittest.IsolatedAsyncioTestCase):
         calibration.run.return_value = Mock(output="No updates.")
         model = Mock()
         with (
-            patch("qibocal_mcp.agent.resolve_model", return_value=model) as resolve,
-            patch("qibocal_mcp.agent.transport_for"),
-            patch("qibocal_mcp.agent.Client") as create_client,
-            patch("qibocal_mcp.agent.Agent", return_value=calibration) as create_agent,
-            patch("qibocal_mcp.agent.MCPToolset") as toolset,
+            patch("qibocal_agent.agent.resolve_model", return_value=model) as resolve,
+            patch("qibocal_agent.agent.transport_for"),
+            patch("qibocal_agent.agent.Client") as create_client,
+            patch("qibocal_agent.agent.Agent", return_value=calibration) as create_agent,
+            patch("qibocal_agent.agent.MCPToolset") as toolset,
             patch("builtins.print") as output,
         ):
             create_client.return_value.__aenter__.return_value = client
@@ -142,13 +150,15 @@ class AgentProviderTests(unittest.IsolatedAsyncioTestCase):
         resolve.assert_called_once_with(args.model, base_url=args.model_base_url)
         self.assertIs(create_agent.call_args.args[0], model)
         self.assertIn("platform context", create_agent.call_args.kwargs["instructions"])
-        self.assertTrue(create_agent.call_args.kwargs["instructions"].startswith(INSTRUCTIONS))
+        self.assertTrue(create_agent.call_args.kwargs["instructions"].startswith(POLICY))
+        client.get_prompt.assert_awaited_once_with("calibrate")
         toolset.assert_called_once_with(client)
         calibration.run.assert_awaited_once_with(args.objective)
         output.assert_called_once_with("No updates.")
 
     async def test_python_factory_keeps_client_alive_for_multiple_turns(self):
         client = AsyncMock()
+        client.get_prompt.return_value = server_prompt()
         client.read_resource.return_value = [
             TextResourceContents(uri="qibocal://context", text="platform context")
         ]
@@ -156,11 +166,11 @@ class AgentProviderTests(unittest.IsolatedAsyncioTestCase):
         model = Mock()
         settings = DeploymentSettings(platform="qpu", timeout=42)
         with (
-            patch("qibocal_mcp.agent.resolve_model") as resolve,
-            patch("qibocal_mcp.agent.transport_for") as transport,
-            patch("qibocal_mcp.agent.Client") as create_client,
-            patch("qibocal_mcp.agent.Agent", return_value=calibration) as create_agent,
-            patch("qibocal_mcp.agent.MCPToolset"),
+            patch("qibocal_agent.agent.resolve_model") as resolve,
+            patch("qibocal_agent.agent.transport_for") as transport,
+            patch("qibocal_agent.agent.Client") as create_client,
+            patch("qibocal_agent.agent.Agent", return_value=calibration) as create_agent,
+            patch("qibocal_agent.agent.MCPToolset"),
         ):
             create_client.return_value.__aenter__.return_value = client
             async with open_calibration_agent(settings, model) as agent:
@@ -178,9 +188,9 @@ class AgentProviderTests(unittest.IsolatedAsyncioTestCase):
 
     async def test_python_factory_resolves_identifier_before_launch(self):
         with (
-            patch("qibocal_mcp.agent.resolve_model", side_effect=UserError("bad model")),
-            patch("qibocal_mcp.agent.transport_for") as transport,
-            patch("qibocal_mcp.agent.Client") as client,
+            patch("qibocal_agent.agent.resolve_model", side_effect=UserError("bad model")),
+            patch("qibocal_agent.agent.transport_for") as transport,
+            patch("qibocal_agent.agent.Client") as client,
         ):
             with self.assertRaisesRegex(UserError, "bad model"):
                 async with open_calibration_agent(
@@ -191,7 +201,7 @@ class AgentProviderTests(unittest.IsolatedAsyncioTestCase):
         client.assert_not_called()
 
     async def test_python_factory_rejects_endpoint_with_model_object(self):
-        with patch("qibocal_mcp.agent.Client") as client:
+        with patch("qibocal_agent.agent.Client") as client:
             with self.assertRaisesRegex(UserError, "model object"):
                 async with open_calibration_agent(
                     DeploymentSettings(platform="qpu"), Mock(), model_base_url="https://example",
@@ -199,13 +209,29 @@ class AgentProviderTests(unittest.IsolatedAsyncioTestCase):
                     self.fail("unreachable")
         client.assert_not_called()
 
+    async def test_invalid_prompt_closes_client_without_constructing_agent(self):
+        client = AsyncMock()
+        client.get_prompt.return_value = GetPromptResult(messages=[])
+        with (
+            patch("qibocal_agent.agent.transport_for"),
+            patch("qibocal_agent.agent.Client") as create_client,
+            patch("qibocal_agent.agent.Agent") as create_agent,
+        ):
+            create_client.return_value.__aenter__.return_value = client
+            with self.assertRaisesRegex(ValueError, "invalid calibration prompt"):
+                async with open_calibration_agent(DeploymentSettings(platform="qpu"), Mock()):
+                    self.fail("unreachable")
+            create_client.return_value.__aexit__.assert_awaited_once()
+        create_agent.assert_not_called()
+
     async def test_invalid_context_closes_client_without_constructing_agent(self):
         client = AsyncMock()
+        client.get_prompt.return_value = server_prompt()
         client.read_resource.return_value = []
         with (
-            patch("qibocal_mcp.agent.transport_for"),
-            patch("qibocal_mcp.agent.Client") as create_client,
-            patch("qibocal_mcp.agent.Agent") as create_agent,
+            patch("qibocal_agent.agent.transport_for"),
+            patch("qibocal_agent.agent.Client") as create_client,
+            patch("qibocal_agent.agent.Agent") as create_agent,
         ):
             create_client.return_value.__aenter__.return_value = client
             with self.assertRaisesRegex(ValueError, "invalid context"):

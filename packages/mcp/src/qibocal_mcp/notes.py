@@ -6,7 +6,7 @@ from tempfile import TemporaryDirectory
 from qibocal import Note
 from qibocal.auto.notes import NOTES, dump_notes, load_notes
 
-from .environment import locked
+from .locking import locked
 
 
 def read_notes(directory: Path) -> list[Note]:

@@ -7,17 +7,35 @@ from contextlib import asynccontextmanager
 
 from fastmcp import Client
 from fastmcp.client.transports import StdioTransport
-from mcp.types import TextResourceContents
+from mcp.types import TextContent, TextResourceContents
 from pydantic_ai import Agent
 from pydantic_ai.exceptions import UserError
 from pydantic_ai.mcp import MCPToolset
 from pydantic_ai.models import Model
 
-from .calibration import CONTEXT_RESOURCE, instructions_for
 from .config import add_agent_selection_arguments, parse_settings
 from .deployment import DeploymentSettings, add_agent_deployment_arguments, launch_for
 from .environment import DeploymentError
 from .models import resolve_model
+
+# The server's wire interface: its context resource and calibration prompt.
+CONTEXT_RESOURCE = "qibocal://context"
+CALIBRATION_PROMPT = "calibrate"
+
+
+async def calibration_instructions(client: Client) -> str:
+    """Compose the server-distributed calibration policy with its context."""
+    prompt = await client.get_prompt(CALIBRATION_PROMPT)
+    if len(prompt.messages) != 1 or not isinstance(
+        prompt.messages[0].content, TextContent
+    ):
+        raise ValueError("Server returned an invalid calibration prompt")
+    context = await client.read_resource(CONTEXT_RESOURCE)
+    if len(context) != 1 or not isinstance(context[0], TextResourceContents):
+        raise ValueError("Server returned an invalid context resource")
+    return (
+        prompt.messages[0].content.text + "\nQibocal context:\n" + context[0].text
+    )
 
 
 def transport_for(args: argparse.Namespace | DeploymentSettings) -> StdioTransport:
@@ -53,10 +71,7 @@ async def open_calibration_agent(
         transport_for(settings),
         timeout=settings.timeout, init_timeout=settings.timeout,
     ) as client:
-        context = await client.read_resource(CONTEXT_RESOURCE)
-        if len(context) != 1 or not isinstance(context[0], TextResourceContents):
-            raise ValueError("Server returned an invalid context resource")
-        agent = Agent(model, instructions=instructions_for(context[0].text),
+        agent = Agent(model, instructions=await calibration_instructions(client),
                       toolsets=[MCPToolset(client)])
         async with agent:
             yield agent

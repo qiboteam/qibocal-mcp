@@ -21,7 +21,7 @@ from qibocal.calibration import CalibrationPlatform
 from qibocal.calibration.calibration import Calibration, QubitCalibration
 
 from qibocal_mcp.calibration import INSTRUCTIONS, TOOLS
-from qibocal_mcp.environment import locked
+from qibocal_mcp.locking import locked
 from qibocal_mcp.notes import append_note, read_notes
 from qibocal_mcp.runtime import create_server
 from qibocal_mcp.server import create_server as create_frontend
