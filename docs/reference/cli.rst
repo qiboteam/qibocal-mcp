@@ -65,7 +65,8 @@ settings and accept:
      - Platform name, required at runtime unless configured.
    * - ``--output PATH``
      - Output directory on the execution host; defaults to the agent name for
-       named agents, ``runs`` otherwise.
+       named agents, ``default`` otherwise, under the execution host's
+       ``~/.cache/qibocal/agent/runs/``.
    * - ``--ssh HOST``
      - SSH host/alias for the access node. Unset launches locally.
    * - ``--partition NAME``
@@ -189,7 +190,8 @@ Start a managed Qibocal Report backend at the agent's report location without
 starting calibration or importing hardware. CLI values override the ``report``
 section, which overrides ``agent.output``, ``agent.ssh``, ``agent.workdir`` and
 an explicitly configured ``agent.venv``. Other agent settings are not
-inherited. Without configuration, serve ``runs`` locally using the managed
+inherited. Without configuration, serve ``~/.cache/qibocal/agent/runs/default``
+locally using the managed
 environment ``qibocal-report`` and port ``8000``. The directory is created if
 absent. With ``NAME``, the same inheritance uses ``agents.NAME`` and
 ``agents.NAME.report`` only, so a configured remote agent needs no additional

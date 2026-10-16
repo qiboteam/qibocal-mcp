@@ -89,7 +89,7 @@ features with working defaults.
 ## Browse calibration reports
 
 ```sh
-qibocal-report-server            # serves ./runs locally
+qibocal-report-server            # serves ~/.cache/qibocal/agent/runs/default locally
 qibocal-report-server --ssh ACCESS_NODE --output /shared/calibration/runs
 ```
 

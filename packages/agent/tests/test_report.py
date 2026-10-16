@@ -326,7 +326,8 @@ class ReportConfigTests(unittest.TestCase):
 
     def test_defaults_are_managed_and_use_one_port(self):
         args = self.parse(["--no-config"])
-        self.assertEqual(args.output, "runs")
+        self.assertEqual(args.output, "default")
+        self.assertEqual(args.directories, {"output": "default"})
         self.assertEqual(args.venv, "qibocal-report")
         self.assertEqual((args.port, args.remote_port), (8000, 8000))
 
@@ -395,7 +396,7 @@ class ReportConfigTests(unittest.TestCase):
         self.assertEqual(args.venv, "report-env")
         self.assertEqual(args.directories, {})
         self.assertEqual(self.parse().directories, {"output": "report-runs"})
-        self.assertEqual(self.parse(["--no-config"]).output, "runs")
+        self.assertEqual(self.parse(["--no-config"]).output, "default")
 
     def test_explicit_config_and_missing_file(self):
         path = self.directory / "project.json"

@@ -61,7 +61,9 @@ The agent reads context, lets the model plan, executes one protocol at a time,
 inspects returned images and decides whether to update or try another
 experiment. There is no hard-coded calibration sequence, fit acceptance
 threshold or workflow engine. The server does not enforce the natural-language
-budget. The default output directory is ``runs`` (on the execution host).
+budget. Reports go to ``~/.cache/qibocal/agent/runs/default`` on the execution
+host unless you set ``output`` (named configurations use their name instead
+of ``default``).
 
 With ``ssh`` configured, the agent launches the server on the access node and
 provisions its environment automatically on the first run; with ``partition``,

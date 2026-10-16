@@ -6,7 +6,8 @@ Where files live
 
 Both direct and queued execution collect one standard Qibocal report per MCP
 session under ``OUTPUT/sessions/<session_id>/``. With default settings this is
-``runs/sessions/<session_id>/``. Each execution has a dedicated
+``~/.cache/qibocal/agent/runs/default/sessions/<session_id>/`` on the execution
+host (``runs/NAME`` for a named configuration). Each execution has a dedicated
 ``data/<protocol>-<iteration>/`` directory; repeated protocols get new iterations
 rather than overwriting earlier runs. Discovery alone does not create a report.
 ``start_session`` switches the active agent to a fresh report folder and saves

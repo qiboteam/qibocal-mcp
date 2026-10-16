@@ -120,7 +120,7 @@ also requires ``model``.
      - Unset; direct execution rather than SLURM dispatch.
    * - ``output``
      - Nonempty string
-     - Agent name for named entries; ``runs`` for unnamed invocations.
+     - Agent name for named entries; ``default`` for the unnamed one.
        Artifact output directory on the execution host.
    * - ``workdir``
      - Nonempty string
@@ -192,7 +192,7 @@ The ``report`` section accepts only:
      - Built-in default and meaning
    * - ``output``
      - Nonempty string
-     - Agent name for named entries; ``runs`` otherwise.
+     - Agent name for named entries; ``default`` otherwise.
        Directory to serve; created if absent.
    * - ``ssh``
      - Nonempty string
@@ -272,8 +272,10 @@ Unset or empty ``XDG_CACHE_HOME`` falls back to ``~/.cache``. Nested relative
 paths, including ``./`` and ``../``, are resolved against these bases.
 For a named agent ``lab``, omitted directories default to ``lab``:
 ``~/.cache/qibocal/agent/envs/lab``, ``~/.cache/qibocal/agent/work/lab``
-and ``~/.cache/qibocal/agent/runs/lab``. The report command uses the same
-locations unless overridden. An explicit ``server_python`` suppresses the
+and ``~/.cache/qibocal/agent/runs/lab``. The unnamed configuration writes
+its reports to ``~/.cache/qibocal/agent/runs/default``; it gets no implied
+environment or working directory. The report command uses the same locations
+unless overridden. An explicit ``server_python`` suppresses the
 implicit managed agent environment.
 
 Absolute paths are not rebased, and ``~`` expands on the execution host,
@@ -283,8 +285,7 @@ Stored values remain unchanged; configuration management does not create
 runtime directories.
 
 Explicit CLI ``--output`` and ``--workdir`` retain their current-directory
-semantics and override configured paths. Unnamed invocations retain their
-existing omitted-directory defaults. ``~`` in ``platforms`` entries expands
+semantics and override configured paths. ``~`` in ``platforms`` entries expands
 on the execution host, so ``~/platforms`` means the remote home over SSH.
 Executable settings remain literal, and environment-variable strings are not
 expanded in path values.

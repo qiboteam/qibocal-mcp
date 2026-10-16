@@ -43,6 +43,8 @@ FIELDS = {
     },
 }
 NAMED_FIELDS = {**FIELDS["agent"], "objective": str}
+# Output folder of the unnamed configuration, alongside named agents' folders.
+UNNAMED_OUTPUT = "default"
 
 
 class ConfigError(ValueError):
@@ -241,7 +243,7 @@ def parse_settings(
             section_defaults = data.get(section, {})
         common_defaults = {
             "platform": None,
-            "output": "runs",
+            "output": UNNAMED_OUTPUT,
             "platforms": None,
             "partition": None,
             "workdir": None,
@@ -258,7 +260,7 @@ def parse_settings(
             }
         else:
             defaults = {
-                "output": "runs", "ssh": None, "workdir": None,
+                "output": UNNAMED_OUTPUT, "ssh": None, "workdir": None,
                 "venv": None, "port": 8000, "remote_port": None,
             }
         if selected_name is not None:
@@ -281,11 +283,13 @@ def parse_settings(
             }
         values = defaults | inherited | section_defaults | vars(args)
         configured = inherited | section_defaults
+        # Reports always land in the execution host's cache unless given on the
+        # CLI; a working directory only when configured or implied by a name.
         values["directories"] = {
             name: values[name]
             for name in ("output", "workdir")
             if name not in vars(args) and (
-                name in configured or selected_name is not None
+                name == "output" or name in configured or selected_name is not None
             ) and not Path(values[name]).is_absolute()
         }
         if section == "report":
