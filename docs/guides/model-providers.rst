@@ -2,17 +2,15 @@ Model providers
 ===============
 
 This page configures the **Pydantic AI** ``qibocal-agent`` and reusable Python
-API, not the native Copilot CLI integration. For ``qibocal-copilot``, install
-only the core package and Copilot CLI, authenticate through Copilot and pass
-native model options after ``--``, for example ``-- --model MODEL_ID``.
-The generated profile has no fixed model and ignores ``agent.model`` and
-``agent.model_base_url``. See :doc:`../agent/copilot`.
+API. Interactive MCP clients connected through ``qibocal-mcp-remote`` bring
+their own model and authentication and ignore every setting here.
 
-Install the ``agent`` extra for all providers below:
+Install the ``agent`` extra for all providers below (``uv sync`` in a
+development checkout already includes it):
 
 .. code-block:: sh
 
-   uv sync --extra agent
+   pip install "qibocal-agent[agent]"
 
 Choose a model with **vision and tool calling**. The agent sends objectives,
 platform context, fitting tables and report images to the selected provider.
@@ -33,7 +31,7 @@ subscription. For an existing GitHub CLI OAuth login:
 
    # Run gh auth login first if not already authenticated.
    export GITHUB_COPILOT_API_KEY="$(gh auth token)"
-   uv run qibocal-agent --model github-copilot:claude-haiku-4.5 \
+   qibocal-agent --model github-copilot:claude-haiku-4.5 \
      --platform YOUR_PLATFORM "YOUR_BOUNDED_OBJECTIVE"
 
 Alternatively, set ``GITHUB_COPILOT_API_KEY`` to an existing supported OAuth
@@ -82,7 +80,7 @@ administrator and permitted for your account.
 
    export OPENWEBUI_API_KEY=...
    export OPENWEBUI_BASE_URL=http://localhost:3000/api
-   uv run qibocal-agent --model openwebui:YOUR_MODEL_ID \
+   qibocal-agent --model openwebui:YOUR_MODEL_ID \
      --platform YOUR_PLATFORM "YOUR_BOUNDED_OBJECTIVE"
 
 The API base URL must include ``/api`` (and any deployment path prefix);
@@ -108,9 +106,9 @@ You can persist the nonsecret endpoint and model:
 
 .. code-block:: sh
 
-   uv run qibocal-mcp-config set agent.model openwebui:YOUR_MODEL_ID
-   uv run qibocal-mcp-config set agent.model_base_url http://localhost:3000/api
-   uv run qibocal-agent --platform YOUR_PLATFORM "YOUR_BOUNDED_OBJECTIVE"
+   qibocal-mcp-config set agent.model openwebui:YOUR_MODEL_ID
+   qibocal-mcp-config set agent.model_base_url http://localhost:3000/api
+   qibocal-agent --platform YOUR_PLATFORM "YOUR_BOUNDED_OBJECTIVE"
 
 Endpoint precedence is ``--model-base-url`` > ``agent.model_base_url`` >
 ``OPENWEBUI_BASE_URL``. There is no implicit localhost endpoint.

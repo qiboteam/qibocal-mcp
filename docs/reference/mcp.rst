@@ -5,11 +5,29 @@ Transport and session
 ---------------------
 
 The server and queued gateway expose the same stdio interface, with exactly
-eight tools and one resource. Calls are serialized. Run handles belong to the
-current calibration session and cannot be reused after switching sessions or
-after the server/gateway exits.
+nine tools, one resource and one prompt. Calls are serialized. Run handles
+belong to the current calibration session and cannot be reused after switching
+sessions or after the server/gateway exits.
 Errors are exposed as MCP errors; failed acquisitions and updates are not
 safe to retry blindly. See :doc:`../guides/safety`.
+
+calibrate (prompt and tool)
+---------------------------
+
+The complete calibration policy — planning from discovered context, one
+protocol at a time, report-image inspection, append-only note keeping and the
+explicit update rules — is distributed by the server itself, registered twice:
+
+* as the MCP **prompt** ``calibrate``, for interfaces that expose prompts as
+  slash commands or templates;
+* as the identically named **tool**, taking no arguments and returning the
+  same text, for interfaces that load MCP tools but ignore prompts.
+
+Both are static: they need no hardware initialization, never queue a SLURM
+job and have no execution effects. The Pydantic AI agent fetches this prompt
+and composes it with the context resource as its instructions, so every
+integration follows a single server-defined policy. The text is guidance for
+the model, not an enforced safety interlock.
 
 qibocal://context
 -----------------
@@ -112,7 +130,7 @@ provide no general filesystem writer. These tools therefore enable autonomous
 lookup and exploration without adding broad filesystem permissions.
 
 execute_protocol(protocol, parameters, targets, platform_overrides=None)
------------------------------------------------------------------------
+------------------------------------------------------------------------
 
 .. list-table:: Arguments
    :header-rows: 1
@@ -261,7 +279,7 @@ including both Qibolab parameters and Qibocal calibration. Rejected fits are
 never used as the next job's platform state.
 
 start_session(source="current", run_id=None, ref=None, platform_path=None, snapshot_path=None, fetch=False, remote=None)
---------------------------------------------------------------------------------------------------------------------
+------------------------------------------------------------------------------------------------------------------------
 
 Start a fresh calibration within the connected agent/server, without restarting
 the chat, reconnecting the MCP client or launching a second direct hardware

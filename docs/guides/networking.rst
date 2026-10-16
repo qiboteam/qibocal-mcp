@@ -4,10 +4,10 @@ Networking and execution hosts
 Stdio, not HTTP
 ---------------
 
-An MCP client launches ``qibocal-mcp`` as a stdio subprocess.
-The agent either launches the Python server locally or runs it via SSH.
-MCP messages, including report images, travel over that stream.
-No HTTP listener, port forwarding or HTTP tunnel is needed.
+An MCP client launches ``qibocal-mcp`` (or ``qibocal-mcp-remote``) as a stdio
+subprocess. The orchestration either launches the Python server locally or
+runs it via SSH. MCP messages, including report images, travel over that
+stream. No HTTP listener, port forwarding or HTTP tunnel is needed.
 
 Stdout belongs to the protocol. Hardware-driver and Qibocal output is redirected
 to stderr by the server, as are managed-environment provisioning logs; remote
@@ -23,10 +23,10 @@ HTTPS API; other providers or locally hosted models have their own connection
 requirements. Objectives, platform context, tool results and report images
 may be sent to that model. Choose a provider and network/data policy approved
 for your experiment data. The MCP server and SLURM workers do not make model
-API calls.
-The Pydantic AI agent resolves its model provider before deploying the server or
-accessing hardware. Native Copilot owns its login and model selection.
-Deployment does not transfer model keys or user configuration.
+API calls; interactive clients own their model connection and login.
+The Pydantic AI agent resolves its model provider before deploying the server
+or accessing hardware. Deployment does not transfer model keys or user
+configuration.
 
 Provisioning may also need network access from the execution host to Git sources
 and Python package indexes. Repository authentication is separate from access
@@ -39,14 +39,14 @@ server host must reach the instruments; in queued mode the compute nodes must.
 SSH carries MCP messages to the gateway, not instrument connections or a
 general-purpose network tunnel.
 
-Agent locations
----------------
+Client locations
+----------------
 
-.. list-table:: Where the agent runs
+.. list-table:: Where the agent or interactive client runs
    :header-rows: 1
    :widths: 24 46 30
 
-   * - Agent location
+   * - Client location
      - Execution path
      - Options
    * - Laptop/local machine
@@ -58,6 +58,10 @@ Agent locations
    * - Allocated compute node
      - Direct execution, one persistent hardware connection
      - Neither option
+
+The same options apply to ``qibocal-agent`` and ``qibocal-mcp-remote``; on the
+access or compute node the plain ``qibocal-mcp`` server can also be used
+directly, without the orchestration package.
 
 SSH authentication and environment
 ----------------------------------
@@ -118,23 +122,21 @@ Managed environments are POSIX-only. Provisioning locks protect installation,
 not active server sessions: use separate environments for concurrent deployments
 with differing source or dependency settings.
 
-Locally, an unnamed agent without ``venv`` or ``server_python`` uses its current
-interpreter. Named agents default to a managed environment with their name,
-locally and remotely. A standalone gateway manages an environment only when
-``--venv`` is supplied. Explicit ``--server-python`` bypasses automatic
+Locally, an unnamed launch without ``venv`` or ``server_python`` uses its
+current interpreter. Named agents default to a managed environment with their
+name, locally and remotely. Explicit ``--server-python`` bypasses automatic
 environment/core-server installation and must already contain the server;
 it cannot coexist with ``--venv``. Repository/dependency options in an
 externally managed environment intentionally install into the selected
 interpreter. Prefer ``--venv`` for isolation.
 
-The agent's queued workers use the server interpreter. A standalone gateway
-can select another worker interpreter with ``--worker-python``, but not
-together with ``--venv``. If repository/dependency options are supplied with a
-distinct explicit worker interpreter, provisioning installs those dependencies
-into both gateway and worker interpreters; both must already contain the server.
+Queued workers use the server interpreter. The standalone ``qibocal-mcp``
+gateway performs no provisioning itself; it can select another worker
+interpreter with ``--worker-python``, which must already contain the server.
 
-``--workdir`` on the agent sets the server launch directory (remotely for SSH).
-On the standalone server it sets the SLURM worker's working directory.
+``--workdir`` on the orchestration commands sets the server launch directory
+(remotely for SSH). On the standalone server it sets the SLURM worker's
+working directory.
 Configured relative ``output`` and ``workdir`` paths use the execution host's
 ``qibocal/agent/runs`` and ``qibocal/agent/work`` cache folders. Relative ``venv``
 paths use ``qibocal/agent/envs``. Named agents default to their name in each

@@ -1,24 +1,32 @@
-Autocalibration agent
-=====================
+Orchestration and autonomous agent
+==================================
 
-Choose the one-shot Pydantic AI ``qibocal-agent`` or the reusable Python API
-below, or connect any MCP-capable interface (GitHub Copilot CLI, Claude Code,
-Cursor, OpenCode, ...) directly to the server and use its ``calibrate`` prompt
-or tool. They share calibration policy and deployment settings. The agent
-discovers platform context, chooses protocols, inspects their reports and
-explicitly accepts or rejects fitted updates. Each integration manages its MCP
-subprocess; do not launch a server separately.
+The ``qibocal-agent`` package reaches the :doc:`MCP servers <../mcp/index>`
+from wherever you are. Its base installation is standard-library only, so
+putting it on a laptop costs nothing; four commands cover the workflow:
 
-Start with the minimal local setup in :doc:`../installation`, then
-:doc:`../getting-started`. The tutorials cover local calibration and remote
-execution. Alternative providers, persistent settings and deployment
-customization are optional; see :doc:`../guides/index` when needed.
+* ``qibocal-mcp-remote`` — serve the calibration MCP over stdio for any
+  interactive client, launching the real server locally or through SSH and
+  provisioning its Python environment on the way when asked.
+* ``qibocal-agent`` — an autonomous Pydantic AI calibration agent: give it a
+  bounded objective and it plans, executes, inspects report images and
+  explicitly accepts or rejects fitted updates. It fetches the same
+  ``calibrate`` policy that interactive clients get from the server's prompt.
+* ``qibocal-report-server`` — browse the generated calibration reports,
+  locally or through a private SSH tunnel.
+* ``qibocal-mcp-config`` — store the few things you know about your setup
+  once, so every launch reduces to a name.
+
+Getting started is three steps: install, tell it what you know, launch.
+Everything else — managed environments, platform repositories, scheduler
+options — has a working default and is documented as an advanced feature.
 
 .. toctree::
    :maxdepth: 2
 
-   ../installation
-   ../getting-started
+   installation
+   getting-started
+   interactive
    ../tutorials/index
 
 Reusable Pydantic AI sessions
@@ -35,8 +43,8 @@ not model settings, and does not read the configuration file automatically.
 
    import asyncio
 
-   from qibocal_mcp.agent import open_calibration_agent
-   from qibocal_mcp.deployment import DeploymentSettings
+   from qibocal_agent.agent import open_calibration_agent
+   from qibocal_agent.deployment import DeploymentSettings
 
    async def calibrate():
        settings = DeploymentSettings(platform="YOUR_PLATFORM", output="runs")

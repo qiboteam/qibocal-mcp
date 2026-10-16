@@ -9,7 +9,7 @@ gateway on an access node dispatches one SLURM job per operation.
 This follows Qibocal's
 `interactive infrastructure <https://qibo.science/qibocal/stable/tutorials/interactive.html>`_.
 
-First complete :doc:`../installation` on the machine running the agent and confirm:
+First complete :doc:`../agent/installation` on the machine running the agent and confirm:
 
 * Noninteractive SSH authentication works through your SSH configuration,
   including any ``ProxyJump``. Configure keys or an SSH agent beforehand.
@@ -24,10 +24,6 @@ First complete :doc:`../installation` on the machine running the agent and confi
   Clone/package-index authentication and network access work on that node.
 * Compute nodes can reach the instruments, and have Chrome and drivers.
 * Your partition, account, resource requests and hardware limits are approved.
-
-For native Copilot with ``--report-rendering client``, Chrome is needed locally
-instead of on compute nodes; platform drivers remain in the shared managed
-execution environment. See :doc:`../agent/copilot`.
 
 .. figure:: ../_images/queued-workflow.svg
    :alt: A laptop agent sends MCP messages and report images through SSH stdio to a hardware-free access-node gateway. The gateway runs discovery, acquisition and explicit update as separate compute jobs. An accepted snapshot on shared storage feeds later jobs; rejected fits do not change that snapshot.
@@ -68,7 +64,7 @@ See :doc:`../guides/networking`.
 .. code-block:: sh
 
    export OPENAI_API_KEY=...
-   uv run qibocal-agent --no-config \
+   qibocal-agent --no-config \
      --model openai:gpt-4.1 --platform YOUR_PLATFORM \
      --ssh ACCESS_NODE --partition PARTITION \
      --venv /shared/YOUR_USER/qibocal-mcp/env \
@@ -132,7 +128,7 @@ If your site already provides a shared server interpreter, select it explicitly:
 
 .. code-block:: sh
 
-   uv run qibocal-agent --no-config \
+   qibocal-agent --no-config \
      --model openai:gpt-4.1 --platform YOUR_PLATFORM \
      --ssh ACCESS_NODE --partition PARTITION \
      --server-python /shared/qibocal-agent/.venv/bin/python \
@@ -164,25 +160,29 @@ Store reviewed agent settings rather than repeating paths every time:
 
 .. code-block:: sh
 
-   uv run qibocal-mcp-config set agents.myremote.platform YOUR_PLATFORM
-   uv run qibocal-mcp-config set agents.myremote.model openai:gpt-4.1
-   uv run qibocal-mcp-config set agents.myremote.objective "YOUR_BOUNDED_OBJECTIVE"
-   uv run qibocal-mcp-config set agents.myremote.ssh ACCESS_NODE
-   uv run qibocal-mcp-config set agents.myremote.partition PARTITION
-   uv run qibocal-mcp-config set agents.myremote.venv /shared/YOUR_USER/qibocal-agent/env
-   uv run qibocal-mcp-config set agents.myremote.workdir /shared/calibration-work
-   uv run qibocal-mcp-config set agents.myremote.platform_repo '["https://github.com/YOUR_ORG/platforms.git#ref=COMMIT&subdirectory=platforms"]'
-   uv run qibocal-mcp-config set agents.myremote.dependency '["YOUR_DRIVER_PACKAGE==VERSION"]'
-   uv run qibocal-mcp-config set agents.myremote.output /shared/calibration-runs
-   uv run qibocal-mcp-config set agents.myremote.timeout 7200
-   uv run qibocal-mcp-config set agents.myremote.slurm_arg '["--account=quantum", "--time=00:15:00"]'
-   uv run qibocal-mcp-config show
+   qibocal-mcp-config set agents.myremote.platform YOUR_PLATFORM
+   qibocal-mcp-config set agents.myremote.model openai:gpt-4.1
+   qibocal-mcp-config set agents.myremote.objective "YOUR_BOUNDED_OBJECTIVE"
+   qibocal-mcp-config set agents.myremote.ssh ACCESS_NODE
+   qibocal-mcp-config set agents.myremote.partition PARTITION
+   qibocal-mcp-config set agents.myremote.venv /shared/YOUR_USER/qibocal-agent/env
+   qibocal-mcp-config set agents.myremote.workdir /shared/calibration-work
+   qibocal-mcp-config set agents.myremote.platform_repo '["https://github.com/YOUR_ORG/platforms.git#ref=COMMIT&subdirectory=platforms"]'
+   qibocal-mcp-config set agents.myremote.dependency '["YOUR_DRIVER_PACKAGE==VERSION"]'
+   qibocal-mcp-config set agents.myremote.output /shared/calibration-runs
+   qibocal-mcp-config set agents.myremote.timeout 7200
+   qibocal-mcp-config set agents.myremote.slurm_arg '["--account=quantum", "--time=00:15:00"]'
+   qibocal-mcp-config show
 
 Use your actual account, not the illustrative ``quantum`` value. After reviewing
-the file, ``uv run qibocal-agent myremote`` uses those settings and the saved
-objective. Explicit CLI settings override the named entry. The agent passes
-resolved settings and ``--no-config`` to its server, so configuration stored on
-the access node cannot silently inject another platform or partition.
+the file, ``qibocal-agent myremote`` uses those settings and the saved
+objective. Explicit CLI settings override the named entry. The server itself
+reads no configuration file and receives fully resolved flags, so configuration
+stored on the access node cannot silently inject another platform or partition.
+The same named entry also works for interactive use:
+``qibocal-mcp-remote myremote`` serves this exact deployment to any MCP client
+(see :doc:`../agent/interactive`), and ``qibocal-report-server myremote``
+browses its reports.
 Unset an existing ``agents.myremote.server_python`` before storing
 ``agents.myremote.venv``.
 CLI repository/dependency lists replace the entire corresponding configured

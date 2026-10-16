@@ -1,13 +1,13 @@
 """Sphinx configuration; documentation builds do not import hardware code."""
 
-project = "qibocal-agent"
+project = "qibocal-mcp-servers"
 author = "The Qibo team"
 copyright = "2026, The Qibo team"
 extensions = []
 root_doc = "index"
 exclude_patterns = ["_build", ".DS_Store", "Thumbs.db"]
 html_theme = "furo"
-html_title = "qibocal-agent documentation"
+html_title = "Qibocal MCP servers documentation"
 html_static_path = ["_static"]
 html_favicon = "_static/favicon.ico"
 html_theme_options = {

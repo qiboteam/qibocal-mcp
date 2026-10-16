@@ -78,11 +78,7 @@ targets and figures, not necessarily the target's literal qubit ID.
 The bridge consumes ``Protocol.report`` output through ``Executor.report``:
 Plotly figures and HTML tables, not a full Qibocal HTML report-page template.
 Saved HTML files are individual interactive Plotly figures. PNGs are exported at
-1200 by 700 pixels using Kaleido/Chrome.
-With native Copilot's ``--report-rendering client``, the execution host saves
-``report-I-J.json`` instead of PNGs alongside the HTML reports. Plotly figures
-travel over MCP and PNGs are rendered and retained only in the client cache.
-This avoids requiring Chrome on compute nodes.
+1200 by 700 pixels using Kaleido/Chrome on the execution host.
 
 Run metadata
 ------------
@@ -111,24 +107,10 @@ content**, not merely paths. A vision-capable client can inspect the images
 without mounting cluster storage. A protocol without reports or fitted
 results may return fewer content blocks.
 
-Pydantic AI consumes those inline images unchanged. Native Copilot instead
-uses a proxy to stage returned PNG bytes on the client host for its ``view``
-tool, because tested Copilot adapters drop inline MCP images. Native responses
-add ``copilot_report_images`` and ``inspection_required`` to text and structured
-metadata without replacing original content. These local paths are separate
-from the execution host's ``folder`` and do not provide general access to
-remote files.
-In client-rendering mode, the proxy replaces embedded Plotly resources with
-locally rendered MCP images before adding the same inspection metadata.
-
-The native cache is
-``$XDG_CACHE_HOME/qibocal/agent/copilot-reports/<session>/<call>/report-N.png``,
-falling back to ``~/.cache/qibocal/agent/copilot-reports`` when ``XDG_CACHE_HOME``
-is unset or empty. PNG-containing folders are private (``0700``); staged files
-persist with no automatic cleanup. Remove selected session directories after
-inspection according to site retention policy. An image-capable Copilot model
-must actually inspect the PNGs; staging alone is not evidence.
-See :doc:`../agent/copilot` for viewer permissions and model limitations.
+The Pydantic AI agent consumes those inline images unchanged; interactive MCP
+clients display them according to their own capabilities. If your interface
+drops inline MCP images, stop rather than deciding updates from text alone;
+see :doc:`safety`.
 
 .. figure:: ../_images/illustrative-report.svg
    :alt: Synthetic spectroscopy illustration: sample markers are compared with a blue fit across a frequency-offset sweep. The central feature has baseline on both sides, with notes to inspect residual agreement and consult actual fit uncertainty. This picture is illustrative and contains no hardware measurements.
@@ -161,9 +143,9 @@ accepted session state or ``new_platform/`` merely by executing the trial.
 
 Keep the paired snapshot files together. Promotion into your authoritative
 platform definitions is a separate manual operation requiring review.
-Files persist after a session exits, but run handles do not. Resuming a Copilot
-conversation or reusing an exported plugin cannot restore terminated
-server/gateway execution state. While it remains connected, ``start_session``
+Files persist after a session exits, but run handles do not. Resuming a client
+conversation cannot restore terminated server/gateway execution state.
+While it remains connected, ``start_session``
 can restart calibration from the latest accepted update, a session baseline,
 an inspected execution's fitted results, committed repository files or a saved
 snapshot. Old run handles expire when switching. A saved snapshot can also be

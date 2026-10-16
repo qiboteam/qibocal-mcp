@@ -20,7 +20,7 @@ and an operator-approved instrument allocation.
 1. Confirm the local setup
 --------------------------
 
-Complete the minimal setup in :doc:`../installation` and confirm your
+Complete the minimal setup in :doc:`../agent/installation` and confirm your
 platform definitions, drivers, Chrome and model credentials are available.
 No persistent configuration or separate MCP client is required.
 This tutorial uses ``--no-config`` below to make direct local execution
@@ -36,7 +36,7 @@ device:
 
 .. code-block:: sh
 
-   uv run qibocal-agent --no-config \
+   qibocal-agent --no-config \
      --model openai:gpt-4.1 --platform YOUR_PLATFORM --output runs \
      "Investigate qubit 0's drive frequency with spectroscopy.
       Sweep no wider than 20 MHz, use drive amplitude at most 0.1
@@ -103,17 +103,16 @@ them on the command line:
 
 .. code-block:: sh
 
-   uv run qibocal-mcp-config path
-   uv run qibocal-mcp-config show
-   uv run qibocal-mcp-config set agents.local.platform YOUR_PLATFORM
-   uv run qibocal-mcp-config set agents.local.model openai:gpt-4.1
-   uv run qibocal-mcp-config set agents.local.output runs
-   uv run qibocal-mcp-config set agents.local.objective "YOUR_BOUNDED_OBJECTIVE"
-   uv run qibocal-agent local
+   qibocal-mcp-config path
+   qibocal-mcp-config show
+   qibocal-mcp-config set agents.local.platform YOUR_PLATFORM
+   qibocal-mcp-config set agents.local.model openai:gpt-4.1
+   qibocal-mcp-config set agents.local.output runs
+   qibocal-mcp-config set agents.local.objective "YOUR_BOUNDED_OBJECTIVE"
+   qibocal-agent local
 
 ``show`` displays stored values, not effective defaults. Inspect any stored
 ``ssh``, ``partition`` or ``slurm_arg`` settings before treating a configured
-launch as local. Named agents and standalone server defaults are independent;
-setting ``server.platform`` alone does not configure the agent.
+launch as local. Named agents are isolated from the unnamed ``agent`` defaults.
 For normal use, review :doc:`../guides/configuration` and omit ``--no-config``
 only once stored defaults match your intended workflow.

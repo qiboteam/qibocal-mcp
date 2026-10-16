@@ -4,18 +4,31 @@ MCP server installation
 Minimal installation
 --------------------
 
-For a standard local setup, use a checkout of this repository with ``uv``,
-Python 3.12 or 3.13, Chrome, and a working Qibolab platform and hardware
-drivers. Assume ``QIBOLAB_PLATFORMS`` already points to your platform
-definitions.
+Install ``qibocal-mcp`` on the execution host: the machine that reaches the
+instruments (direct mode) or the SLURM access node (queued mode). You need
+Python 3.12 or 3.13, Chrome for report-image export, and a working Qibolab
+platform with its hardware drivers. Assume ``QIBOLAB_PLATFORMS`` already
+points to your platform definitions.
+
+From a checkout of this repository:
 
 .. code-block:: sh
 
    uv sync
 
-This installs Qibocal and the server's Python dependencies. No agent extra,
-model provider or credentials are needed. Continue with
+This installs both workspace packages, including Qibocal and the server
+dependencies. Alternatively, install just the server package:
+
+.. code-block:: sh
+
+   pip install ./packages/mcp
+
+No agent extra, model provider or credentials are needed. Continue with
 :doc:`getting-started` to configure your MCP client's stdio subprocess.
+
+If you cannot install anything on the execution host yourself, the
+orchestration package can provision a managed environment there over SSH;
+see :doc:`../agent/interactive`.
 
 Advanced installation and customization
 ---------------------------------------
@@ -29,6 +42,7 @@ If your site has not configured the platform search path:
 
    export QIBOLAB_PLATFORMS=/absolute/path/to/your/platforms
 
+The server's ``--platforms`` option sets the same variable for one launch.
 If Chrome is missing, install it for Kaleido's Plotly image export:
 
 .. code-block:: sh
@@ -36,65 +50,35 @@ If Chrome is missing, install it for Kaleido's Plotly image export:
    uv run plotly_get_chrome -y
 
 Alternatively, ``devenv shell`` configures Python 3.12, installs Nix-managed
-Chrome, sets ``BROWSER_PATH`` for Kaleido and syncs all extras. Those extra
-packages are not needed for a standalone server.
+Chrome, sets ``BROWSER_PATH`` for Kaleido and syncs the whole workspace.
 
 Supply your own platform definitions and use their actual qubit IDs.
 Qibocal's test-only ``mock`` platform is not included in its installed package.
-Chrome and system-level instrument drivers remain site-managed; managed
-Python environments do not install them.
-
-Managed environments and dependencies
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-
-A standalone server uses its current interpreter unless you supply
-``--venv NAME_OR_PATH``. With that option, it provisions an isolated
-environment containing the server and pinned Qibocal. There is no implicit
-managed environment for standalone launches, including launches over SSH.
-
-Named environments live on the execution host under
-``$XDG_CACHE_HOME/qibocal/agent/envs/NAME`` or ``~/.cache/qibocal/agent/envs/NAME``.
-All relative paths, including ``./`` and ``../``, resolve against this
-environment cache directory. Absolute paths are not rebased; ``--venv``
-also expands ``~`` on that host. Managed deployment requires POSIX, Python 3.12/3.13,
-Git, and ``pip``/``ensurepip``, ``uv`` or external ``pip>=22.3``.
-Environments are reused and dependencies reconciled when source or dependency
-state changes. Installation is additive; removed configured dependencies
-are not uninstalled. Broken or custom environments are not automatically
-deleted or recreated; provisioning errors stop startup.
-
-Use repeatable ``--platform-repo`` options for trusted platform repositories
-and ``--dependency REQUIREMENT`` for Python drivers or additional requirements.
-Platform repository dependencies are discovered and installed automatically.
-Explicit ``--platforms`` paths are searched first, repository roots next,
-and inherited ``QIBOLAB_PLATFORMS`` last when explicit paths are absent.
-With neither option, the environment variable is untouched.
-Cached clones are reused without automatic pull/fetch/reset; pin a commit
-for reproducibility. Trust all package sources, since installation can
-execute code.
-
-Without ``--venv``, repository/dependency options intentionally install into
-the selected existing interpreter. Prefer ``--venv`` for isolation.
-For all dependency-selection, path, cache and persistent-default rules,
-see :doc:`../guides/configuration`.
+Chrome and system-level instrument drivers remain site-managed.
 
 Queued execution
 ~~~~~~~~~~~~~~~~
 
-Install the standalone server on the access node, then provision a managed
-environment on shared storage with ``--venv`` or use an externally managed
-shared interpreter. The environment, working directory, cached source
-snapshots and repository clones, platforms and output directory must be
-available at identical absolute paths on access and compute nodes.
-Configure ``XDG_CACHE_HOME`` on shared storage too; ``--venv`` alone does
-not move the cache. No compute-node provisioning or node-local staging occurs.
-Chrome and drivers must be available on compute nodes.
+Install the server on the access node, on shared storage, so compute nodes
+see the same environment. The Python environment, working directory, platform
+definitions and output directory must be available at identical absolute paths
+on access and compute nodes; Chrome and drivers must be available on compute
+nodes, where reports and acquisitions actually run. There is no automatic
+node-local staging or compute-node provisioning.
 
-``--worker-python`` selects an externally managed shared worker interpreter.
-It cannot coexist with ``--venv``; with ``--venv``, gateway and workers use
-the same managed environment. If repository/dependency options are used
-with a distinct explicit worker interpreter, dependencies are installed into
-both gateway and worker interpreters. Both must already contain the server;
-this does not install the core server into externally managed interpreters.
-See :doc:`getting-started` for a queued gateway command and
-:doc:`../guides/networking` for the execution topology.
+``--worker-python`` selects a different interpreter for compute-node jobs;
+it defaults to the gateway's own interpreter. Both must contain the server.
+``--workdir`` sets the working directory of those jobs.
+
+The pinned Qibocal API
+~~~~~~~~~~~~~~~~~~~~~~
+
+Qibocal is pinned to commit
+``ae0e797a8c93a1110737f7f75586e628e4a2e543`` on the ``protodev`` branch of
+`qiboteam/qibocal#1722 <https://github.com/qiboteam/qibocal/pull/1722>`_.
+The pin is a PEP 508 direct Git requirement in ``project.dependencies``, not a
+uv-only source override, so pip and built distributions honor the same commit.
+Protocol execution calls ``Executor.__call__()`` with automatic fitted updates
+disabled; accepted updates call ``Executor.update(completed)`` explicitly.
+Changing the pin requires checking those APIs and the saved artifact format.
+Session and protocol comments use its ``Note`` model and ``notes.json`` format.

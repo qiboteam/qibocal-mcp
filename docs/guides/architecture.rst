@@ -4,31 +4,28 @@ Execution and accepted state
 Components
 ----------
 
-The Pydantic AI agent and native Copilot integration share calibration policy
-from ``calibration.py`` and deployment through ``DeploymentSettings`` and
-``launch_for`` in ``deployment.py``. ``qibocal-agent`` remains a one-shot CLI;
-``open_calibration_agent`` keeps an MCP session alive for multiple Python turns,
-and ``qibocal-copilot`` opens an interactive session with a generated plugin.
+The ``qibocal-mcp`` package contains the servers: the responsive frontend and
+its main-thread hardware runtime (direct mode), the access-node SLURM gateway
+and the one-operation compute-node worker. All of them register the shared
+calibration policy from ``qibocal_mcp/calibration.py`` as the ``calibrate``
+prompt and alias tool.
 
-Each integration manages its MCP subprocess and gives the model platform
-context, the objective, protocol definitions and an MCP toolset.
-The model chooses a strategy; there is no
-prescribed calibration sequence, fit acceptance threshold or workflow engine.
+The ``qibocal-agent`` package contains the orchestration that launches and
+reaches those servers: ``DeploymentSettings`` and ``launch_for`` in
+``qibocal_agent/deployment.py`` build the local or SSH launch,
+``qibocal_agent/environment.py`` provisions managed execution environments,
+and ``qibocal-mcp-remote`` hands the resulting stdio stream to any interactive
+MCP client. ``qibocal-agent`` remains a one-shot autonomous CLI;
+``open_calibration_agent`` keeps an MCP session alive for multiple Python
+turns. Both fetch the server's ``calibrate`` prompt and context as their
+instructions, manage their MCP subprocess, and leave strategy to the model:
+there is no prescribed calibration sequence, fit acceptance threshold or
+workflow engine.
 
-Native Copilot uses a FastMCP proxy with one connected upstream client for the
-session. It preserves upstream schemas and response content while staging
-returned PNG bytes locally for Copilot's ``view`` tool, including with SSH/SLURM.
-With ``report_rendering=client``, the proxy instead renders embedded Plotly
-figures locally before staging PNGs, so workers do not need Chrome.
-This requires neither remote filesystem downloads nor a shell tool. Pydantic AI
-continues to consume the original inline MCP images.
-The proxy's inspection metadata is guidance, not an evidence or approval gate.
-See :doc:`../agent/copilot` for native image and permission constraints.
-
-``qibocal-mcp`` exposes eight tools and one context resource.
+``qibocal-mcp`` exposes nine tools, one context resource and one prompt.
 ``get_calibration_context`` aliases ``qibocal://context`` for clients without
 resource support; discovery through either interface has the same execution
-effects.
+effects. The ``calibrate`` prompt/tool is static and has none.
 Its direct server wraps a Qibocal ``Executor`` with ``update=False``.
 ``execute_protocol`` binds a built-in protocol and calls the executor to acquire,
 fit and generate reports. ``update_platform`` explicitly calls
@@ -119,17 +116,15 @@ Session boundaries
 Run handles exist only while the direct server or gateway remains alive and
 expire when ``start_session`` switches the active calibration session.
 Saved artifacts and client conversation history can persist, but cannot restore
-those handles in a fresh MCP session. Copilot's native conversation resume does
-not preserve the old server/gateway or accepted-state handoff. Use a persistent
-plugin export for a stable Copilot configuration path, not a transient wrapper
-plugin; neither form provides hardware-state resume.
+those handles in a fresh MCP session; resuming a conversation in an interactive
+client does not preserve the old server/gateway or accepted-state handoff.
 ``start_session`` can explicitly select saved paired platform files as the
 baseline of a fresh calibration, but does not restore their old run handles.
 Internal workers can restore the completed run needed for an update or a
 run-based starting point within the active gateway session; this is not a
 public execution-handle-resume feature.
 
-Every server subprocess launched by the agent receives ``--no-config`` and
-resolved settings. Internal SLURM workers likewise do not read user
-configuration. This keeps a remote host's defaults out of the agent's chosen
-execution settings; see :doc:`configuration`.
+The server itself reads no configuration file: every launch receives fully
+resolved settings as flags from the orchestration, and internal SLURM workers
+likewise do not read user configuration. This keeps a remote host's defaults
+out of the chosen execution settings; see :doc:`configuration`.

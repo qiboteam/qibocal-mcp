@@ -8,25 +8,58 @@ which tool calls to make.
 Launch a stdio server
 ---------------------
 
+On the machine that reaches the instruments:
+
 .. code-block:: sh
 
-   uv run qibocal-mcp --platform YOUR_PLATFORM --output runs
+   qibocal-mcp --platform YOUR_PLATFORM --output runs
 
-Configure your MCP client to launch that command with this repository as its
-working directory. The process communicates over stdio; it does not provide an
-HTTP URL. Running it in a terminal alone does not initiate a calibration.
-There are eight tools: ``get_calibration_context``, ``execute_protocol``,
-``update_platform``, ``start_session``, ``get_platform_state`` and
-``patch_platform``, ``append_note`` and ``get_notes``, plus the
-``qibocal://context`` resource.
+On a SLURM access node, dispatch every operation through the queue instead:
 
-The server accepts the MCP connection and lists its tools/resources while
-Qibocal and the direct-mode hardware initialize in the background. The first
-context or calibration request waits for that initialization and reports any
-failure. Report folders are created only when needed by a run, accepted edit
-session comment or explicit session switch.
-Managed-environment installation and SSH setup still happen before connection;
-queued discovery can additionally wait for a SLURM allocation.
+.. code-block:: sh
+
+   qibocal-mcp --platform YOUR_PLATFORM --partition PARTITION \
+     --output /shared/calibration-runs --workdir /shared/calibration-work
+
+Configure your MCP client to launch the chosen command as its stdio
+subprocess. The process communicates over stdio; it does not provide an HTTP
+URL, and running it in a terminal alone does not initiate a calibration.
+For example, a generic MCP client configuration entry looks like:
+
+.. code-block:: json
+
+   {
+     "mcpServers": {
+       "qibocal": {
+         "command": "qibocal-mcp",
+         "args": ["--platform", "YOUR_PLATFORM", "--output", "runs"]
+       }
+     }
+   }
+
+To launch the server from your own machine when the hardware is behind SSH,
+configure ``qibocal-mcp-remote`` from the orchestration package as the
+subprocess instead; see :doc:`../agent/interactive`.
+
+The server accepts the MCP connection and lists its tools, prompt and resource
+while Qibocal and the direct-mode hardware initialize in the background. The
+first context or calibration request waits for that initialization and reports
+any failure. In queued mode, set your client's per-operation timeout to cover
+queue waits; the server has no ``--timeout`` of its own.
+
+Start from the calibration prompt
+---------------------------------
+
+The server distributes its calibration policy as the MCP prompt
+``calibrate``. In interfaces that expose prompts (as slash commands or
+templates), select it to load the complete workflow guidance: plan from
+discovered context, execute one protocol at a time, inspect report images,
+record findings as notes, and update the platform only on inspected evidence.
+
+Interfaces that ignore MCP prompts can call the identically named
+``calibrate`` **tool**, which returns the same text. Its description invites
+the model to call it before any calibration, so in practice asking your
+assistant to "calibrate using the qibocal tools" is enough to load the policy.
 
 Make a first tool call
 ----------------------
@@ -62,38 +95,5 @@ and later follow-ups, or omit ``run_id`` for session plans and summaries.
 
 Keep the run's artifact location. Run handles expire when the server or
 gateway exits or ``start_session`` switches calibration sessions, even though
-the files remain on disk. See
-:doc:`../guides/artifacts` for output layout and accepted snapshots.
-
-Advanced: queued gateway over SSH
----------------------------------
-
-Once the shared paths and site prerequisites in :doc:`installation` are
-ready, launch a gateway on the access node:
-
-.. code-block:: sh
-
-   uv run qibocal-mcp --no-config --platform YOUR_PLATFORM \
-     --partition PARTITION --venv /shared/YOUR_USER/qibocal-mcp/env \
-     --platform-repo 'https://github.com/YOUR_ORG/platforms.git#ref=COMMIT&subdirectory=platforms' \
-     --output /shared/calibration-runs
-
-Replace placeholders with approved paths and a trusted platform repository.
-Run this from the shared working directory on the access node, where the
-standalone server itself is installed; configure its source/clone cache on
-shared storage. It manages an environment only because ``--venv`` is supplied.
-For a client on another machine, configure a stdio subprocess using
-noninteractive SSH, for example:
-
-.. code-block:: sh
-
-   ssh -T -o BatchMode=yes ACCESS_NODE \
-     'cd /shared/calibration-work && /shared/qibocal-agent/.venv/bin/qibocal-mcp --no-config --platform YOUR_PLATFORM --platforms /shared/qibolab-platforms --partition PARTITION --output /shared/calibration-runs'
-
-This second example uses an externally managed shared installation, which
-must already contain the server and drivers. Set your client's operation
-timeout to cover queue waits; the standalone server has no ``--timeout``
-option. Each operation gets its own allocation, and no allocation is held
-while the client inspects results. Read :doc:`../guides/networking` for
-SSH environment handling and :doc:`../guides/safety` before retrying a failed
-acquisition or update.
+the files remain on disk. See :doc:`../guides/artifacts` for output layout and
+accepted snapshots.

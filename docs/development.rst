@@ -1,51 +1,66 @@
 Development and documentation builds
 ====================================
 
-Source layout
--------------
+Workspace layout
+----------------
 
-* ``src/qibocal_mcp/calibration.py``: shared calibration policy and context/tool
-  identifiers; the generated Copilot profile renders this policy rather than
-  maintaining a separate committed copy.
-* ``src/qibocal_mcp/deployment.py``: dependency-light ``DeploymentSettings`` and
-  ``launch_for`` contract shared by both agent integrations.
-* ``src/qibocal_mcp/agent.py``: Pydantic AI transport adapter, reusable
-  ``open_calibration_agent`` async context manager and one-shot CLI.
-* ``src/qibocal_mcp/copilot.py``: transient native Copilot launch and persistent
-  plugin export, independent of the Pydantic AI extra.
-* ``src/qibocal_mcp/copilot_server.py``: native-only FastMCP proxy and report-PNG
-  staging on the client host, preserving one connected upstream client and its
-  tool schemas for the session.
-* ``src/qibocal_mcp/models.py``: native Copilot and OpenWebUI model selection.
-* ``src/qibocal_mcp/server.py``: responsive direct-server frontend and deployment
-  entry point, with background hardware startup.
-* ``src/qibocal_mcp/runtime.py``: internal main-thread hardware server, also used
-  directly inside SLURM workers.
-* ``src/qibocal_mcp/artifacts.py``: incremental task-backed Qibocal report storage
-  shared by direct execution and successive SLURM workers.
-* ``src/qibocal_mcp/notes.py``: atomic Qibocal note appends using the report
-  server's per-directory ``.notes.lock``.
-* ``src/qibocal_mcp/sessions.py``: paired calibration checkpoints and repository
-  revision selection, with explicit configured-remote fetching and no checkout.
-* ``src/qibocal_mcp/slurm.py``: gateway serialization, dispatch and accepted-state
-  handoff.
-* ``src/qibocal_mcp/worker.py``: one internal operation per allocation, with
-  JSON on stdin/stdout. Workers do not read user configuration.
-* ``src/qibocal_mcp/config.py``: validated persistent defaults and management CLI.
-* ``src/qibocal_mcp/environment.py``: execution-host environment bootstrap,
-  cached source/repositories and dependency provisioning.
-* ``tests/``: ``unittest`` coverage for configuration, transports, direct server
-  behavior and queued state handoff.
+The repository is a uv workspace with two distributions:
 
-The distribution is named ``qibocal-agent``. The ``qibocal_mcp`` module and
-existing MCP commands keep their names. Configuration lives in
-``qibocal/agent.json``; caches and generated plugin data use ``qibocal/agent``
-under their respective XDG roots.
-Installed-source deployment reads ``qibocal-agent`` distribution metadata.
-Review :doc:`installation` before changing the pinned Qibocal API.
-Preserve stdout for MCP/worker protocols, and keep model API calls out of the
-server. Operational invariants are described in :doc:`guides/architecture`
-and :doc:`guides/safety`.
+``packages/mcp`` — the ``qibocal-mcp`` distribution (module ``qibocal_mcp``),
+every MCP server and nothing else:
+
+* ``server.py``: responsive direct-server frontend with background hardware
+  startup, and the ``qibocal-mcp`` entry point (plain flags, no configuration
+  file, direct or ``--partition`` gateway mode).
+* ``runtime.py``: internal main-thread hardware server, also used directly
+  inside SLURM workers.
+* ``slurm.py``: gateway serialization, dispatch and accepted-state handoff.
+* ``worker.py``: one internal operation per allocation, with JSON on
+  stdin/stdout. Workers do not read user configuration.
+* ``calibration.py``: the calibration policy, registered on every server as
+  the ``calibrate`` MCP prompt and the identically named alias tool
+  (for interfaces that ignore MCP prompts), plus context/tool identifiers.
+* ``artifacts.py``: incremental task-backed Qibocal report storage shared by
+  direct execution and successive SLURM workers.
+* ``notes.py``: atomic Qibocal note appends using the report server's
+  per-directory ``.notes.lock``.
+* ``sessions.py``: paired calibration checkpoints and repository revision
+  selection, with explicit configured-remote fetching and no checkout.
+* ``locking.py``: the shared advisory file lock.
+* ``targets.py``: Qibocal-compatible wire types without importing the
+  calibration stack.
+
+``packages/agent`` — the ``qibocal-agent`` distribution (module
+``qibocal_agent``), the orchestration; its base dependencies are empty
+(standard library only) and the ``agent`` extra adds the Pydantic AI stack:
+
+* ``deployment.py``: ``DeploymentSettings`` and the ``launch_for`` stdio
+  launch contract (local or SSH).
+* ``environment.py``: execution-host environment bootstrap, cached
+  source/repositories and dependency provisioning; also shipped standalone
+  over SSH, so it must remain a single standard-library file. Its
+  ``source_payload`` ships the ``qibocal-mcp`` source from the repository
+  checkout or the locally installed distribution.
+* ``remote.py``: the ``qibocal-mcp-remote`` stdio launcher for interactive
+  clients.
+* ``agent.py``: Pydantic AI transport adapter, reusable
+  ``open_calibration_agent`` async context manager and one-shot CLI. The
+  calibration policy is fetched from the server's ``calibrate`` prompt, not
+  embedded.
+* ``models.py``: GitHub Copilot subscription and OpenWebUI model selection.
+* ``config.py``: validated persistent defaults (``agent``/``report`` sections
+  and named agents) and the ``qibocal-mcp-config`` CLI.
+* ``report.py``: the managed ``qibocal-report-server`` launcher and tunnel.
+
+Each package has its own ``tests/`` directory with ``unittest`` coverage;
+``packages/mcp/tests`` requires the Qibocal stack, while
+``packages/agent/tests`` is hardware-free.
+
+Configuration lives in ``qibocal/agent.json``; caches use ``qibocal/agent``
+under their respective XDG roots. Review :doc:`mcp/installation` before
+changing the pinned Qibocal API. Preserve stdout for MCP/worker protocols,
+and keep model API calls out of the servers. Operational invariants are
+described in :doc:`guides/architecture` and :doc:`guides/safety`.
 Incremental report saves must not call ``Output.dump`` on existing histories:
 it replaces note files from possibly stale in-memory lists. Save metadata,
 history and platform separately; note appends reload under ``.notes.lock`` and
@@ -56,77 +71,35 @@ Likewise, persist an accepted update's action through ``Task.dump``, not
 Provisioning invariants
 -----------------------
 
-Keep shared policy, deployment and source-payload imports independent of the
-agent extra and model credentials. The Pydantic AI agent resolves the provider
-before deployment/hardware; native Copilot owns its login and model selection.
-The SSH bootstrap
-uses the standard library to transfer only server source and package metadata
-from the launching checkout or installed distribution. The installed-source
-fallback must preserve core dependencies and the Qibocal Git pin from distribution
-metadata without requiring a local checkout, including for a wheel-installed
-agent. Reconstruct minimal installation metadata from ``distribution.requires``.
-Retain this installed-wheel path for both agent integrations; sharing deployment
-must not make source-payload discovery import the optional Pydantic AI backend.
-Keep the pin as a PEP 508 direct Git requirement in ``project.dependencies``,
-not only ``tool.uv.sources``, so pip and built distributions retain it.
-The launched server receives
-resolved settings and ``--no-config``; target-host and worker user configuration
-must not be read.
-Preserve the Qibocal pin in ``pyproject.toml`` in managed environments and keep
-provisioning diagnostics on stderr, never the MCP/worker protocol stream.
+Keep deployment and source-payload code independent of the agent extra and
+model credentials: the base ``qibocal-agent`` installation must stay standard
+library only. The Pydantic AI agent resolves the provider before
+deployment/hardware. The SSH bootstrap uses the standard library to transfer
+only the ``qibocal-mcp`` source and package metadata, from the workspace
+checkout or the locally installed distribution. The installed-distribution
+fallback must preserve core dependencies and the Qibocal Git pin from
+``qibocal-mcp`` distribution metadata, reconstructing minimal installation
+metadata from ``distribution.requires``. Keep the pin as a PEP 508 direct Git
+requirement in ``project.dependencies``, not only ``tool.uv.sources``, so pip
+and built distributions retain it. The launched server receives fully resolved
+flags; target-host and worker user configuration must not be read, and the
+server package must keep accepting no configuration file at all.
+Keep provisioning diagnostics on stderr, never the MCP/worker protocol stream.
 
-SSH agents without an explicit server interpreter default to managed
-``qibocal-mcp``; local agents/standalone servers require ``venv`` to manage an
-environment. Reject ``venv`` with explicit ``server_python``/``worker_python``
-as appropriate. Repository/dependency installation without a managed
-environment intentionally modifies the selected interpreter; document that
-behavior rather than implying isolation. Standalone gateways with distinct
-explicit worker interpreters must provision repository/dependency settings into
-both gateway and worker interpreters, each already containing the server;
-agents use the same installed interpreter for workers.
-
-Native Copilot profiles allowlist Qibocal, ``view`` and ``ask_user`` without
-pinning a model, changing global settings, automatically installing a plugin
-or adding blanket permission allowances. ``view`` is a general file/image reader;
-instructions restrict its use to staged report PNGs, not enforced image-only
-access. Tool restriction also requires the launch command's
-``--disable-builtin-mcps --excluded-tools=skill,sql`` flags; selecting a profile
-without these flags in an existing session can expose implicit utilities.
-Keep wrapper and printed export commands aligned, and reject passthrough
-``--available-tools``/``--excluded-tools`` overrides.
-Persistent exports contain runtime
-environment references, not secret values. Transient plugins are regenerated
-per launch; persistent exports snapshot policy and resolved deployment/defaults.
-They also record forwarded environment names, excluding model-provider
-credential/configuration prefixes and GitHub authentication tokens but preserving
-``COPILOT_MCP_*`` driver variables; changing that name set requires re-export.
-Missing runtime names must fail clearly, and resolved values must remain literal
-rather than undergo
-recursive expansion. Direct Copilot launch uses the qualified
-``qibocal-calibration:qibocal-calibration`` plugin/profile ID.
-The native timeout adapter converts seconds to milliseconds and rejects values
-outside 0.001 through 2147483.647 seconds, inclusive, to respect Node's integer
-timeout limit without changing the shared 3600-second default.
-Neither conversation history nor a stable exported plugin restores a terminated
-server/gateway's run handles. Keep model APIs outside the MCP server and do not
-describe instructions or tool restrictions as hardware safety enforcement.
-
-Native image staging uses existing FastMCP core dependencies, not Pydantic AI.
-``StageReports`` preserves original response content/metadata and adds
-``copilot_report_images`` and ``inspection_required`` to text and structured
-metadata. PNG bytes arrive over MCP for all deployment modes; no remote file
-download or shell tool is needed. Staged files live in private client-local cache
-folders and persist until manually removed. Keep Pydantic AI's original inline
-image path unchanged, and do not imply that staging enforces inspection,
-approval or provider-independent pixel delivery.
+SSH launches without an explicit server interpreter default to the managed
+``qibocal-mcp`` environment; local launches require ``venv`` to manage an
+environment. Reject ``venv`` combined with an explicit ``server_python``.
+Repository/dependency installation without a managed environment intentionally
+modifies the selected interpreter; document that behavior rather than implying
+isolation.
 
 Caches belong to the execution host under ``qibocal/agent``, not notebook
 ``qibocal/envs``. Reuse environments and fingerprint only successful dependency
 state; reconcile changed source/dependencies/requirements without silently
 continuing on errors or deleting/recreating broken/custom environments.
-Include nested local ``-r``/``-c`` files, root packaging metadata and Git ``HEAD``
-in reconciliation hashes. Managed environments must run installer dependency
-checks and verify server importability before launch.
+Include nested local ``-r``/``-c`` files, root packaging metadata and Git
+``HEAD`` in reconciliation hashes. Managed environments must run installer
+dependency checks and verify server importability before launch.
 Installation is additive, not exact sync. Cached repository clones must not
 automatically pull/fetch/reset. Validate relative subdirectories against
 traversal and symlink escape, and discover requirements only at the documented
@@ -136,8 +109,8 @@ together in one resolver request, not with precedence overrides.
 An explicit ``start_session(source="repository", fetch=true)`` may fetch a
 source revision from an existing Git remote without updating checkout refs,
 reconciling dependencies or executing historical code. Serialize fetch and
-``FETCH_HEAD`` resolution for callers sharing a checkout, record the exact commit
-and remote, and preserve accepted state and handles on failure.
+``FETCH_HEAD`` resolution for callers sharing a checkout, record the exact
+commit and remote, and preserve accepted state and handles on failure.
 
 Maintain explicit-path/repository/inherited-host platform lookup order and
 CLI whole-list replacement for ``platform_repo`` and ``dependency``. Only
@@ -150,18 +123,20 @@ user-facing contract and trust/authentication requirements.
 Existing tests
 --------------
 
-With dependencies installed:
+With the workspace synced:
 
 .. code-block:: sh
 
-   uv sync --extra agent
-   uv run python -m unittest discover -s tests
+   uv sync
+   uv run --directory packages/mcp python -m unittest discover -s tests
+   uv run --directory packages/agent python -m unittest discover -s tests
 
-For changes limited to one area, use the existing test selector, for example:
+or with pytest, run each package's ``tests`` directory. For changes limited to
+one area, select the matching module, for example:
 
 .. code-block:: sh
 
-   uv run python -m unittest discover -s tests -p 'test_config.py'
+   uv run --directory packages/agent python -m unittest discover -s tests -p 'test_config.py'
 
 Tests use synthetic callbacks and patched transports/rendering to exercise
 behavior without claiming a real hardware calibration or requiring a live
@@ -171,8 +146,8 @@ Build this documentation
 ------------------------
 
 The site uses native reStructuredText and the Furo theme, following Qibolab's
-Qibo branding. The optional ``docs`` extra installs Sphinx and Furo; no Sphinx
-extensions are needed.
+Qibo branding. The ``docs`` dependency group installs Sphinx and Furo; no
+Sphinx extensions are needed.
 
 The light/dark Qibo logos and favicon in ``docs/_static/`` are copied unchanged
 from `Qibolab <https://github.com/qiboteam/qibolab/tree/e73aebfac321f99dfa67f19d1567dd84eaf9f980/doc/source>`_.
@@ -181,7 +156,7 @@ Theme colors and repository links are configured in ``docs/conf.py``.
 
 .. code-block:: sh
 
-   uv sync --extra agent --extra docs
+   uv sync --group docs
    uv run sphinx-build -W --keep-going -b html docs docs/_build/html
 
 Open ``docs/_build/html/index.html``. ``-W`` treats warnings as failures;
@@ -190,13 +165,13 @@ Sphinx reads static documentation without importing project modules, connecting
 to hardware or requesting model credentials. Generated output is not source
 and should remain untracked.
 
-Basic documentation has two independent tracks: ``agent/index`` comes first,
-with Pydantic AI installation, getting started, a reusable Python example,
-``agent/copilot`` for native interactive use and tutorials; ``mcp/index`` has
-standalone server installation and getting started. Each installation page
-puts minimal setup before advanced customization. Shared conceptual guides
-and CLI/MCP reference follow both tracks. Add new pages to a toctree so readers
-can navigate to them.
+The documentation mirrors the package split: ``mcp/index`` documents the
+server package for any MCP client, and ``agent/index`` documents the
+orchestration, putting the three-step simple path (install, tell it what you
+know, launch) before everything else. Shared conceptual guides and CLI/MCP
+reference follow both tracks; deployment machinery is documented as advanced
+material in the guides, not in the getting-started pages. Add new pages to a
+toctree so readers can navigate to them.
 
 Illustrations and accessibility
 -------------------------------
