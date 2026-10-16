@@ -282,7 +282,10 @@ def main(argv: list[str] | None = None):
     if args.slurm_arg and args.partition is None:
         parser.error("--slurm-arg requires --partition")
     if args.platforms is not None:
-        os.environ["QIBOLAB_PLATFORMS"] = args.platforms
+        # Remote launches pass "~" through unexpanded: resolve it on this host.
+        os.environ["QIBOLAB_PLATFORMS"] = os.pathsep.join(
+            os.path.expanduser(entry) for entry in args.platforms.split(os.pathsep)
+        )
     with redirect_stdout(sys.stderr):
         if args.partition is None:
             server = create_server(args.platform, output=Path(args.output))

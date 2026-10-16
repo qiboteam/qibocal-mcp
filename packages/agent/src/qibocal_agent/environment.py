@@ -43,6 +43,13 @@ def directory_path(value: str, folder: str) -> Path:
     return (path if path.is_absolute() else cache_home() / folder / path).resolve()
 
 
+def expand_path_list(value: str) -> str:
+    """Expand ``~`` in each entry, using this (execution) host's home."""
+    return os.pathsep.join(
+        os.path.expanduser(entry) for entry in value.split(os.pathsep)
+    )
+
+
 def environment_path(value: str) -> Path:
     """Keep relative environments separate from Qibocal Report's notebook cache."""
     return directory_path(value, "envs")
@@ -517,6 +524,8 @@ def provision(options: dict, payload: str | None = None) -> tuple[str, dict[str,
         env = dict(os.environ)
         roots = [str(platforms) for _, platforms in repositories]
         explicit = options.get("platforms")
+        if explicit is not None:
+            explicit = expand_path_list(explicit)
         inherited = env.get("QIBOLAB_PLATFORMS")
         if explicit is not None or roots:
             roots = [*([explicit] if explicit is not None else []), *roots]

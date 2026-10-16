@@ -284,8 +284,10 @@ runtime directories.
 
 Explicit CLI ``--output`` and ``--workdir`` retain their current-directory
 semantics and override configured paths. Unnamed invocations retain their
-existing omitted-directory defaults. ``platforms`` and executable settings
-remain literal; environment-variable strings are not expanded in path values.
+existing omitted-directory defaults. ``~`` in ``platforms`` entries expands
+on the execution host, so ``~/platforms`` means the remote home over SSH.
+Executable settings remain literal, and environment-variable strings are not
+expanded in path values.
 Prefer absolute shared paths for SSH/SLURM. A Python executable setting should
 name an executable, not a shell command such as ``uv run python``.
 

@@ -1,13 +1,14 @@
 """Cold-process startup and stdio discovery must not wait for Qibocal."""
 
 import asyncio
+import os
 import subprocess
 import sys
 import tempfile
 import unittest
 from contextlib import asynccontextmanager
 from pathlib import Path
-from unittest.mock import patch
+from unittest.mock import Mock, patch
 
 from fastmcp import Client, FastMCP
 from fastmcp.client.transports import StdioTransport
@@ -93,6 +94,18 @@ class StartupTests(unittest.IsolatedAsyncioTestCase):
             async with Client(create_server("synthetic")):
                 await asyncio.wait_for(started.wait(), timeout=2)
             self.assertTrue(closed.is_set())
+
+    def test_platforms_option_expands_home_on_this_host(self):
+        from qibocal_mcp import server
+
+        with (
+            patch.dict(os.environ, {"HOME": "/remote/home"}),
+            patch("qibocal_mcp.server.create_server", return_value=Mock()),
+        ):
+            server.main(["--platform", "qpu", "--platforms", "~/platforms:/absolute"])
+            self.assertEqual(
+                os.environ["QIBOLAB_PLATFORMS"], "/remote/home/platforms:/absolute"
+            )
 
     def test_entry_points_do_not_import_calibration_stack(self):
         result = subprocess.run(

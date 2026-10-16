@@ -446,6 +446,14 @@ class EnvironmentTests(unittest.TestCase):
             _, env = environment.provision(options | {"platforms": "/explicit:/second"}, source)
             self.assertTrue(env["QIBOLAB_PLATFORMS"].startswith("/explicit:/second" + os.pathsep))
             self.assertNotIn("/inherited", env["QIBOLAB_PLATFORMS"])
+            # "~" refers to the execution host's home, expanded per entry.
+            with patch.dict(os.environ, {"HOME": "/remote/home"}):
+                _, env = environment.provision(
+                    options | {"platforms": "~/platforms:/absolute"}, source
+                )
+            self.assertTrue(env["QIBOLAB_PLATFORMS"].startswith(
+                "/remote/home/platforms:/absolute" + os.pathsep
+            ))
 
     def test_install_failure_does_not_record_success(self):
         def run(arguments, **kwargs):

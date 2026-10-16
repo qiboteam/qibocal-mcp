@@ -31,7 +31,8 @@ configure their own timeouts. No model API call is made by this command.
    * - ``--output PATH``
      - Report output directory, default ``runs``.
    * - ``--platforms PATH``
-     - Set ``QIBOLAB_PLATFORMS`` for this process.
+     - Set ``QIBOLAB_PLATFORMS`` for this process; ``~`` in each entry
+       expands to this host's home.
    * - ``--partition NAME``
      - Dispatch each operation through ``srun``; unset means direct mode.
    * - ``--worker-python EXECUTABLE``
@@ -72,7 +73,7 @@ settings and accept:
    * - ``--platforms PATH``
      - Explicit ``QIBOLAB_PLATFORMS`` path list on the execution host, searched
        before managed repositories; when unset, inherited host paths follow
-       repository roots.
+       repository roots. ``~`` expands on the execution host, not locally.
    * - ``--venv NAME_OR_PATH``
      - Managed environment on the execution host. Named agents default to
        their name unless a server interpreter is explicit. Unnamed local
