@@ -14,7 +14,7 @@ from uuid import UUID, uuid4
 from fastmcp import Context, FastMCP
 from fastmcp.tools import ToolResult
 from fastmcp.utilities.types import Image
-from mcp.types import ContentBlock, EmbeddedResource, TextContent, TextResourceContents
+from mcp.types import ContentBlock, TextContent
 with redirect_stdout(sys.stderr):
     from qibocal import Executor, Note, create_calibration_platform
     from qibocal.auto.operation import Protocol
@@ -24,7 +24,7 @@ with redirect_stdout(sys.stderr):
 
     from .artifacts import SessionReport
     from .notes import append_note as persist_note, read_notes
-from .calibration import REPORT_FIGURE_MIME_TYPE
+from .calibration import register_calibration_prompt
 from .sessions import (
     PlatformState, SessionSource, pointer_tokens, pointer_value, repository_state,
 )
@@ -36,12 +36,9 @@ def create_server(
     output: Path = Path("runs"),
     snapshot: Path | None = None,
     restore_runs: bool = False,
-    report_rendering: str = "server",
     session_id: str | None = None,
 ) -> FastMCP:
     """Create one server; execution handles live only for its lifetime."""
-    if report_rendering not in {"server", "client"}:
-        raise ValueError("report_rendering must be server or client")
     # Qibocal's registry also contains exported parameter/data classes.
     protocols = {
         name: protocol
@@ -104,6 +101,7 @@ def create_server(
         ),
         lifespan=lifespan,
     )
+    register_calibration_prompt(mcp)
 
     async def calibration_context(ctx: Context) -> str:
         """Platform targets and built-in protocol parameter definitions, with units."""
@@ -440,26 +438,12 @@ def create_server(
                         for number, figure in enumerate(figures):
                             stem = folder / f"report-{index}-{number}"
                             figure.write_html(stem.with_suffix(".html"))
-                            if report_rendering == "client":
-                                serialized = figure.to_json()
-                                stem.with_suffix(".json").write_text(
-                                    serialized, encoding="utf-8"
-                                )
-                                content.append(EmbeddedResource(
-                                    type="resource",
-                                    resource=TextResourceContents(
-                                        uri=f"qibocal://reports/{run_id}/{index}/{number}",
-                                        mimeType=REPORT_FIGURE_MIME_TYPE,
-                                        text=serialized,
-                                    ),
-                                ))
-                            else:
-                                figure.write_image(
-                                    stem.with_suffix(".png"), width=1200, height=700
-                                )
-                                content.append(
-                                    Image(path=stem.with_suffix(".png")).to_image_content()
-                                )
+                            figure.write_image(
+                                stem.with_suffix(".png"), width=1200, height=700
+                            )
+                            content.append(
+                                Image(path=stem.with_suffix(".png")).to_image_content()
+                            )
                 completed_runs[run_id] = completed
                 return ToolResult(content=content, structured_content=metadata)
 
@@ -512,7 +496,6 @@ def main():
     parser.add_argument("--snapshot", type=Path)
     parser.add_argument("--restore-runs", action="store_true")
     parser.add_argument("--session-id", required=True)
-    parser.add_argument("--report-rendering", choices=("server", "client"), default="server")
     args = parser.parse_args()
     with redirect_stdout(sys.stderr):
         server = create_server(**vars(args))

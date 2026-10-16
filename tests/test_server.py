@@ -23,7 +23,7 @@ from qibocal.update import drive_frequency
 
 from qibocal_mcp.runtime import create_server
 from qibocal_mcp.server import create_server as create_frontend
-from qibocal_mcp.calibration import REPORT_FIGURE_MIME_TYPE
+from qibocal_mcp.calibration import PROMPT, instructions_for
 from qibocal_mcp.targets import Targets
 
 
@@ -76,19 +76,30 @@ class ServerTests(unittest.IsolatedAsyncioTestCase):
             **vars(create_platform("dummy")),
             calibration=Calibration(single_qubits={0: QubitCalibration()}),
         )
+        png = bytes.fromhex(
+            "89504e470d0a1a0a0000000d49484452000000010000000108060000001f15c489"
+            "0000000b49444154789c636000020000050001a5f645400000000049454e44ae426082"
+        )
+
+        def write_image(figure, file, **kwargs):
+            Path(file).write_bytes(png)
+
         with (
             tempfile.TemporaryDirectory() as directory,
             patch("qibocal_mcp.runtime.create_calibration_platform", return_value=platform),
             patch("qibocal_mcp.runtime.PROTOCOLS", {"synthetic": Protocol(acquire, fit, report, update)}),
+            patch.object(go.Figure, "write_image", write_image),
         ):
-            backend = create_server(
-                "synthetic", output=Path(directory), report_rendering="client",
-            )
+            backend = create_server("synthetic", output=Path(directory))
             with patch("qibocal_mcp.server.StdioTransport", return_value=backend):
                 async with Client(backend) as original, Client(create_frontend("synthetic")) as client:
                     self.assertEqual(
                         [tool.model_dump() for tool in await client.list_tools()],
                         [tool.model_dump() for tool in await original.list_tools()],
+                    )
+                    self.assertEqual(
+                        [prompt.model_dump() for prompt in await client.list_prompts()],
+                        [prompt.model_dump() for prompt in await original.list_prompts()],
                     )
                     self.assertEqual(
                         await client.read_resource("qibocal://context"),
@@ -97,7 +108,7 @@ class ServerTests(unittest.IsolatedAsyncioTestCase):
                     result = await client.call_tool("execute_protocol", {
                         "protocol": "synthetic", "parameters": {"value": 5e9}, "targets": [0],
                     })
-                    self.assertTrue(any(item.type == "resource" for item in result.content))
+                    self.assertTrue(any(item.type == "image" for item in result.content))
                     run_id = result.structured_content["run_id"]
                     applied = await client.call_tool("update_platform", {"run_id": run_id})
                     self.assertTrue(applied.structured_content["updated"])
@@ -117,7 +128,7 @@ class ServerTests(unittest.IsolatedAsyncioTestCase):
                 adapter.validate_python(targets), original.validate_python(targets)
             )
 
-    async def test_client_reports_do_not_render_on_execution_host(self):
+    async def test_calibration_prompt_and_alias_tool_need_no_hardware(self):
         platform = CalibrationPlatform(
             **vars(create_platform("dummy")),
             calibration=Calibration(single_qubits={0: QubitCalibration()}),
@@ -126,22 +137,18 @@ class ServerTests(unittest.IsolatedAsyncioTestCase):
             tempfile.TemporaryDirectory() as directory,
             patch("qibocal_mcp.runtime.create_calibration_platform", return_value=platform),
             patch("qibocal_mcp.runtime.PROTOCOLS", {"synthetic": Protocol(acquire, fit, report, update)}),
-            patch.object(go.Figure, "write_image", side_effect=AssertionError("Remote Chrome invoked")) as render,
         ):
-            async with Client(create_server(
-                "synthetic", output=Path(directory), report_rendering="client",
-            )) as client:
-                result = await client.call_tool("execute_protocol", {
-                    "protocol": "synthetic", "parameters": {"value": 5e9}, "targets": [0],
-                })
-                resource = next(item.resource for item in result.content if item.type == "resource")
-                self.assertEqual(resource.mimeType, REPORT_FIGURE_MIME_TYPE)
-                self.assertIn("data", json.loads(resource.text))
-                folder = Path(result.structured_content["folder"])
-                self.assertEqual((folder / "report-0-0.json").read_text(), resource.text)
-                self.assertTrue((folder / "report-0-0.html").exists())
-                self.assertFalse(list(folder.glob("*.png")))
-                render.assert_not_called()
+            async with Client(create_server("synthetic", output=Path(directory))) as client:
+                prompts = await client.list_prompts()
+                self.assertIn(PROMPT, [prompt.name for prompt in prompts])
+                prompt = await client.get_prompt(PROMPT)
+                self.assertEqual(prompt.messages[0].content.text, instructions_for())
+                alias = next(
+                    tool for tool in await client.list_tools() if tool.name == PROMPT
+                )
+                self.assertIn("start here", alias.description)
+                result = await client.call_tool(PROMPT, {})
+                self.assertEqual(result.content[0].text, instructions_for())
 
     async def test_execute_inspect_update(self):
         dummy = create_platform("dummy")
@@ -169,8 +176,9 @@ class ServerTests(unittest.IsolatedAsyncioTestCase):
             async with Client(server) as client:
                 self.assertEqual(
                     {t.name for t in await client.list_tools()},
-                    {"get_calibration_context", "execute_protocol", "update_platform", "start_session",
-                     "get_platform_state", "patch_platform", "append_note", "get_notes"},
+                    {PROMPT, "get_calibration_context", "execute_protocol", "update_platform",
+                     "start_session", "get_platform_state", "patch_platform",
+                     "append_note", "get_notes"},
                 )
                 context_text = (
                     await client.read_resource("qibocal://context")

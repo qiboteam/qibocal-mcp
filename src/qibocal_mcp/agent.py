@@ -13,7 +13,7 @@ from pydantic_ai.exceptions import UserError
 from pydantic_ai.mcp import MCPToolset
 from pydantic_ai.models import Model
 
-from .calibration import CONTEXT_RESOURCE, INSTRUCTIONS, instructions_for
+from .calibration import CONTEXT_RESOURCE, instructions_for
 from .config import add_agent_selection_arguments, parse_settings
 from .deployment import DeploymentSettings, add_agent_deployment_arguments, launch_for
 from .environment import DeploymentError
@@ -26,8 +26,6 @@ def transport_for(args: argparse.Namespace | DeploymentSettings) -> StdioTranspo
         args if isinstance(args, DeploymentSettings)
         else DeploymentSettings.from_namespace(args)
     )
-    if settings.report_rendering == "client":
-        raise UserError("Client report rendering requires qibocal-copilot")
     launch = launch_for(settings)
     return StdioTransport(
         command=launch.command, args=launch.args, env=launch.env,

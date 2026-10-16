@@ -1,15 +1,24 @@
-"""The calibration policy shared by alternative agent runtimes."""
+"""The calibration policy, distributed as a reusable MCP prompt.
+
+The instructions are registered twice on every server: as an MCP prompt, for
+interfaces that expose prompts as slash commands or templates, and as a plain
+tool returning the same text, for interfaces (such as GitHub Copilot CLI) that
+load MCP tools but ignore prompts.
+"""
+
+from fastmcp import FastMCP
 
 NAME = "qibocal-calibration"
 DESCRIPTION = "Plan, execute and inspect bounded Qibocal calibrations."
 CONTEXT_RESOURCE = "qibocal://context"
 CONTEXT_TOOL = "get_calibration_context"
+PROMPT = "calibrate"
 TOOLS = (
+    PROMPT,
     CONTEXT_TOOL, "execute_protocol", "update_platform", "start_session",
     "get_platform_state", "patch_platform",
     "append_note", "get_notes",
 )
-REPORT_FIGURE_MIME_TYPE = "application/vnd.plotly.v1+json"
 
 INSTRUCTIONS = """You are a quantum calibration agent.
 Use the user's objective and constraints to plan a calibration strategy.
@@ -71,14 +80,27 @@ def instructions_for(context: str | None = None) -> str:
         f"\nBefore choosing an experiment, call {CONTEXT_TOOL} to obtain "
         "Qibocal context. Ask the user for an objective, approved hardware limits, "
         "execution budget and stopping criteria if these have not been supplied. "
-        "Do not acquire or update until they are supplied. If report images cannot "
-        "be inspected, stop and explain the limitation. execute_protocol returns "
-        "copilot_report_images: client-local staged PNG paths, including for remote "
-        "hardware. Use view on every such path to inspect the actual images before "
-        "considering an update; use view only for these report images. Do not treat "
-        "a path, table, successful file write or successful view status as visual "
-        "evidence: image pixels must actually be available in your conversation. "
-        "If they are not, stop and ask the user to attach the images or use an "
-        "image-capable model/provider; do not update on that basis. Run handles belong to the "
-        "current MCP session; do not reuse handles after reconnecting."
+        "Do not acquire or update until they are supplied. execute_protocol "
+        "returns each run's report images as MCP image content: inspect every "
+        "image before considering an update. Do not treat a path, table or "
+        "successful tool status as visual evidence: image pixels must actually "
+        "be available in your conversation. If your interface cannot display "
+        "MCP images, stop and explain the limitation; do not update on that "
+        "basis. Run handles belong to the current MCP session; do not reuse "
+        "handles after reconnecting."
     )
+
+
+def calibrate() -> str:
+    """For any Qibocal calibration, start here and follow the returned instructions.
+
+    Returns the complete calibration workflow policy: planning, protocol
+    execution, report inspection, note keeping and platform update rules.
+    """
+    return instructions_for()
+
+
+def register_calibration_prompt(mcp: FastMCP) -> None:
+    """Register the policy as a prompt and as an alias tool on one server."""
+    mcp.prompt(calibrate, name=PROMPT)
+    mcp.tool(calibrate, name=PROMPT)

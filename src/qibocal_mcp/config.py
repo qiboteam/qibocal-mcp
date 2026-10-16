@@ -23,7 +23,6 @@ COMMON_FIELDS = {
     "venv": str,
     "platform_repo": list,
     "dependency": list,
-    "report_rendering": str,
 }
 FIELDS = {
     "server": {**COMMON_FIELDS, "worker_python": str},
@@ -44,7 +43,7 @@ FIELDS = {
         "remote_port": int,
     },
 }
-NAMED_FIELDS = {**FIELDS["agent"], "objective": str, "copilot_options": list}
+NAMED_FIELDS = {**FIELDS["agent"], "objective": str}
 
 
 class ConfigError(ValueError):
@@ -112,8 +111,6 @@ def validate_value(key: str, value: object) -> None:
         or not math.isfinite(value)
     ):
         raise ConfigError(f"{key} must be a positive finite number")
-    if key.endswith(".report_rendering") and value not in {"server", "client"}:
-        raise ConfigError(f"{key} must be server or client")
     if key.endswith(".venv"):
         from .environment import DeploymentError, environment_path
 
@@ -253,7 +250,6 @@ def parse_settings(
             "venv": None,
             "platform_repo": [],
             "dependency": [],
-            "report_rendering": "server",
         }
         if section == "server":
             defaults = common_defaults | {
@@ -263,7 +259,7 @@ def parse_settings(
             defaults = common_defaults | {
                 "model": None, "model_base_url": None, "ssh": None,
                 "server_python": None, "timeout": 3600,
-                "objective": None, "copilot_options": [],
+                "objective": None,
             }
         else:
             defaults = {
@@ -297,8 +293,6 @@ def parse_settings(
                 name in configured or selected_name is not None
             ) and not Path(values[name]).is_absolute()
         }
-        if section == "agent":
-            values["objective_from_cli"] = hasattr(args, "objective")
         if section == "report":
             if values["venv"] is None:
                 values["venv"] = "qibocal-report"
@@ -364,10 +358,6 @@ def add_agent_selection_arguments(parser: argparse.ArgumentParser) -> None:
 
 def add_deployment_arguments(parser: argparse.ArgumentParser) -> None:
     """Keep deployment options identical for the server and the agent."""
-    parser.add_argument(
-        "--report-rendering", choices=("server", "client"),
-        help="Render PNGs on the server (default), or send figures to the native Copilot client",
-    )
     parser.add_argument("--venv", help="Managed environment name or path on the execution host")
     parser.add_argument(
         "--platform-repo", action="append",

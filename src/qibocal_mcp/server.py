@@ -14,6 +14,7 @@ from fastmcp.client.transports import StdioTransport
 from fastmcp.tools import ToolResult
 from mcp.types import TextResourceContents
 
+from .calibration import register_calibration_prompt
 from .config import add_deployment_arguments, parse_settings
 from .sessions import SessionSource
 from .targets import Targets
@@ -27,19 +28,15 @@ def create_server(
     output: Path = Path("runs"),
     snapshot: Path | None = None,
     restore_runs: bool = False,
-    report_rendering: str = "server",
     session_id: str | None = None,
 ) -> FastMCP:
     """Advertise tools immediately and own one main-thread hardware subprocess."""
-    if report_rendering not in {"server", "client"}:
-        raise ValueError("report_rendering must be server or client")
     session_id = uuid4().hex if session_id is None else UUID(session_id).hex
     arguments = [
         "-m", "qibocal_mcp.runtime",
         "--platform", platform_name,
         "--output", str(output.resolve()),
         "--session-id", session_id,
-        "--report-rendering", report_rendering,
     ]
     if snapshot is not None:
         arguments += ["--snapshot", str(snapshot.resolve())]
@@ -104,6 +101,7 @@ def create_server(
         ),
         lifespan=lifespan,
     )
+    register_calibration_prompt(mcp)
 
     async def calibration_context(ctx: Context) -> str:
         client = await asyncio.shield(ctx.lifespan_context["ready"])
@@ -285,8 +283,6 @@ def main(argv: list[str] | None = None):
         command = [
             "--no-config", "--platform", args.platform, "--output", args.output,
         ]
-        if args.report_rendering != "server":
-            command += ["--report-rendering", args.report_rendering]
         if args.partition is not None:
             command += [
                 "--partition", args.partition,
@@ -315,12 +311,8 @@ def main(argv: list[str] | None = None):
     if args.platforms is not None:
         os.environ["QIBOLAB_PLATFORMS"] = args.platforms
     with redirect_stdout(sys.stderr):
-        rendering = (
-            {"report_rendering": args.report_rendering}
-            if args.report_rendering != "server" else {}
-        )
         if args.partition is None:
-            server = create_server(args.platform, output=Path(args.output), **rendering)
+            server = create_server(args.platform, output=Path(args.output))
         else:
             from .slurm import create_slurm_server
 
@@ -331,7 +323,6 @@ def main(argv: list[str] | None = None):
                 python=args.worker_python,
                 workdir=Path(args.workdir),
                 slurm_args=args.slurm_arg,
-                **rendering,
             )
     server.run(transport="stdio", show_banner=False)
 

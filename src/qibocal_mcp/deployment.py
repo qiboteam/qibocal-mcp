@@ -28,7 +28,6 @@ class DeploymentSettings:
     ssh: str | None = None
     server_python: str | None = None
     timeout: float = 3600
-    report_rendering: str = "server"
     directories: dict[str, str] = field(default_factory=dict)
 
     def __post_init__(self) -> None:
@@ -75,8 +74,6 @@ def launch_for(settings: DeploymentSettings) -> ServerLaunch:
         "--platform", settings.platform,
         "--output", settings.output,
     ]
-    if settings.report_rendering != "server":
-        command += ["--report-rendering", settings.report_rendering]
     if settings.partition is not None:
         command += ["--partition", settings.partition]
     command += [f"--slurm-arg={arg}" for arg in settings.slurm_arg]

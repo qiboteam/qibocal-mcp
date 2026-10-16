@@ -1,26 +1,24 @@
 Autocalibration agent
 =====================
 
-Choose the one-shot Pydantic AI ``qibocal-agent``, the reusable Python API below,
-or interactive GitHub Copilot CLI through :doc:`copilot`. They share calibration
-policy and deployment settings. The agent discovers platform context, chooses
-protocols, inspects their reports and explicitly accepts or rejects fitted
-updates. Each integration manages its MCP subprocess; do not launch a server
-separately.
+Choose the one-shot Pydantic AI ``qibocal-agent`` or the reusable Python API
+below, or connect any MCP-capable interface (GitHub Copilot CLI, Claude Code,
+Cursor, OpenCode, ...) directly to the server and use its ``calibrate`` prompt
+or tool. They share calibration policy and deployment settings. The agent
+discovers platform context, chooses protocols, inspects their reports and
+explicitly accepts or rejects fitted updates. Each integration manages its MCP
+subprocess; do not launch a server separately.
 
 Start with the minimal local setup in :doc:`../installation`, then
 :doc:`../getting-started`. The tutorials cover local calibration and remote
 execution. Alternative providers, persistent settings and deployment
 customization are optional; see :doc:`../guides/index` when needed.
-Copilot needs only the core package and an installed Copilot CLI, not the
-Pydantic AI extra or model-provider configuration.
 
 .. toctree::
    :maxdepth: 2
 
    ../installation
    ../getting-started
-   copilot
    ../tutorials/index
 
 Reusable Pydantic AI sessions

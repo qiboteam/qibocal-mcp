@@ -10,6 +10,7 @@ from fastmcp import FastMCP
 from fastmcp.tools import ToolResult
 from mcp.types import CallToolResult, TextContent
 
+from .calibration import register_calibration_prompt
 from .targets import Targets
 from .sessions import SessionSource
 
@@ -26,7 +27,6 @@ class SlurmJobs:
         python: str,
         workdir: Path,
         slurm_args: list[str],
-        report_rendering: str = "server",
     ):
         self.platform = platform
         self.session_id = uuid4().hex
@@ -47,10 +47,6 @@ class SlurmJobs:
             "--output", str(output.resolve()),
             "--session-id", self.session_id,
         ]
-        if report_rendering not in {"server", "client"}:
-            raise ValueError("report_rendering must be server or client")
-        if report_rendering != "server":
-            self.command += ["--report-rendering", report_rendering]
         self.snapshot: Path | None = None
         self.runs: set[str] = set()
         self.lock = asyncio.Lock()
@@ -133,7 +129,6 @@ def create_slurm_server(
     python: str,
     workdir: Path,
     slurm_args: list[str],
-    report_rendering: str = "server",
 ) -> FastMCP:
     """Expose the same calibration tools without hardware on the access node."""
     jobs = SlurmJobs(
@@ -143,7 +138,6 @@ def create_slurm_server(
         python=python,
         workdir=workdir,
         slurm_args=slurm_args,
-        report_rendering=report_rendering,
     )
     mcp = FastMCP(
         "Qibocal SLURM",
@@ -161,6 +155,7 @@ def create_slurm_server(
             "paths are on the cluster."
         ),
     )
+    register_calibration_prompt(mcp)
 
     async def calibration_context() -> str:
         """Discover the platform and protocols through a compute-node job."""
