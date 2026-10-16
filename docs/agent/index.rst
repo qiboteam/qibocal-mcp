@@ -2,12 +2,14 @@ Orchestration and autonomous agent
 ==================================
 
 The ``qibocal-agent`` package reaches the :doc:`MCP servers <../mcp/index>`
-from wherever you are. Its base installation is standard-library only, so
-putting it on a laptop costs nothing; four commands cover the workflow:
+from wherever you are. Its base installation is light (only FastMCP, no
+Qibocal or hardware stack), so it fits on any laptop; four commands cover the
+workflow:
 
 * ``qibocal-mcp-remote`` — serve the calibration MCP over stdio for any
   interactive client, launching the real server locally or through SSH and
-  provisioning its Python environment on the way when asked.
+  provisioning its Python environment on the way when asked. Stored
+  configurations can be switched from within the conversation.
 * ``qibocal-agent`` — an autonomous Pydantic AI calibration agent: give it a
   bounded objective and it plans, executes, inspects report images and
   explicitly accepts or rejects fitted updates. It fetches the same

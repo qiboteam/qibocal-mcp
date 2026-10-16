@@ -1628,16 +1628,18 @@ dependencies = [
 name = "qibocal-agent"
 version = "0.1.0"
 source = { editable = "packages/agent" }
+dependencies = [
+    { name = "fastmcp" },
+]
 
 [package.optional-dependencies]
 agent = [
-    { name = "fastmcp" },
     { name = "pydantic-ai-slim", extra = ["mcp", "openai"] },
 ]
 
 [package.metadata]
 requires-dist = [
-    { name = "fastmcp", marker = "extra == 'agent'", specifier = ">=3.0,<4" },
+    { name = "fastmcp", specifier = ">=3.0,<4" },
     { name = "pydantic-ai-slim", extras = ["mcp", "openai"], marker = "extra == 'agent'", specifier = ">=2.54,<3" },
 ]
 provides-extras = ["agent"]

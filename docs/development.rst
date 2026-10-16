@@ -32,7 +32,7 @@ every MCP server and nothing else:
 
 ``packages/agent`` — the ``qibocal-agent`` distribution (module
 ``qibocal_agent``), the orchestration; its base dependencies are empty
-(standard library only) and the ``agent`` extra adds the Pydantic AI stack:
+(FastMCP only, no Qibocal) and the ``agent`` extra adds the Pydantic AI stack:
 
 * ``deployment.py``: ``DeploymentSettings`` and the ``launch_for`` stdio
   launch contract (local or SSH).
@@ -41,8 +41,12 @@ every MCP server and nothing else:
   over SSH, so it must remain a single standard-library file. Its
   ``source_payload`` ships the ``qibocal-mcp`` source from the repository
   checkout or the locally installed distribution.
-* ``remote.py``: the ``qibocal-mcp-remote`` stdio launcher for interactive
-  clients.
+* ``remote.py``: the ``qibocal-mcp-remote`` proxy for interactive clients.
+  It owns one upstream server, forwards its tools, prompts and resources via
+  FastMCP's ``ProxyProvider``, and adds ``list_configurations`` and
+  ``switch_configuration``. Switching closes the previous server before
+  launching the next, since both may target the same instruments; a failed
+  launch leaves the proxy up with only the switching tools.
 * ``agent.py``: Pydantic AI transport adapter, reusable
   ``open_calibration_agent`` async context manager and one-shot CLI. The
   calibration policy is fetched from the server's ``calibrate`` prompt, not
@@ -72,8 +76,9 @@ Provisioning invariants
 -----------------------
 
 Keep deployment and source-payload code independent of the agent extra and
-model credentials: the base ``qibocal-agent`` installation must stay standard
-library only. The Pydantic AI agent resolves the provider before
+model credentials: the base ``qibocal-agent`` installation must not pull the
+Qibocal or Pydantic AI stacks, and ``environment.py`` itself must stay a
+standard-library single file. The Pydantic AI agent resolves the provider before
 deployment/hardware. The SSH bootstrap uses the standard library to transfer
 only the ``qibocal-mcp`` source and package metadata, from the workspace
 checkout or the locally installed distribution. The installed-distribution

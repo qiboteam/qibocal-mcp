@@ -9,7 +9,7 @@ Qibocal calibration for AI agents, as two Python packages:
 - [**`qibocal-agent`**](packages/agent) — the orchestration. It reaches those
   servers from anywhere: start the MCP from your laptop through SSH, run an
   autonomous calibration agent, browse reports, and store your defaults.
-  Its base installation is standard-library only.
+  Its base installation is light: FastMCP only, no Qibocal or hardware stack.
 
 This is a single-platform draft, **not a hardware safety layer**. Supply
 approved hardware limits, an execution budget and stopping criteria;

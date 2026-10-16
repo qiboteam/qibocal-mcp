@@ -4,13 +4,10 @@ version = "0.1.0"
 description = "Orchestration for Qibocal MCP servers: SSH and SLURM traversal, configuration, report serving and an autonomous agent."
 readme = "README.md"
 requires-python = ">=3.12,<3.14"
-dependencies = []
+dependencies = ["fastmcp>=3.0,<4"]
 
 [project.optional-dependencies]
-agent = [
-    "fastmcp>=3.0,<4",
-    "pydantic-ai-slim[mcp,openai]>=2.54,<3",
-]
+agent = ["pydantic-ai-slim[mcp,openai]>=2.54,<3"]
 
 [project.scripts]
 qibocal-agent = "qibocal_agent.agent:main"

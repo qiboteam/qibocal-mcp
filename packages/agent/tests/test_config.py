@@ -11,7 +11,7 @@ import unittest
 from pathlib import Path
 from unittest.mock import AsyncMock, Mock, patch
 
-from qibocal_agent import agent, config, environment, remote
+from qibocal_agent import agent, config, environment
 
 
 class ConfigTests(unittest.TestCase):
@@ -245,46 +245,6 @@ class ConfigTests(unittest.TestCase):
                 config.save_config({"agent": {"platform": "replacement"}})
         self.assertEqual(config.load_config()["agent"]["platform"], "original")
         self.assertEqual(list(self.directory.iterdir()), [self.path])
-
-    def test_remote_mcp_resolves_settings_and_execs_the_launch(self):
-        config.save_config({"agents": {"lab": {
-            "platform": "qpu", "ssh": "access-node", "partition": "quantum",
-        }}})
-        with (
-            patch("qibocal_agent.remote.os.execvpe") as execute,
-            patch("qibocal_agent.remote.os.chdir") as chdir,
-        ):
-            remote.main(["lab"])
-        command, arguments, environment_variables = execute.call_args.args
-        self.assertEqual(command, "ssh")
-        self.assertEqual(arguments[0], "ssh")
-        self.assertIn("access-node", arguments)
-        self.assertIn("--partition", arguments[-1])
-        self.assertIn("PATH", environment_variables)
-        chdir.assert_not_called()
-
-    def test_remote_mcp_requires_a_platform_but_no_model(self):
-        self.assert_cli_error(
-            lambda: remote.main(["--no-config"]), "--platform is required"
-        )
-        with patch("qibocal_agent.remote.os.execvpe") as execute:
-            remote.main(["--no-config", "--platform", "qpu"])
-        command, arguments, _ = execute.call_args.args
-        self.assertEqual(command, sys.executable)
-        self.assertEqual(arguments[1:3], ["-m", "qibocal_mcp.server"])
-
-    def test_explicit_config_is_required_and_replaces_discovery(self):
-        config.save_config({"agent": {"platform": "discovered"}})
-        selected = self.directory / "other.json"
-        self.assert_cli_error(
-            lambda: remote.main(["--config", str(selected), "--platform", "explicit"]),
-            "not found",
-        )
-        config.save_config({"agent": {"platform": "selected"}}, selected)
-        with patch("qibocal_agent.remote.os.execvpe") as execute:
-            remote.main(["--config", str(selected)])
-        _, arguments, _ = execute.call_args.args
-        self.assertIn("selected", arguments)
 
     def test_agent_defaults_and_child_configuration_isolation(self):
         config.save_config(

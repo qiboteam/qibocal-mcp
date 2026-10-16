@@ -152,12 +152,27 @@ qibocal-mcp-remote
    qibocal-mcp-remote [--config FILE | --no-config] [COMMON OPTIONS ...] [NAME]
 
 Serve the calibration MCP over stdio for an interactive client. The command
-resolves deployment settings exactly like the agent (minus model settings),
-then replaces itself with the server launch: the local server command, or SSH
-carrying the same stdio to the access node, with managed provisioning when
-required. Register it in your MCP client configuration; see
-:doc:`../agent/interactive`. It requires a platform but no model, makes no
-model API calls and prints nothing on stdout besides the MCP stream.
+resolves deployment settings exactly like the agent (minus model settings) and
+launches the server: the local server command, or SSH carrying the same stdio
+to the access node, with managed provisioning when required. It then stays in
+between as a thin proxy, forwarding the server's tools, prompt and resource
+and adding two of its own:
+
+* ``list_configurations`` — the stored configurations (the unnamed default as
+  ``null`` and every ``agents.NAME``), with their platform, SSH host,
+  partition and output, and which one is active.
+* ``switch_configuration(name)`` — close the active server and launch the
+  selected configuration (``null`` for the unnamed default). Run handles of
+  the closed server expire.
+
+The configuration file is read again on every switch, so entries added during
+a session are usable without restarting. CLI options apply only to the
+configuration selected at startup; with ``--no-config``, switching is disabled.
+If a launch fails, the proxy stays up with only the two switching tools, so
+another configuration can be chosen. Register it in your MCP client
+configuration; see :doc:`../agent/interactive`. It requires a platform but no
+model, makes no model API calls and prints nothing on stdout besides the MCP
+stream.
 
 qibocal-report-server
 ---------------------

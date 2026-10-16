@@ -5,7 +5,8 @@ Minimal installation
 --------------------
 
 The orchestration package runs on your own machine — a laptop is fine. Its
-base installation has no third-party dependencies; the ``agent`` extra adds
+base installation only needs FastMCP (no Qibocal or hardware stack); the
+``agent`` extra adds
 the Pydantic AI stack for the autonomous agent:
 
 .. code-block:: sh

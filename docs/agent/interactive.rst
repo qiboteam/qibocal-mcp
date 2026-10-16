@@ -40,6 +40,31 @@ A positional name selects a configured named agent:
 ``qibocal-mcp-remote mylab``. No model settings are read — your client brings
 its own model — and the server itself makes no model API calls.
 
+Switching configurations in the conversation
+--------------------------------------------
+
+With several setups stored (for example a simulator as the unnamed default,
+and ``agents.platinum`` and ``agents.tuna`` for two chips), one registered
+server covers all of them. Just ask, for instance *"list the qibocal
+configurations"* or *"switch to the platinum configuration"*. The model uses
+two extra tools:
+
+* ``list_configurations`` shows every stored configuration, with platform,
+  SSH host, partition and output folder, and which one is active.
+* ``switch_configuration`` closes the active server and starts the selected
+  one; the unnamed default is selected with no name.
+
+Switching ends the previous calibration session: its run handles expire, so
+record notes and finish or reject pending updates first. The first switch to
+a configuration may provision its environment and take minutes. The
+configuration file is read again on each switch, so a configuration added with
+``qibocal-mcp-config`` mid-conversation can be used right away. Options given
+on the command line apply only to the configuration chosen at startup.
+
+If the starting configuration fails to launch, the server stays connected with
+just these two tools: ask the model what went wrong (``list_configurations``
+reports the error) and switch to a working configuration.
+
 Where to run what
 -----------------
 
