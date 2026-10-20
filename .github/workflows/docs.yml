@@ -1,0 +1,28 @@
+name: docs
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    tags:
+      - "*"
+
+jobs:
+  version:
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.classify.outputs.version}}
+
+    steps:
+      - id: classify
+        uses: qiboteam/workflows/actions/docs/version@uv
+
+  deploy-docs:
+    needs: [version]
+    uses: qiboteam/workflows/.github/workflows/latest-stable.yml@uv
+    with:
+      python-version: "3.12"
+      trigger-label: "${{needs.version.outputs.version}}"
+      project: qibocal-mcp-servers
+      uv-extras: --no-dev --group docs
+      output-path: docs/_build/html
