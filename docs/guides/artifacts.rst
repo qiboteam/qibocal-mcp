@@ -121,9 +121,36 @@ see :doc:`safety`.
    genuine acquisition or a Qibocal-generated report.
 
 Inspect actual signal quality, model agreement, uncertainty and sweep coverage.
-The :doc:`../tutorials/local-calibration` tutorial explains these report features
-with a companion synthetic PNG picture.
 There is no fixed acceptance threshold supplied by the bridge.
+
+Reading a report
+~~~~~~~~~~~~~~~~
+
+.. figure:: ../_images/synthetic-spectroscopy.png
+   :alt: Synthetic spectroscopy PNG with outlined samples around a blue illustrative fit, a dip at plus one MHz and baseline on both sides. A lower panel shows sample-minus-fit residuals around zero. All samples, fitted curve and residuals are constructed examples, not hardware evidence or a Qibocal acquisition.
+   :width: 100%
+
+   Synthetic, illustrative report picture generated with Plotly and Kaleido
+   for this documentation. It is not output from a Qibocal acquisition and
+   is not genuine hardware evidence.
+
+The picture shows how to read a report, not how to accept this particular fit:
+
+* A feature inside the sweep, with baseline visible on both sides, is more
+  informative than a feature cut off at an edge. A wider sweep may be unsafe;
+  keep any follow-up within the approved range.
+* Compare the samples with the fitted curve. Look for noise, drift, systematic
+  disagreement or multiple features that the model does not explain.
+  The lower panel shows sample-minus-fit residuals: a systematic pattern in
+  real residuals can reveal disagreement that the main curve hides.
+* Consult the actual fitting table and uncertainties; the illustration
+  supplies no measured uncertainty or numerical acceptance threshold.
+* Check units against the context. Here the horizontal axis is a frequency
+  *offset* in MHz; that is not an absolute drive frequency.
+
+If the real evidence is insufficient, leave fitted platform settings unchanged.
+Model output and synthetic data must never be treated as proof of successful
+hardware calibration.
 
 Snapshots and retention
 -----------------------

@@ -3,7 +3,7 @@ Persistent configuration
 
 This is the complete settings reference for the orchestration package.
 For the three or four settings a first run actually needs, see
-:doc:`../agent/getting-started`; everything on this page is optional.
+:doc:`../tutorials/interactive`; everything on this page is optional.
 The pure ``qibocal-mcp`` server reads no configuration file — it takes
 command-line flags only — so stored defaults on an execution host can never
 silently change what a launch does: ``qibocal-agent`` and

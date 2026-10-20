@@ -171,7 +171,7 @@ a session are usable without restarting. CLI options apply only to the
 configuration selected at startup; with ``--no-config``, switching is disabled.
 If a launch fails, the proxy stays up with only the two switching tools, so
 another configuration can be chosen. Register it in your MCP client
-configuration; see :doc:`../agent/interactive`. It requires a platform but no
+configuration; see :doc:`../tutorials/interactive`. It requires a platform but no
 model, makes no model API calls and prints nothing on stdout besides the MCP
 stream.
 

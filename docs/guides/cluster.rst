@@ -1,11 +1,11 @@
-SSH and SLURM: calibrate without holding an idle allocation
-===========================================================
+Cluster deployment in depth
+===========================
 
-Goal and prerequisites
-----------------------
-
-Keep the agent and model credentials on your laptop while a hardware-free
-gateway on an access node dispatches one SLURM job per operation.
+This guide details what the interactive tutorial sets up for you: a
+hardware-free gateway on an access node that dispatches one SLURM job per
+operation, while the agent or assistant and its model stay on your laptop.
+It uses explicit command-line options, so that every deployment choice is
+visible; the same settings can be stored in the configuration file.
 This follows Qibocal's
 `interactive infrastructure <https://qibo.science/qibocal/stable/tutorials/interactive.html>`_.
 
@@ -181,7 +181,7 @@ reads no configuration file and receives fully resolved flags, so configuration
 stored on the access node cannot silently inject another platform or partition.
 The same named entry also works for interactive use:
 ``qibocal-mcp-remote myremote`` serves this exact deployment to any MCP client
-(see :doc:`../agent/interactive`), and ``qibocal-report-server myremote``
+(see :doc:`../tutorials/interactive`), and ``qibocal-report-server myremote``
 browses its reports.
 Unset an existing ``agents.myremote.server_python`` before storing
 ``agents.myremote.venv``.

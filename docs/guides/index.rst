@@ -10,5 +10,6 @@ These pages explain execution, persistent settings and operational boundaries.
    configuration
    model-providers
    networking
+   cluster
    safety
    artifacts

@@ -15,76 +15,63 @@ This is a single-platform draft, **not a hardware safety layer**. Supply
 approved hardware limits, an execution budget and stopping criteria;
 acquisitions can affect hardware even when fitted updates are disabled.
 
-## Use the MCP interactively
+## Calibrate interactively
 
-On the machine that reaches the hardware (a lab workstation or an allocated
-compute node), install `qibocal-mcp` and register it in any MCP client
-(Copilot CLI, Claude, Cursor, OpenCode, ...):
+Install the project on your computer (`git clone` this repository, then
+`uv sync`), and tell Qibocal about your setup once:
+
+```sh
+.venv/bin/qibocal-mcp-config set agent.platform YOUR_PLATFORM
+.venv/bin/qibocal-mcp-config set agent.platforms_dir '~/path/to/platforms'
+.venv/bin/qibocal-mcp-config set agent.ssh ACCESS_NODE
+.venv/bin/qibocal-mcp-config set agent.partition PARTITION
+.venv/bin/qibocal-mcp-config set agent.dependency '["YOUR_DRIVER_PACKAGE"]'
+```
+
+Then register the server in any MCP assistant (Copilot CLI, Claude, Cursor,
+OpenCode, ...), for Copilot in `~/.copilot/mcp-config.json`:
 
 ```json
 {
   "mcpServers": {
     "qibocal": {
-      "command": "qibocal-mcp",
-      "args": ["--platform", "YOUR_PLATFORM", "--output", "runs"]
+      "command": "/full/path/to/qibocal-mcp-servers/.venv/bin/qibocal-mcp-remote"
     }
   }
 }
 ```
 
-On a SLURM access node, add `--partition PARTITION`: every operation becomes
-its own `srun` job, and no allocation is held while results are inspected.
+It launches the server on the cluster, preparing its Python environment and
+your dependencies automatically. In the conversation, ask the assistant to
+calibrate starting from the `calibrate` tool, and state your objective and
+hardware limits. Several setups can be stored side by side and switched
+within the conversation.
 
-From your own machine, with the hardware behind SSH, install `qibocal-agent`
-locally and use `qibocal-mcp-remote` as the command instead — it launches the
-server on the access node (provisioning its Python environment automatically)
-and carries the same stdio interface:
-
-```json
-{
-  "mcpServers": {
-    "qibocal": {
-      "command": "qibocal-mcp-remote",
-      "args": ["--platform", "YOUR_PLATFORM", "--ssh", "ACCESS_NODE",
-               "--partition", "PARTITION"]
-    }
-  }
-}
-```
-
-In the conversation, load the server's `calibrate` prompt (or let the model
-call the `calibrate` tool — same content, for interfaces that ignore MCP
-prompts) and state your objective and hardware limits. The nine tools cover
-context discovery, protocol execution with report images, explicit platform
-updates and edits, session switching and append-only notes.
+The [interactive tutorial](docs/tutorials/interactive.rst) walks through all
+of this with a simulator, from SSH keys to named configurations. To run the
+server directly next to the hardware instead, see the
+[MCP server docs](docs/mcp/index.rst).
 
 ## Run the autonomous agent
 
+With the same configuration, add a model and its credentials, then give the
+agent an objective:
+
 ```sh
-pip install "qibocal-agent[agent]"   # or: uv sync, in this checkout
+.venv/bin/qibocal-mcp-config set agent.model openai:gpt-4.1
 export OPENAI_API_KEY=...
 
-qibocal-mcp-config set agent.platform YOUR_PLATFORM
-qibocal-mcp-config set agent.model openai:gpt-4.1
-# Only if the hardware is behind SSH / SLURM:
-qibocal-mcp-config set agent.ssh ACCESS_NODE
-qibocal-mcp-config set agent.partition PARTITION
-
-qibocal-agent \
+.venv/bin/qibocal-agent \
   "Calibrate qubit 0's drive frequency using spectroscopy. Sweep no wider
    than 20 MHz, use drive amplitude at most 0.1 and at most 100 shots.
    Run at most two protocols. Inspect plots before accepting an update.
    Stop on errors or insufficient evidence."
 ```
 
-Replace the platform, target and illustrative limits with operator-approved
-values. The agent discovers the platform context, plans, executes one protocol
-at a time, inspects the returned report images and explicitly accepts or
-rejects fitted updates. Settings can equally be given as CLI flags or kept as
-named entries (`agents.NAME.*`) for several setups side by side; see the
-[configuration guide](docs/guides/configuration.rst). Managed remote
-environments, trusted platform repositories and scheduler options are advanced
-features with working defaults.
+Replace the target and the illustrative limits with operator-approved values.
+The agent plans, executes one protocol at a time, inspects the report images
+and explicitly accepts or rejects fitted updates. See the
+[autonomous agent tutorial](docs/tutorials/autonomous.rst).
 
 ## Browse calibration reports
 

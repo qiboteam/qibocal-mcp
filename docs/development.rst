@@ -173,11 +173,14 @@ and should remain untracked.
 
 The documentation mirrors the package split: ``mcp/index`` documents the
 server package for any MCP client, and ``agent/index`` documents the
-orchestration, putting the three-step simple path (install, tell it what you
-know, launch) before everything else. Shared conceptual guides and CLI/MCP
-reference follow both tracks; deployment machinery is documented as advanced
-material in the guides, not in the getting-started pages. Add new pages to a
-toctree so readers can navigate to them.
+orchestration. The agent track goes: installation (minimal means interactive
+use), the self-contained interactive tutorial on the simulator, the autonomous
+agent tutorial building on its setup, then ``agent/advanced``. Basic pages only
+configure through Qibocal's configuration file, register the MCP server with
+``command`` alone (plus a configuration name, for the starting configuration),
+and keep refinements in callouts after the main paragraph. CLI flags, client
+options and deployment machinery belong to the advanced page and the guides.
+Add new pages to a toctree so readers can navigate to them.
 
 Illustrations and accessibility
 -------------------------------

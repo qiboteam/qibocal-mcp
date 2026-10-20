@@ -1,64 +1,98 @@
-Agent installation
-==================
+Installation
+============
 
 Minimal installation
 --------------------
 
-The orchestration package runs on your own machine — a laptop is fine. Its
-base installation only needs FastMCP (no Qibocal or hardware stack); the
-``agent`` extra adds
-the Pydantic AI stack for the autonomous agent:
+This is everything you need for interactive calibration. Install it on your
+own computer: nothing has to be installed by hand on the cluster.
+
+First install ``uv``, the Python package manager used by the project:
 
 .. code-block:: sh
 
-   pip install "./packages/agent[agent]"   # from a repository checkout
+   curl -LsSf https://astral.sh/uv/install.sh | sh
+
+Close and reopen the terminal, so that the ``uv`` command is found. Then get
+the project and install it:
+
+.. code-block:: sh
+
+   git clone https://github.com/qiboteam/qibocal-mcp-servers.git
+   cd qibocal-mcp-servers
+   uv sync
+
+The commands are now in the ``.venv/bin`` folder of the project. Print the
+full path of the one your assistant will launch, and keep it for later:
+
+.. code-block:: sh
+
+   realpath .venv/bin/qibocal-mcp-remote
+
+Finally, you need an AI assistant that supports MCP servers. The tutorials use
+GitHub Copilot CLI, which needs Node.js:
+
+.. code-block:: sh
+
+   npm install -g @github/copilot
+
+Any other MCP-capable assistant works too, such as Claude Code, Cursor or
+OpenCode.
+
+Continue with :doc:`../tutorials/interactive`.
+
+.. tip::
+
+   The rest of this page is optional. Come back to it only if you want the
+   autonomous agent, or if your setup differs from the standard one.
+
+Advanced installation
+---------------------
+
+The autonomous agent
+~~~~~~~~~~~~~~~~~~~~
+
+``uv sync`` already installs the autonomous agent as well. It additionally
+needs credentials for a model provider, which interactive use does not need:
+your assistant uses its own model. For example, for OpenAI:
+
+.. code-block:: sh
+
    export OPENAI_API_KEY=...
 
-or, for a development checkout of the whole workspace, ``uv sync``.
-Skip the export if your provider credentials are already configured, and skip
-the extra entirely if you only want ``qibocal-mcp-remote``,
-``qibocal-report-server`` and ``qibocal-mcp-config``.
+Do not put API keys in objectives or in the configuration file. GitHub Copilot
+subscriptions, OpenWebUI and other providers are described in
+:doc:`../guides/model-providers`. The tutorial is :doc:`../tutorials/autonomous`.
 
-Where does the hardware-facing part go?
+Installing without uv
+~~~~~~~~~~~~~~~~~~~~~
 
-* **Hardware reachable from this machine:** also install
-  :doc:`qibocal-mcp <../mcp/installation>` here (``uv sync`` installs both),
-  with Chrome, drivers and ``QIBOLAB_PLATFORMS`` configured.
-* **Hardware behind SSH/SLURM:** nothing to install remotely by hand. An SSH
-  launch provisions a managed server environment on the access node
-  automatically (it needs ``python3`` 3.12/3.13, ``git`` and ``pip``/``uv``
-  there), or uses an interpreter your site already provides via
-  ``--server-python``. Provisioning ships the ``qibocal-mcp`` source from your
-  checkout or local installation — never your configuration or credentials.
-
-Continue to :doc:`getting-started`. Only use the notes below if the standard
-setup does not match your site.
-
-Advanced installation notes
----------------------------
-
-If platform paths or credentials are not already configured on the execution
-host:
+With ``pip``, install both packages from the checkout:
 
 .. code-block:: sh
 
-   export QIBOLAB_PLATFORMS=/absolute/path/to/your/platforms
+   pip install ./packages/mcp "./packages/agent[agent]"
 
-For another model provider, use its recommended environment or credential
-settings; the agent extra also supports GitHub Copilot subscriptions and
-OpenWebUI (see :doc:`../guides/model-providers`). Do not put API keys in
-objectives or ``agent.json``.
+The server package is needed locally even when the hardware is remote: when
+it prepares the environment on the cluster, the orchestration sends the
+server's source from your installation. Drop ``[agent]`` if you do not need
+the autonomous agent.
 
-If Chrome is missing on the execution host, install it for Kaleido's Plotly
-image export with ``uv run plotly_get_chrome -y``, or use ``devenv shell``,
-which configures Python 3.12, Nix-managed Chrome and ``BROWSER_PATH`` and
-syncs the workspace. Chrome and system-level instrument drivers remain
-site-managed; managed environments do not install them.
+What runs on the cluster
+~~~~~~~~~~~~~~~~~~~~~~~~
 
-Managed environments, platform repositories, Python driver dependencies and
-cluster path requirements are advanced deployment features with their own
-reference: see :doc:`../guides/configuration` and :doc:`../guides/networking`.
-The short version: an SSH launch without ``--server-python`` provisions a
-managed environment named ``qibocal-mcp`` on the access node and reuses it on
-later launches; ``--venv``, ``--platform-repo`` and ``--dependency`` customize
-what gets provisioned.
+On the first launch, the orchestration creates a Python environment on the
+access node and installs the server and Qibocal in it. The access node needs
+``python3`` 3.12 or 3.13, ``git``, and ``pip`` or ``uv``. The environment lives
+in ``~/.cache/qibocal/agent/envs/`` on the cluster and is reused afterwards.
+
+Your platform's drivers are installed there too, when you list them as
+dependencies, as the interactive tutorial shows. Chrome, which draws the report
+images, and system-level instrument drivers are not installed automatically.
+Ask your administrator if they are missing on the compute nodes, or run
+``uv run plotly_get_chrome -y`` in a local setup.
+
+Managed environments, platform repositories, scheduler options and shared
+paths are covered in :doc:`../guides/configuration` and
+:doc:`../guides/cluster`. To use an interpreter your site already provides,
+see ``server_python`` there.

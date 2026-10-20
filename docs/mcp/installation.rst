@@ -28,7 +28,7 @@ No agent extra, model provider or credentials are needed. Continue with
 
 If you cannot install anything on the execution host yourself, the
 orchestration package can provision a managed environment there over SSH;
-see :doc:`../agent/interactive`.
+see :doc:`../tutorials/interactive`.
 
 Advanced installation and customization
 ---------------------------------------

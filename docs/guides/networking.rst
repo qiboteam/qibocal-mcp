@@ -166,4 +166,4 @@ The agent timeout includes queue waiting and execution for each operation.
 Standalone MCP clients must configure their own timeout. Queue and subprocess
 failures are surfaced as errors, not successful experiments.
 For cancellation behavior, see :doc:`safety`; for a complete launch command,
-see :doc:`../tutorials/ssh-slurm`.
+see :doc:`cluster`.
