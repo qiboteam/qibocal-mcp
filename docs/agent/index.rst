@@ -27,5 +27,6 @@ workflow without touching real hardware.
 
    installation
    ../tutorials/interactive
+   ../tutorials/access-node
    ../tutorials/autonomous
    advanced

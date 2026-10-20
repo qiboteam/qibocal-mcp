@@ -60,8 +60,8 @@ settings. With ``--no-config``, the file is ignored and switching is disabled.
 Where to run what
 -----------------
 
-The tutorial runs the assistant on your computer. It can also run on the
-cluster:
+The first tutorial runs the assistant on your computer. It can also run on
+the cluster:
 
 .. list-table::
    :header-rows: 1
@@ -72,7 +72,8 @@ cluster:
    * - Your computer, with hardware behind SSH
      - ``qibocal-mcp-remote``, with ``ssh`` configured
    * - The SLURM access node
-     - ``qibocal-mcp-remote`` without ``ssh``, or directly
+     - ``qibocal-mcp-remote`` without ``ssh``, as in
+       :doc:`../tutorials/access-node`, or directly
        ``qibocal-mcp --platform NAME --partition QUEUE``
    * - An allocated compute node, or a machine wired to the instruments
      - ``qibocal-mcp --platform NAME``, without partition
