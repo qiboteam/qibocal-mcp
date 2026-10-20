@@ -315,7 +315,8 @@ instead, add its name to the registration in ``~/.copilot/mcp-config.json``:
 Next steps
 ----------
 
+* Run Copilot on the access node instead of your computer:
+  :doc:`access-node`.
 * Let the agent calibrate on its own: :doc:`autonomous`.
 * All configuration settings: :doc:`../guides/configuration`.
-* Client options, running Copilot on the cluster, settings on the command
-  line: :doc:`../agent/advanced`.
+* Client options and settings on the command line: :doc:`../agent/advanced`.
