@@ -1,0 +1,45 @@
+The MCP servers
+===============
+
+The ``qibocal-mcp`` package connects any trusted MCP client to one Qibocal
+calibration platform. The server makes no model API calls and requires no
+model credentials; your client decides which experiments to run and whether
+to accept their fitted updates.
+
+One command serves two modes over stdio:
+
+* ``qibocal-mcp --platform NAME`` — **direct mode**, run where the instruments
+  are reachable: a lab workstation or an allocated SLURM compute node. It owns
+  one persistent hardware connection.
+* ``qibocal-mcp --platform NAME --partition QUEUE`` — **queued mode**, run on
+  a SLURM access node: a hardware-free gateway dispatches each operation as
+  its own ``srun`` job, so no allocation is held while results are inspected.
+
+Both modes expose the same interface: nine tools —
+``calibrate``, ``get_calibration_context``, ``execute_protocol``,
+``update_platform``, ``start_session``, ``get_platform_state``,
+``patch_platform``, ``append_note`` and ``get_notes`` — plus the
+``qibocal://context`` resource and the ``calibrate`` MCP prompt.
+The prompt distributes the complete calibration policy to the model; it is
+also registered as the identically named tool for interfaces that load MCP
+tools but ignore prompts (such as GitHub Copilot CLI today).
+``get_calibration_context`` similarly aliases the context resource for
+clients without resource support.
+
+To start the server from a different machine than the one it runs on, use the
+companion :doc:`qibocal-agent package <../agent/index>`: its
+``qibocal-mcp-remote`` command carries the same stdio interface over SSH and
+can provision the server environment for you.
+
+Complete the installation below, then configure your client's subprocess and
+make a first tool call. Read :doc:`../guides/safety` before connecting to
+instruments.
+
+.. toctree::
+   :maxdepth: 1
+
+   installation
+   getting-started
+
+Detailed tool schemas are in :doc:`../reference/mcp`; command options are in
+:doc:`../reference/cli`.

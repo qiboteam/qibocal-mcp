@@ -1,0 +1,62 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1100" height="700" viewBox="0 0 1100 700" role="img" aria-labelledby="title desc">
+  <title id="title">SSH and SLURM topology with accepted-state handoff</title>
+  <desc id="desc">A laptop holds the agent and model credentials. SSH stdio carries MCP requests and report images to a hardware-free access-node gateway. The gateway serializes separate discovery, acquire/fit/report and explicit update jobs on compute nodes. Shared storage retains run files and paired accepted snapshots. Successful updates feed the latest accepted snapshot into later jobs; rejected fits do not. No allocation is held while the model inspects a report.</desc>
+  <defs>
+    <marker id="arrow" markerWidth="10" markerHeight="10" refX="8" refY="5" orient="auto"><path d="M0 0 L10 5 L0 10 Z" fill="#334155"/></marker>
+  </defs>
+  <rect width="1100" height="700" rx="14" fill="#f8fafc"/>
+  <g font-family="Arial, Helvetica, sans-serif" fill="#172033">
+    <text x="30" y="38" font-size="25" font-weight="bold">Remote calibration: transport, jobs and accepted state</text>
+    <text x="30" y="65" font-size="16">Original architecture diagram. Arrows show messages or saved state, not measured performance.</text>
+    <rect x="30" y="103" width="245" height="165" rx="10" fill="#e0f2fe" stroke="#075985" stroke-width="2"/>
+    <text x="48" y="135" font-size="21" font-weight="bold">Laptop / agent host</text>
+    <text x="48" y="167" font-size="17">Model + provider credentials</text>
+    <text x="48" y="195" font-size="17">Objective and hardware limits</text>
+    <text x="48" y="223" font-size="17">Inspect returned images</text>
+    <text x="48" y="250" font-size="16">No idle compute allocation</text>
+    <rect x="435" y="103" width="270" height="165" rx="10" fill="#e0f2fe" stroke="#075985" stroke-width="2"/>
+    <text x="453" y="135" font-size="21" font-weight="bold">Access-node gateway</text>
+    <text x="453" y="167" font-size="17">Hardware-free MCP server</text>
+    <text x="453" y="195" font-size="17">Serialize operations via srun</text>
+    <text x="453" y="223" font-size="17">Session handles + snapshot path</text>
+    <text x="453" y="250" font-size="16">Remote config is not inherited</text>
+    <path d="M275 171 H428" stroke="#334155" stroke-width="3" fill="none" marker-end="url(#arrow)"/>
+    <path d="M435 218 H282" stroke="#334155" stroke-width="3" fill="none" marker-end="url(#arrow)"/>
+    <text x="299" y="142" font-size="17" font-weight="bold">SSH stdio</text>
+    <text x="299" y="162" font-size="14">MCP requests</text>
+    <text x="299" y="244" font-size="14">Results + images</text>
+    <rect x="805" y="103" width="265" height="165" rx="10" fill="#fff7ed" stroke="#9a3412" stroke-width="2"/>
+    <text x="824" y="135" font-size="21" font-weight="bold">Compute node / QPU</text>
+    <text x="824" y="167" font-size="17">Drivers, instruments, Chrome</text>
+    <text x="824" y="195" font-size="17">One worker per operation</text>
+    <text x="824" y="223" font-size="17">Connect, operate, disconnect</text>
+    <text x="824" y="250" font-size="16">Release job allocation</text>
+    <path d="M705 184 H798" stroke="#334155" stroke-width="3" fill="none" marker-end="url(#arrow)"/>
+    <text x="724" y="163" font-size="16" font-weight="bold">srun</text>
+    <text x="30" y="316" font-size="20" font-weight="bold">Serialized lifecycle: each box is a separate job</text>
+    <rect x="30" y="343" width="290" height="110" rx="10" fill="#f1f5f9" stroke="#475569" stroke-width="2"/>
+    <text x="48" y="375" font-size="20" font-weight="bold">1. Discover context</text>
+    <text x="48" y="406" font-size="17">Qubit IDs and protocol definitions</text>
+    <text x="48" y="432" font-size="17">Release allocation</text>
+    <rect x="400" y="343" width="300" height="110" rx="10" fill="#f1f5f9" stroke="#475569" stroke-width="2"/>
+    <text x="418" y="375" font-size="20" font-weight="bold">2. Acquire, fit, report</text>
+    <text x="418" y="406" font-size="17">Restore latest accepted state</text>
+    <text x="418" y="432" font-size="17">Save run; release allocation</text>
+    <rect x="780" y="343" width="290" height="110" rx="10" fill="#ecfdf5" stroke="#166534" stroke-width="2"/>
+    <text x="798" y="375" font-size="20" font-weight="bold">3. Explicit update</text>
+    <text x="798" y="406" font-size="17">Restore run; apply; save snapshot</text>
+    <text x="798" y="432" font-size="17">Advance state only on success</text>
+    <path d="M320 399 H393 M700 399 H773" stroke="#334155" stroke-width="3" fill="none" marker-end="url(#arrow)"/>
+    <text x="714" y="477" font-size="15" font-weight="bold">Inspect before choosing step 3</text>
+    <rect x="330" y="525" width="740" height="115" rx="10" fill="#ecfdf5" stroke="#166534" stroke-width="2"/>
+    <text x="350" y="556" font-size="21" font-weight="bold">Shared storage: OUTPUT/sessions/session_id/run_id/</text>
+    <text x="350" y="585" font-size="17">Run data, fit, metadata, HTML/PNG; accepted platform snapshots:</text>
+    <text x="350" y="613" font-size="17" font-weight="bold">parameters.json + calibration.json</text>
+    <path d="M550 453 V518 M925 453 V518" stroke="#334155" stroke-width="3" fill="none" marker-end="url(#arrow)"/>
+    <path d="M330 592 H280 V491 H470 V460" stroke="#334155" stroke-width="2" stroke-dasharray="7 4" fill="none" marker-end="url(#arrow)"/>
+    <text x="35" y="541" font-size="17" font-weight="bold">State for later jobs:</text>
+    <text x="35" y="568" font-size="16">latest ACCEPTED snapshot</text>
+    <text x="35" y="618" font-size="16">Rejected fit: no state handoff</text>
+    <text x="30" y="676" font-size="16">No HTTP port or tunnel. Remaining artifacts stay on the cluster; copy them separately if needed.</text>
+  </g>
+</svg>

@@ -1,0 +1,7 @@
+.venv/
+.devenv/
+.direnv/
+__pycache__/
+*.egg-info/
+runs/
+docs/_build/
