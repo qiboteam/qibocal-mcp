@@ -78,9 +78,9 @@ Locally, the agent's server inherits its environment, preserving
 ``QIBOLAB_PLATFORMS`` and driver settings. Across SSH, the laptop's environment
 and model credentials are not forwarded to the remote server. Set remote
 driver settings in the access node's noninteractive environment.
-``--platforms`` explicitly supplies the first remote ``QIBOLAB_PLATFORMS``
+``--platforms-dir`` explicitly supplies the first remote ``QIBOLAB_PLATFORMS``
 path-list entries, followed by managed ``--platform-repo`` roots in configured
-order. Without explicit ``--platforms``, remote inherited
+order. Without explicit ``--platforms-dir``, remote inherited
 ``QIBOLAB_PLATFORMS`` entries follow those roots. With neither option, the
 variable is left untouched. The laptop's value is not used as a remote fallback.
 The gateway exports its environment to SLURM workers (``--export=ALL``).

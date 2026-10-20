@@ -28,7 +28,7 @@ class EnvironmentTests(unittest.TestCase):
     def options(self, **changes):
         values = {
             "venv": None, "python": sys.executable, "platform": "qpu",
-            "platforms": None, "platform_repo": [], "dependency": [],
+            "platforms_dir": None, "platform_repo": [], "dependency": [],
         }
         return values | changes
 
@@ -443,13 +443,13 @@ class EnvironmentTests(unittest.TestCase):
                 environment.provision(options | {"dependency": ["extra-driver>=2"]}, source)
             self.assertEqual(len(installs), 3)
             # Explicit roots override inherited values, but retain repository roots.
-            _, env = environment.provision(options | {"platforms": "/explicit:/second"}, source)
+            _, env = environment.provision(options | {"platforms_dir": "/explicit:/second"}, source)
             self.assertTrue(env["QIBOLAB_PLATFORMS"].startswith("/explicit:/second" + os.pathsep))
             self.assertNotIn("/inherited", env["QIBOLAB_PLATFORMS"])
             # "~" refers to the execution host's home, expanded per entry.
             with patch.dict(os.environ, {"HOME": "/remote/home"}):
                 _, env = environment.provision(
-                    options | {"platforms": "~/platforms:/absolute"}, source
+                    options | {"platforms_dir": "~/platforms:/absolute"}, source
                 )
             self.assertTrue(env["QIBOLAB_PLATFORMS"].startswith(
                 "/remote/home/platforms:/absolute" + os.pathsep

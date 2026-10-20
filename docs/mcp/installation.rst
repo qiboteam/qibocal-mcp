@@ -42,7 +42,7 @@ If your site has not configured the platform search path:
 
    export QIBOLAB_PLATFORMS=/absolute/path/to/your/platforms
 
-The server's ``--platforms`` option sets the same variable for one launch.
+The server's ``--platforms-dir`` option sets the same variable for one launch.
 If Chrome is missing, install it for Kaleido's Plotly image export:
 
 .. code-block:: sh

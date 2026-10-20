@@ -52,7 +52,7 @@ automatic compute-node provisioning or node-local staging.
 Set driver environment variables on the access node using your site's supported
 noninteractive setup, including ``XDG_CACHE_HOME`` if the default cache is not
 shared. Repository roots supply remote ``QIBOLAB_PLATFORMS``; optional
-``--platforms`` paths precede them. Without explicit paths, inherited remote
+``--platforms-dir`` paths precede them. Without explicit paths, inherited remote
 platform paths follow them. Other driver settings are exported from the gateway
 environment to SLURM. The laptop's environment, model credentials and
 ``SSH_AUTH_SOCK`` are not automatically forwarded for remote Git authentication.
@@ -133,7 +133,7 @@ If your site already provides a shared server interpreter, select it explicitly:
      --ssh ACCESS_NODE --partition PARTITION \
      --server-python /shared/qibocal-agent/.venv/bin/python \
      --workdir /shared/qibocal-agent \
-     --platforms /shared/qibolab-platforms \
+     --platforms-dir /shared/qibolab-platforms \
      --output /shared/calibration-runs \
      --slurm-arg=--account=YOUR_ACCOUNT --slurm-arg=--time=00:15:00 \
      --timeout 7200 "YOUR_BOUNDED_OBJECTIVE"

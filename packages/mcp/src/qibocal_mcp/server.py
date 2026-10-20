@@ -267,7 +267,7 @@ def main(argv: list[str] | None = None):
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--platform", required=True, help="Qibolab platform name")
     parser.add_argument("--output", default="runs", help="Report output directory")
-    parser.add_argument("--platforms", help="QIBOLAB_PLATFORMS for this process")
+    parser.add_argument("--platforms-dir", help="QIBOLAB_PLATFORMS for this process")
     parser.add_argument("--partition", help="Dispatch each operation through srun")
     parser.add_argument(
         "--worker-python", default=sys.executable,
@@ -281,10 +281,10 @@ def main(argv: list[str] | None = None):
     args = parser.parse_args(argv)
     if args.slurm_arg and args.partition is None:
         parser.error("--slurm-arg requires --partition")
-    if args.platforms is not None:
+    if args.platforms_dir is not None:
         # Remote launches pass "~" through unexpanded: resolve it on this host.
         os.environ["QIBOLAB_PLATFORMS"] = os.pathsep.join(
-            os.path.expanduser(entry) for entry in args.platforms.split(os.pathsep)
+            os.path.expanduser(entry) for entry in args.platforms_dir.split(os.pathsep)
         )
     with redirect_stdout(sys.stderr):
         if args.partition is None:

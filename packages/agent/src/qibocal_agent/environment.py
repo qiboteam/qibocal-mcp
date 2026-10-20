@@ -523,7 +523,7 @@ def provision(options: dict, payload: str | None = None) -> tuple[str, dict[str,
         ]
         env = dict(os.environ)
         roots = [str(platforms) for _, platforms in repositories]
-        explicit = options.get("platforms")
+        explicit = options.get("platforms_dir")
         if explicit is not None:
             explicit = expand_path_list(explicit)
         inherited = env.get("QIBOLAB_PLATFORMS")

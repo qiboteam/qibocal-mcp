@@ -119,7 +119,7 @@ commit and remote, and preserve accepted state and handles on failure.
 
 Maintain explicit-path/repository/inherited-host platform lookup order and
 CLI whole-list replacement for ``platform_repo`` and ``dependency``. Only
-``venv``, the configured directories and each ``platforms`` entry expand ``~``,
+``venv``, the configured directories and each ``platforms_dir`` entry expand ``~``,
 always on the execution host (never on the laptop); executable settings stay
 literal. SLURM assumes identical absolute shared environment, source/clone
 cache, working, platform and output paths, with no node-local staging.

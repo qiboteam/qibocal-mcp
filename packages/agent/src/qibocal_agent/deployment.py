@@ -18,7 +18,7 @@ class DeploymentSettings:
 
     platform: str
     output: str = "runs"
-    platforms: str | None = None
+    platforms_dir: str | None = None
     partition: str | None = None
     workdir: str | None = None
     slurm_arg: list[str] = field(default_factory=list)
@@ -84,7 +84,7 @@ def launch_for(settings: DeploymentSettings) -> ServerLaunch:
             "venv": venv,
             "python": python,
             "platform": settings.platform,
-            "platforms": settings.platforms,
+            "platforms_dir": settings.platforms_dir,
             "platform_repo": settings.platform_repo,
             "dependency": settings.dependency,
         }
@@ -95,8 +95,8 @@ def launch_for(settings: DeploymentSettings) -> ServerLaunch:
             request["source"] = source_payload()
         bootstrap = Path(__file__).with_name("environment.py").read_text(encoding="utf-8")
         command = [python, "-c", bootstrap, json.dumps(request), *command[3:]]
-    elif settings.platforms is not None:
-        command += ["--platforms", settings.platforms]
+    elif settings.platforms_dir is not None:
+        command += ["--platforms-dir", settings.platforms_dir]
     if settings.ssh:
         remote = "exec " + shlex.join(command)
         if settings.workdir is not None and "workdir" not in settings.directories:
@@ -127,7 +127,9 @@ def add_agent_deployment_arguments(parser: argparse.ArgumentParser) -> None:
         "--server-python", help="Server Python path, on the SSH host if remote"
     )
     parser.add_argument("--workdir", help="Working directory on the server/compute nodes")
-    parser.add_argument("--platforms", help="QIBOLAB_PLATFORMS on the server/compute nodes")
+    parser.add_argument(
+        "--platforms-dir", help="QIBOLAB_PLATFORMS on the server/compute nodes"
+    )
     parser.add_argument("--slurm-arg", action="append", help="Extra srun option")
     add_deployment_arguments(parser)
     parser.add_argument(

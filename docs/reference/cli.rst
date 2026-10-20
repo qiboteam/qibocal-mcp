@@ -11,7 +11,7 @@ qibocal-mcp
 
 .. code-block:: text
 
-   qibocal-mcp --platform NAME [--output PATH] [--platforms PATH]
+   qibocal-mcp --platform NAME [--output PATH] [--platforms-dir PATH]
                [--partition NAME] [--worker-python EXECUTABLE]
                [--workdir PATH] [--slurm-arg VALUE ...]
 
@@ -30,7 +30,7 @@ configure their own timeouts. No model API call is made by this command.
      - Required platform name.
    * - ``--output PATH``
      - Report output directory, default ``runs``.
-   * - ``--platforms PATH``
+   * - ``--platforms-dir PATH``
      - Set ``QIBOLAB_PLATFORMS`` for this process; ``~`` in each entry
        expands to this host's home.
    * - ``--partition NAME``
@@ -71,7 +71,7 @@ settings and accept:
      - SSH host/alias for the access node. Unset launches locally.
    * - ``--partition NAME``
      - Dispatch each operation through ``srun`` on the execution host.
-   * - ``--platforms PATH``
+   * - ``--platforms-dir PATH``
      - Explicit ``QIBOLAB_PLATFORMS`` path list on the execution host, searched
        before managed repositories; when unset, inherited host paths follow
        repository roots. ``~`` expands on the execution host, not locally.

@@ -16,7 +16,7 @@ Configuration: TypeAlias = dict[str, dict[str, ConfigValue]]
 COMMON_FIELDS = {
     "platform": str,
     "output": str,
-    "platforms": str,
+    "platforms_dir": str,
     "partition": str,
     "workdir": str,
     "slurm_arg": list,
@@ -79,6 +79,8 @@ def setting_parts(key: str) -> list[str]:
             return parts
     elif len(parts) == 2 and parts[0] in FIELDS and parts[1] in FIELDS[parts[0]]:
         return parts
+    if parts[-1] == "platforms":
+        raise ConfigError(f"Unknown setting: {key} (renamed to platforms_dir)")
     raise ConfigError(f"Unknown setting: {key}")
 
 
@@ -244,7 +246,7 @@ def parse_settings(
         common_defaults = {
             "platform": None,
             "output": UNNAMED_OUTPUT,
-            "platforms": None,
+            "platforms_dir": None,
             "partition": None,
             "workdir": None,
             "slurm_arg": [],

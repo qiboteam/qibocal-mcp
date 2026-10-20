@@ -95,14 +95,14 @@ class StartupTests(unittest.IsolatedAsyncioTestCase):
                 await asyncio.wait_for(started.wait(), timeout=2)
             self.assertTrue(closed.is_set())
 
-    def test_platforms_option_expands_home_on_this_host(self):
+    def test_platforms_dir_option_expands_home_on_this_host(self):
         from qibocal_mcp import server
 
         with (
             patch.dict(os.environ, {"HOME": "/remote/home"}),
             patch("qibocal_mcp.server.create_server", return_value=Mock()),
         ):
-            server.main(["--platform", "qpu", "--platforms", "~/platforms:/absolute"])
+            server.main(["--platform", "qpu", "--platforms-dir", "~/platforms:/absolute"])
             self.assertEqual(
                 os.environ["QIBOLAB_PLATFORMS"], "/remote/home/platforms:/absolute"
             )

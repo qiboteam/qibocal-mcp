@@ -27,7 +27,7 @@ class TransportTests(unittest.TestCase):
     def options(self, **changes):
         options = dict(
             server_python=None, ssh=None, platform="qpu", output="runs",
-            platforms=None, partition=None, workdir=None, slurm_arg=[],
+            platforms_dir=None, partition=None, workdir=None, slurm_arg=[],
         )
         options.update(changes)
         return argparse.Namespace(**options)
@@ -52,7 +52,7 @@ class TransportTests(unittest.TestCase):
             transport = transport_for(
                 self.options(
                     ssh="access-node", partition="qpu", workdir=directory,
-                    server_python=python, platforms="/shared/platform definitions",
+                    server_python=python, platforms_dir="/shared/platform definitions",
                     slurm_arg=["--account=quantum"],
                 )
             )
@@ -78,16 +78,16 @@ class TransportTests(unittest.TestCase):
         self.assertNotIn("--workdir", transport.args)
 
     def test_ssh_defaults_to_managed_environment(self):
-        transport = transport_for(self.options(ssh="access-node", platforms="/explicit"))
+        transport = transport_for(self.options(ssh="access-node", platforms_dir="/explicit"))
         tokens = shlex.split(transport.args[-1])
         self.assertEqual(tokens[:3], ["exec", "python3", "-c"])
         request = json.loads(tokens[4])
         self.assertEqual(request["options"]["venv"], "qibocal-mcp")
-        self.assertEqual(request["options"]["platforms"], "/explicit")
+        self.assertEqual(request["options"]["platforms_dir"], "/explicit")
         self.assertIn("source", request)
         self.assertIn("--platform", tokens[5:])
         # The bootstrap sets the combined environment; the server must not replace it.
-        self.assertNotIn("--platforms", tokens[5:])
+        self.assertNotIn("--platforms-dir", tokens[5:])
 
     def test_local_managed_environment_and_dependency_options(self):
         transport = transport_for(self.options(

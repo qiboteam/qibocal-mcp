@@ -126,7 +126,7 @@ also requires ``model``.
      - Nonempty string
      - Agent name for named entries; otherwise no working-directory override.
        Server launch directory (and SLURM worker directory).
-   * - ``platforms``
+   * - ``platforms_dir``
      - Nonempty string
      - Unset; inherits execution-host ``QIBOLAB_PLATFORMS`` after any managed
        repository roots. Explicit path lists take precedence over those roots.
@@ -285,7 +285,7 @@ Stored values remain unchanged; configuration management does not create
 runtime directories.
 
 Explicit CLI ``--output`` and ``--workdir`` retain their current-directory
-semantics and override configured paths. ``~`` in ``platforms`` entries expands
+semantics and override configured paths. ``~`` in ``platforms_dir`` entries expands
 on the execution host, so ``~/platforms`` means the remote home over SSH.
 Executable settings remain literal, and environment-variable strings are not
 expanded in path values.
@@ -342,12 +342,12 @@ provenance.
 
 The effective ``QIBOLAB_PLATFORMS`` search path is:
 
-1. Explicit ``--platforms``/``platforms`` path-list entries, if present.
+1. Explicit ``--platforms-dir``/``platforms_dir`` path-list entries, if present.
 2. Managed repository roots in their configured order.
 3. Inherited execution-host ``QIBOLAB_PLATFORMS``, only when explicit
-   ``platforms`` is absent.
+   ``platforms_dir`` is absent.
 
-With neither repositories nor explicit ``platforms``, the variable is
+With neither repositories nor explicit ``platforms_dir``, the variable is
 untouched. An explicit path list replaces the inherited value, not the managed
 roots. Across SSH, the inherited value is remote, not the laptop's environment.
 

@@ -140,6 +140,17 @@ class ConfigTests(unittest.TestCase):
             with self.subTest(data=data), self.assertRaises(config.ConfigError):
                 config.validate_config(data)
 
+    def test_renamed_platforms_setting_points_to_its_new_name(self):
+        for data in ({"agent": {"platforms": "/p"}}, {"agents": {"lab": {"platforms": "/p"}}}):
+            with self.subTest(data=data):
+                with self.assertRaisesRegex(config.ConfigError, "renamed to platforms_dir"):
+                    config.validate_config(data)
+        self.assert_cli_error(
+            lambda: self.command("set", "agent.platforms", "/p"), "platforms_dir"
+        )
+        self.command("set", "agent.platforms_dir", "~/platforms")
+        self.assertEqual(self.command("get", "agent.platforms_dir"), "~/platforms")
+
     def test_cli_round_trip_and_sibling_files(self):
         siblings = {"servers.json": "report servers", "auth.json": "report auth"}
         for name, text in siblings.items():
@@ -258,7 +269,7 @@ class ConfigTests(unittest.TestCase):
                     "slurm_arg": ["--account=configured"],
                     "workdir": "/shared/project",
                     "server_python": "/shared/venv/bin/python",
-                    "platforms": "/shared/platforms",
+                    "platforms_dir": "/shared/platforms",
                 },
             }
         )
