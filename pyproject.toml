@@ -8,3 +8,6 @@ docs = ["sphinx>=8,<9", "furo>=2024.8.6"]
 [tool.uv.sources]
 qibocal-mcp = { workspace = true }
 qibocal-agent = { workspace = true }
+
+[tool.poe.tasks]
+docs = "sphinx-build -W --keep-going -b html docs docs/_build/html"
