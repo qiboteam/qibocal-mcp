@@ -109,7 +109,12 @@ server interpreter; neither command exposes ``--worker-python``.
 SSH managed bootstrap transfers the ``qibocal-mcp`` source and metadata (from
 a checkout or installed distribution), not configuration or model keys;
 target-host configuration is not read. Managed environments check dependencies
-and import the server before launch.
+and import the server before launch. If the selected environment already has
+Qibocal, its installed version and source are retained and its declared
+dependencies are reconciled. Explicit ``--dependency`` requirements take
+precedence, while the server's pinned Qibocal is used only when Qibocal is
+absent. The transferred MCP source is installed without applying that fallback
+pin to an existing environment.
 
 qibocal-agent
 -------------

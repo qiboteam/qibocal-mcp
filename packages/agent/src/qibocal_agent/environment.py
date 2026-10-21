@@ -444,8 +444,89 @@ def qibocal_requirement(source: Path) -> tuple[str, str, str]:
     raise DeploymentError("Server source must declare an immutable Qibocal Git dependency")
 
 
-def installed_qibocal_source(python: str) -> dict | None:
-    return installed_distribution_source(python, "qibocal")
+def requirement_names(requirements: list[str]) -> set[str]:
+    """Extract normalized project names from configured PEP 508 requirements."""
+    names = set()
+    for requirement in requirements:
+        match = re.match(r"\s*([A-Za-z0-9][A-Za-z0-9._-]*)", requirement)
+        if match is not None:
+            names.add(re.sub(r"[-_.]+", "-", match.group(1)).lower())
+    return names
+
+
+def installed_distribution_requirement(
+    python: str, distribution: str,
+) -> list[str] | None:
+    """Return installer arguments which preserve an installed distribution itself.
+
+    Requiring the package again makes the installer reconcile its dependencies,
+    while retaining its selected version/source.  This is deliberately different
+    from freezing the whole environment: dependencies of the retained package may
+    still move when its metadata requires it.  Editable installs stay editable,
+    so a local checkout keeps being used in place.
+    """
+    result = command(
+        [
+            python, "-c",
+            "import importlib.metadata as m, json, sys\n"
+            "try:\n"
+            "    d = m.distribution(sys.argv[1])\n"
+            "except m.PackageNotFoundError:\n"
+            "    print('null')\n"
+            "else:\n"
+            "    print(json.dumps({'version': d.version, "
+            "'direct_url': json.loads(d.read_text('direct_url.json') or '{}')}))\n",
+            distribution,
+        ],
+        capture=True,
+    )
+    installed = json.loads(result)
+    if installed is None:
+        return None
+    direct = installed["direct_url"]
+    vcs = direct.get("vcs_info", {})
+    if direct.get("url") and vcs.get("vcs") and vcs.get("commit_id"):
+        return [
+            f"{distribution} @ {vcs['vcs']}+{direct['url']}@{vcs['commit_id']}"
+        ]
+    if direct.get("url") and direct.get("dir_info", {}).get("editable"):
+        return ["--editable", direct["url"]]
+    if direct.get("url"):
+        return [f"{distribution} @ {direct['url']}"]
+    return [f"{distribution}=={installed['version']}"]
+
+
+# Server APIs from qiboteam/qibocal#1722, missing from other Qibocal versions.
+QIBOCAL_COMPATIBILITY = (
+    "import sys\n"
+    "from qibocal import Executor\n"
+    "from qibocal.auto.notes import load_notes\n"
+    "if not callable(getattr(Executor, 'update', None)):\n"
+    "    sys.exit('Executor.update is missing')\n"
+)
+
+
+def check_qibocal(python: str) -> None:
+    """Fail before launch when the selected Qibocal cannot serve the tools."""
+    try:
+        command([python, "-c", QIBOCAL_COMPATIBILITY], capture=True)
+    except DeploymentError as error:
+        raise DeploymentError(
+            "The installed Qibocal cannot provide the APIs required by the "
+            "server (Executor.update and notes, from qiboteam/qibocal#1722); "
+            "the error above shows why. Check the explicit dependencies, or "
+            "remove a qibocal entry to use the pinned version."
+        ) from error
+
+
+def override_file(requirements: list[str]) -> Path:
+    """Store explicit requirements for uv, which then win over declared ones."""
+    contents = "\n".join(requirements) + "\n"
+    key = hashlib.sha256(contents.encode()).hexdigest()
+    path = cache_home() / "overrides" / (key + ".txt")
+    if not path.is_file():
+        atomic_write(path, contents)
+    return path
 
 
 def installed_distribution_source(python: str, distribution: str) -> dict | None:
@@ -578,37 +659,58 @@ def provision(options: dict, payload: str | None = None) -> tuple[str, dict[str,
         )
         previous = state.read_text(encoding="utf-8") if state.is_file() else None
         current = digest + ":" + installed_fingerprint(python)
-        installed_pin = installed_qibocal_source(python) if pin is not None else None
-        wrong_pin = pin is not None and not matches_qibocal_pin(
-            installed_pin, pin[1], pin[2]
-        )
-        if previous != current or wrong_pin:
-            arguments = list(options.get("dependency", []))
+        if previous != current:
+            # Priority, highest first: explicit dependencies, what the selected
+            # environment already contains, the server's fallback pin.
+            explicit = list(options.get("dependency", []))
+            arguments = list(explicit)
+            needed = source is not None or explicit or packages or requirements
+            install = installer(python) if needed else []
             if source is not None:
-                arguments.append(str(source))
+                # The MCP code goes in without its fallback pin; Qibocal is then
+                # required explicitly, as already installed or as the pin.  Keeping
+                # it in this resolution also reconciles its dependencies (#17).
+                retained_qibocal = installed_distribution_requirement(python, "qibocal")
+                command([*install, "--no-deps", str(source)])
+                explicit_names = requirement_names(explicit)
+                source_dependencies = tomllib.loads(
+                    (source / "pyproject.toml").read_text(encoding="utf-8")
+                )["project"]["dependencies"]
+                arguments += [
+                    requirement for requirement in source_dependencies
+                    if requirement_names([requirement]).isdisjoint(
+                        explicit_names | {"qibocal"}
+                    )
+                ]
+                if "qibocal" not in explicit_names:
+                    arguments += retained_qibocal or [pin[0]]
             for package in packages:
                 arguments += ["--editable", package]
             for requirement in requirements:
                 arguments += ["--requirement", str(prepared_requirements(requirement))]
+            if explicit and install[:1] == ["uv"]:
+                # Explicit entries also replace constraints declared by other
+                # packages; pip cannot do this, and reports a conflict instead.
+                arguments += ["--override", str(override_file(explicit))]
             if arguments:
                 print(f"Installing deployment dependencies for {python}", file=sys.stderr)
-                install = installer(python)
-                if wrong_pin and installed_pin is not None:
-                    # pip otherwise keeps a different Git revision with the same version.
-                    force = (
-                        "--reinstall" if install[0] == "uv" else "--force-reinstall"
-                    )
-                    command([*install, force, "--no-deps", pin[0]])
                 command([*install, *arguments])
-        if pin is not None and not matches_qibocal_pin(
-            installed_qibocal_source(python), pin[1], pin[2]
-        ):
-            raise DeploymentError(
-                "Installed Qibocal does not match the required Git commit"
-            )
+            if source is not None:
+                check_qibocal(python)
         command([python, "-c", "import qibocal_mcp.server"], capture=True)
         if managed:
-            command(installer(python, "check"))
+            check = installer(python, "check")
+            try:
+                command(check)
+            except DeploymentError:
+                if not (options.get("dependency") and check[:1] == ["uv"]):
+                    raise
+                # Explicit overrides may deliberately break declared constraints.
+                print(
+                    "Warning: the environment has unmet requirements, which the "
+                    "explicit dependencies may intentionally override",
+                    file=sys.stderr,
+                )
         state.parent.mkdir(parents=True, exist_ok=True)
         saved_state = digest + ":" + installed_fingerprint(python)
         atomic_write(state, saved_state)

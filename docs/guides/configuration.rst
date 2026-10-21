@@ -304,6 +304,47 @@ an intentional modification; use ``venv`` for isolation.
 The pure server's ``--worker-python`` flag similarly selects an externally
 managed compute-node interpreter that must already contain the server.
 
+.. _existing-environments:
+
+Existing environments
+---------------------
+
+``venv`` may point to an environment that already exists, for example one
+you use for other Qibo work. A valid environment (with ``pyvenv.cfg`` and an
+executable ``bin/python``) is then used in place: it is never copied,
+recreated or replaced, and an existing folder that is not an environment is
+an error. Relative names still resolve under ``qibocal/agent/envs``, so pass
+an absolute path, or one starting with ``~``, to select an environment
+elsewhere.
+
+When packages have to be installed, conflicts are settled in this order,
+highest priority first:
+
+1. the explicit ``dependency`` entries;
+2. what the environment already contains;
+3. the server's fallback, the pinned Qibocal commit.
+
+In practice, an installed Qibocal is kept with its version and source, and an
+editable checkout stays editable. The pinned Qibocal is only installed when
+Qibocal is absent. Other installed packages are kept whenever they satisfy
+the requirements, and upgraded only when a newly required package needs it,
+so every installed package also gets its own dependencies.
+
+Explicit entries can even replace constraints that other packages declare,
+for example a driver version older than Qibocal requires. This needs ``uv``
+on the execution host, which then applies them as overrides; with ``pip``,
+such a conflict is reported as an error instead. A deliberate override may
+leave declared requirements unmet: the final consistency check then only
+prints a warning.
+
+The server needs Qibocal APIs from
+`qiboteam/qibocal#1722 <https://github.com/qiboteam/qibocal/pull/1722>`_,
+namely ``Executor.update`` and notes. After any installation, the
+provisioning checks that the selected Qibocal provides them, and stops with
+the underlying error otherwise. Replacing Qibocal through ``dependency`` thus
+works with builds that include those APIs, such as later commits of that pull
+request, but not yet with released versions.
+
 Platform repositories and dependency sources
 --------------------------------------------
 
