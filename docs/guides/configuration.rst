@@ -266,14 +266,17 @@ root, independently of the JSON file's location or current working directory:
    * - ``workdir``
      - ``$XDG_CACHE_HOME/qibocal/agent/work/``
    * - ``output``
-     - ``$XDG_CACHE_HOME/qibocal/agent/runs/``
+     - ``$XDG_DATA_HOME/qibocal/runs/``
 
-Unset or empty ``XDG_CACHE_HOME`` falls back to ``~/.cache``. Nested relative
-paths, including ``./`` and ``../``, are resolved against these bases.
+Reports are user data, so they live under the data home; environments and
+working directories can be recreated, so they live in the cache. Unset or
+empty ``XDG_CACHE_HOME`` falls back to ``~/.cache``, and ``XDG_DATA_HOME`` to
+``~/.local/share``. Nested relative paths, including ``./`` and ``../``, are
+resolved against these bases.
 For a named agent ``lab``, omitted directories default to ``lab``:
 ``~/.cache/qibocal/agent/envs/lab``, ``~/.cache/qibocal/agent/work/lab``
-and ``~/.cache/qibocal/agent/runs/lab``. The unnamed configuration writes
-its reports to ``~/.cache/qibocal/agent/runs/default``; it gets no implied
+and ``~/.local/share/qibocal/runs/lab``. The unnamed configuration writes
+its reports to ``~/.local/share/qibocal/runs/default``; it gets no implied
 environment or working directory. The report command uses the same locations
 unless overridden. An explicit ``server_python`` suppresses the
 implicit managed agent environment.

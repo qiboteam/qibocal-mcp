@@ -112,8 +112,8 @@ file is and what it contains.
 
    ``venv`` can also point to an environment you already have, such as
    ``'~/envs/qibo'``. It is then used in place, keeping its packages as far as
-   possible; see :ref:`existing-environments`. To keep the reports outside
-   ``~/.cache``, set ``output`` as well, for example
+   possible; see :ref:`existing-environments`. To keep the reports somewhere
+   else than ``~/.local/share/qibocal/runs``, set ``output`` as well, for example
    ``.venv/bin/qibocal-mcp-config set agent.output '~/calibration-runs'``.
 
 5. Add the platform's dependencies
@@ -197,7 +197,7 @@ so expect queue waits.
 9. Browse the results
 ---------------------
 
-Reports are in ``~/.cache/qibocal/agent/runs/default/sessions/`` on the
+Reports are in ``~/.local/share/qibocal/runs/default/sessions/`` on the
 cluster. To browse them with Qibocal Report, give the report server its own
 environment, then start it on the access node:
 

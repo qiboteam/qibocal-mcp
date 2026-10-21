@@ -137,9 +137,9 @@ interpreter with ``--worker-python``, which must already contain the server.
 ``--workdir`` on the orchestration commands sets the server launch directory
 (remotely for SSH). On the standalone server it sets the SLURM worker's
 working directory.
-Configured relative ``output`` and ``workdir`` paths use the execution host's
-``qibocal/agent/runs`` and ``qibocal/agent/work`` cache folders. Relative ``venv``
-paths use ``qibocal/agent/envs``. Named agents default to their name in each
+Configured relative ``output`` paths use the execution host's
+``~/.local/share/qibocal/runs`` data folder, and relative ``workdir`` and
+``venv`` paths its ``~/.cache/qibocal/agent/work`` and ``envs`` cache folders. Named agents default to their name in each
 folder. All three configured directories expand ``~`` on the execution host.
 Explicit CLI output/workdir overrides retain current-directory semantics.
 Local repository source

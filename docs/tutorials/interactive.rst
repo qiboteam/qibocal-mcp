@@ -131,7 +131,7 @@ You can edit that file directly instead of using ``set``.
 
 .. tip::
 
-   Reports go to ``~/.cache/qibocal/agent/runs/default`` on the cluster. To
+   Reports go to ``~/.local/share/qibocal/runs/default`` on the cluster. To
    keep them elsewhere, set ``output`` to a folder on the cluster, for example
    ``.venv/bin/qibocal-mcp-config set agent.output '~/calibration-runs'``.
    With SLURM, choose a folder the compute nodes can also see.
@@ -264,7 +264,7 @@ run before approving. Each experiment is a SLURM job, so expect queue waits.
 -------------------
 
 *On your computer.* Reports are saved on the cluster, in
-``~/.cache/qibocal/agent/runs/default/sessions/``, one folder per calibration
+``~/.local/share/qibocal/runs/default/sessions/``, one folder per calibration
 session. Copilot's summary tells you the exact folder. Accepted updates are
 saved as new snapshots there: your platform files are never overwritten.
 
@@ -295,7 +295,7 @@ example, to add a real chip called ``platinum``:
 
 A named configuration contains all its settings: it does not inherit anything
 from the default one. It also gets its own environment and report folder on the
-cluster, ``~/.cache/qibocal/agent/runs/platinum``, so the simulator and the
+cluster, ``~/.local/share/qibocal/runs/platinum``, so the simulator and the
 chip never interfere. Prepare its environment once, as in step 6:
 
 .. code-block:: sh

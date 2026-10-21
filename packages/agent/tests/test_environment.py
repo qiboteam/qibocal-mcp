@@ -23,7 +23,10 @@ class EnvironmentTests(unittest.TestCase):
         temporary = tempfile.TemporaryDirectory()
         self.addCleanup(temporary.cleanup)
         self.directory = Path(temporary.name).resolve()
-        settings = patch.dict(os.environ, {"XDG_CACHE_HOME": str(self.directory)})
+        settings = patch.dict(os.environ, {
+            "XDG_CACHE_HOME": str(self.directory),
+            "XDG_DATA_HOME": str(self.directory / "data"),
+        })
         settings.start()
         self.addCleanup(settings.stop)
 
@@ -55,12 +58,13 @@ class EnvironmentTests(unittest.TestCase):
             "output": "nested/my-agent", "workdir": "my-agent",
         }}
         root = self.directory / "qibocal/agent"
+        runs = self.directory / "data/qibocal/runs"
         for report in (False, True):
             with self.subTest(report=report):
                 arguments = ["old-output"] if report else ["--output", "old-output"]
                 with patch.object(environment.os, "chdir") as chdir:
                     environment.prepare_directories(options, arguments, report=report)
-                self.assertEqual(arguments[-1], str(root / "runs/nested/my-agent"))
+                self.assertEqual(arguments[-1], str(runs / "nested/my-agent"))
                 chdir.assert_called_once_with(root / "work/my-agent")
                 self.assertTrue((root / "work/my-agent").is_dir())
 
@@ -90,7 +94,7 @@ class EnvironmentTests(unittest.TestCase):
         execute.assert_called_once_with(
             "/server/python",
             ["/server/python", "-m", "qibocal_mcp.server",
-             "--no-config", "--output", str(root / "runs/lab")],
+             "--no-config", "--output", str(self.directory / "data/qibocal/runs/lab")],
             {},
         )
 
@@ -106,23 +110,30 @@ class EnvironmentTests(unittest.TestCase):
                 ["lab", "--host", "127.0.0.1", "--port", "8000"],
             )
         chdir.assert_called_once_with(root / "work/lab")
+        runs = self.directory / "data/qibocal/runs"
         self.assertEqual(execute.call_args.args[1][-5:], [
-            str(root / "runs/lab"), "--host", "127.0.0.1", "--port", "8000",
+            str(runs / "lab"), "--host", "127.0.0.1", "--port", "8000",
         ])
-        self.assertTrue((root / "runs/lab").is_dir())
+        self.assertTrue((runs / "lab").is_dir())
 
     def test_cache_default_and_empty_xdg_use_agent_namespace(self):
         with (
-            patch.dict(os.environ, {"XDG_CACHE_HOME": ""}),
+            patch.dict(os.environ, {"XDG_CACHE_HOME": "", "XDG_DATA_HOME": ""}),
             patch.object(Path, "home", return_value=self.directory),
             patch.dict(os.environ, {"HOME": str(self.directory)}),
         ):
             self.assertEqual(environment.cache_home(), self.directory / ".cache/qibocal/agent")
-            for folder in ("envs", "work", "runs"):
+            for folder in ("envs", "work"):
                 self.assertEqual(
                     environment.directory_path("lab", folder),
                     self.directory / ".cache/qibocal/agent" / folder / "lab",
                 )
+            # Reports are user data, not cache.
+            self.assertEqual(environment.data_home(), self.directory / ".local/share/qibocal")
+            self.assertEqual(
+                environment.directory_path("lab", "runs"),
+                self.directory / ".local/share/qibocal/runs/lab",
+            )
 
     def test_repository_fragments_and_validation(self):
         self.assertEqual(

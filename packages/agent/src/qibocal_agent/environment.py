@@ -35,12 +35,22 @@ def cache_home() -> Path:
     return root / "qibocal/agent"
 
 
+def data_home() -> Path:
+    root = Path(os.environ.get("XDG_DATA_HOME") or "~/.local/share").expanduser().resolve()
+    return root / "qibocal"
+
+
 def directory_path(value: str, folder: str) -> Path:
-    """Resolve configured directories in the execution host's cache namespace."""
+    """Resolve configured directories on the execution host.
+
+    Reports are user data, kept under the data home; environments and working
+    directories can be recreated, so they live in the cache.
+    """
     if not value.strip():
         raise DeploymentError("Directory paths must be nonempty")
     path = Path(value).expanduser()
-    return (path if path.is_absolute() else cache_home() / folder / path).resolve()
+    base = data_home() if folder == "runs" else cache_home()
+    return (path if path.is_absolute() else base / folder / path).resolve()
 
 
 def expand_path_list(value: str) -> str:
