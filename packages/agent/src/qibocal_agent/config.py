@@ -360,7 +360,8 @@ def main(argv: list[str] | None = None) -> None:
     """Locate, read and write runtime defaults without importing hardware."""
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--config", type=Path, help="Manage this file instead")
-    commands = parser.add_subparsers(dest="command", required=True)
+    # Without a subcommand, show where the file is and what it contains.
+    commands = parser.add_subparsers(dest="command")
     commands.add_parser("path", help="Print the selected configuration file path")
     commands.add_parser("show", help="Print stored settings as JSON")
     get = commands.add_parser("get", help="Read one section.key setting")
@@ -377,6 +378,10 @@ def main(argv: list[str] | None = None) -> None:
         return
     try:
         data = load_config(path, missing_ok=args.config is None or args.command == "set")
+        if args.command is None:
+            print(f"Configuration file: {path.absolute()}")
+            print(json.dumps(data, indent=2))
+            return
         if args.command == "show":
             print(json.dumps(data, indent=2))
             return

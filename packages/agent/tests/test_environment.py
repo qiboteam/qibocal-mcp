@@ -1,7 +1,9 @@
 """Provisioning without a remote host, hardware or third-party installations."""
 
 import base64
+import contextlib
 import io
+import json
 import os
 import shlex
 import subprocess
@@ -357,13 +359,11 @@ class EnvironmentTests(unittest.TestCase):
         with self.assertRaisesRegex(environment.DeploymentError, "Recursive requirements"):
             environment.prepared_requirements(root)
 
-    def test_same_version_wrong_git_pin_is_force_reinstalled_and_verified(self):
+    def test_existing_qibocal_source_wins_and_reconciles_its_dependencies(self):
         source = environment.source_payload()
-        expected = {
-            "url": "https://github.com/qiboteam/qibocal",
-            "vcs_info": {"commit_id": "ae0e797a8c93a1110737f7f75586e628e4a2e543"},
-        }
-        wrong = {**expected, "vcs_info": {"commit_id": "a" * 40}}
+        retained = (
+            "qibocal @ git+https://github.com/qiboteam/qibocal@" + "a" * 40
+        )
         options = self.options(venv=str(self.directory / "managed"))
 
         def run(arguments, **kwargs):
@@ -372,27 +372,145 @@ class EnvironmentTests(unittest.TestCase):
         with (
             patch.object(environment, "ensure_python", return_value="/managed/python"),
             patch.object(environment, "installed_fingerprint", return_value="installed"),
-            patch.object(environment, "installed_qibocal_source", side_effect=[wrong, expected]),
+            patch.object(environment, "installed_distribution_requirement", return_value=[retained]),
             patch.object(environment, "installer", return_value=["pip-install"]),
             patch.object(environment, "command", side_effect=run) as command,
         ):
             environment.provision(options, source)
-        forced = [call.args[0] for call in command.call_args_list if "--force-reinstall" in call.args[0]]
-        self.assertEqual(len(forced), 1)
-        self.assertIn("--no-deps", forced[0])
-        self.assertTrue(forced[0][-1].endswith(expected["vcs_info"]["commit_id"]))
+        installs = [call.args[0] for call in command.call_args_list if call.args[0][0] == "pip-install"]
+        self.assertEqual(installs[0][1:3], ["--no-deps", str(environment.unpack_source(source))])
+        self.assertIn(retained, installs[1])
+        self.assertTrue(any(item.startswith("fastmcp") for item in installs[1]))
         self.assertTrue((self.directory / "managed/.qibocal-mcp-state").is_file())
+
+    def test_explicit_qibocal_overrides_existing_and_fallback_requirements(self):
+        source = environment.source_payload()
+        options = self.options(
+            venv=str(self.directory / "managed"), dependency=["Qibocal==0.2.0"],
+        )
+
+        def run(arguments, **kwargs):
+            return "3.13\n" if "sys.version_info" in arguments[-1] else ""
+
         with (
             patch.object(environment, "ensure_python", return_value="/managed/python"),
             patch.object(environment, "installed_fingerprint", return_value="installed"),
-            patch.object(environment, "installed_qibocal_source", return_value=wrong),
-            patch.object(environment, "installer", return_value=["pip-install"]),
-            patch.object(environment, "command", side_effect=run),
+            patch.object(environment, "installed_distribution_requirement", return_value=["qibocal==0.1.0"]),
+            patch.object(environment, "installer", return_value=["install"]),
+            patch.object(environment, "command", side_effect=run) as command,
         ):
-            (self.directory / "managed/.qibocal-mcp-state").unlink()
-            with self.assertRaisesRegex(environment.DeploymentError, "does not match"):
-                environment.provision(options, source)
+            environment.provision(options, source)
+        installs = [
+            call.args[0] for call in command.call_args_list
+            if call.args[0][0] == "install" and len(call.args[0]) > 1
+        ]
+        self.assertIn("Qibocal==0.2.0", installs[-1])
+        self.assertNotIn("qibocal==0.1.0", installs[-1])
+
+    def test_retained_distributions_keep_their_source_and_editable_checkouts(self):
+        cases = [
+            (None, None),
+            ({"version": "0.2.7", "direct_url": {
+                "url": "https://github.com/qiboteam/qibocal",
+                "vcs_info": {"vcs": "git", "commit_id": "b" * 40},
+            }}, ["qibocal @ git+https://github.com/qiboteam/qibocal@" + "b" * 40]),
+            ({"version": "0.2.7", "direct_url": {
+                "url": "file:///home/me/qibocal", "dir_info": {"editable": True},
+            }}, ["--editable", "file:///home/me/qibocal"]),
+            ({"version": "0.2.7", "direct_url": {
+                "url": "file:///home/me/qibocal", "dir_info": {},
+            }}, ["qibocal @ file:///home/me/qibocal"]),
+            ({"version": "0.2.7", "direct_url": {}}, ["qibocal==0.2.7"]),
+        ]
+        for installed, expected in cases:
+            with (
+                self.subTest(installed=installed),
+                patch.object(environment, "command", return_value=json.dumps(installed)),
+            ):
+                self.assertEqual(
+                    environment.installed_distribution_requirement("/env/python", "qibocal"),
+                    expected,
+                )
+
+    def provision_calls(self, options, installer, check_error=None, broken=False):
+        """Run provision with stubbed subprocesses; return the installer calls."""
+        source = environment.source_payload()
+
+        def run(arguments, **kwargs):
+            if "sys.version_info" in arguments[-1]:
+                return "3.13\n"
+            if arguments[-1] == environment.QIBOCAL_COMPATIBILITY and check_error:
+                raise environment.DeploymentError(check_error)
+            if broken and arguments == installer:
+                raise environment.DeploymentError("unmet requirements")
+            return ""
+
+        with (
+            patch.object(environment, "ensure_python", return_value="/managed/python"),
+            patch.object(environment, "installed_fingerprint", return_value="installed"),
+            patch.object(environment, "installed_distribution_requirement", return_value=None),
+            patch.object(environment, "installer", return_value=installer) as lookup,
+            patch.object(environment, "command", side_effect=run) as command,
+        ):
+            environment.provision(options, source)
+        calls = [call.args[0] for call in command.call_args_list]
+        # The stub answers the dependency check too: keep calls with arguments.
+        return [
+            call for call in calls
+            if call[:len(installer)] == installer and len(call) > len(installer)
+        ], lookup
+
+    def test_explicit_dependencies_override_declared_constraints_with_uv(self):
+        options = self.options(
+            venv=str(self.directory / "managed"), dependency=["qibolab==0.2.16"],
+        )
+        uv = ["uv", "pip", "install", "--python", "/managed/python"]
+        installs, _ = self.provision_calls(options, uv)
+        override = installs[-1][installs[-1].index("--override") + 1]
+        self.assertEqual(Path(override).read_text(), "qibolab==0.2.16\n")
+        # Without an explicit Qibocal entry, the fallback pin is required too.
+        self.assertTrue(any(item.startswith("qibocal @ git+") for item in installs[-1]))
+        pip = ["/managed/python", "-m", "pip", "install"]
+        installs, _ = self.provision_calls(
+            options | {"venv": str(self.directory / "other")}, pip,
+        )
+        self.assertNotIn("--override", installs[-1])
+
+    def test_unmet_requirements_only_warn_under_explicit_overrides(self):
+        uv = ["uv", "pip", "install"]
+        options = self.options(venv=str(self.directory / "managed"))
+        with self.assertRaisesRegex(environment.DeploymentError, "unmet"):
+            self.provision_calls(options, uv, broken=True)
+        stderr = io.StringIO()
+        with contextlib.redirect_stderr(stderr):
+            self.provision_calls(
+                options | {"dependency": ["qibolab==0.2.16"]}, uv, broken=True,
+            )
+        self.assertIn("intentionally override", stderr.getvalue())
+
+    def test_incompatible_qibocal_stops_before_recording_success(self):
+        options = self.options(
+            venv=str(self.directory / "managed"), dependency=["qibocal==0.2.7"],
+        )
+        with self.assertRaisesRegex(environment.DeploymentError, "qiboteam/qibocal#1722"):
+            self.provision_calls(options, ["install"], check_error="Executor.update is missing")
         self.assertFalse((self.directory / "managed/.qibocal-mcp-state").exists())
+
+    def test_nothing_to_install_needs_no_installer(self):
+        with patch.object(environment, "cache_home", return_value=self.directory / "cache"):
+            installs, lookup = self.provision_calls(self.options(), ["install"])
+        self.assertEqual(installs, [])
+        lookup.assert_not_called()
+
+    def test_existing_environment_is_used_in_place(self):
+        path = self.directory / "existing"
+        (path / "bin").mkdir(parents=True)
+        (path / "bin/python").symlink_to(sys.executable)
+        (path / "pyvenv.cfg").write_text("home = /usr/bin\n")
+        with patch.object(environment, "command") as run:
+            self.assertEqual(environment.ensure_python(path), str(path / "bin/python"))
+        run.assert_not_called()
+        self.assertEqual(sorted(item.name for item in path.iterdir()), ["bin", "pyvenv.cfg"])
 
     def test_provision_merges_sources_and_reconciles_only_when_needed(self):
         repository, revision = self.create_repository()
@@ -421,27 +539,28 @@ class EnvironmentTests(unittest.TestCase):
             patch.object(environment, "ensure_python", return_value="/managed/bin/python"),
             patch.object(environment, "installer", side_effect=lambda python, operation="install": [operation]),
             patch.object(environment, "installed_fingerprint", return_value="installed"),
-            patch.object(environment, "installed_qibocal_source", return_value={
-                "url": "https://github.com/qiboteam/qibocal",
-                "vcs_info": {"commit_id": "ae0e797a8c93a1110737f7f75586e628e4a2e543"},
-            }),
+            patch.object(environment, "installed_distribution_requirement", return_value=[
+                "qibocal @ git+https://github.com/qiboteam/qibocal@"
+                "ae0e797a8c93a1110737f7f75586e628e4a2e543"
+            ]),
             patch.object(environment, "command", side_effect=run),
             patch.dict(os.environ, {"QIBOLAB_PLATFORMS": "/inherited"}),
         ):
             python, env = environment.provision(options, source)
             self.assertEqual(python, "/managed/bin/python")
             self.assertTrue(env["QIBOLAB_PLATFORMS"].endswith(os.pathsep + "/inherited"))
-            self.assertEqual(len(installs), 1)
-            self.assertIn("extra-driver>=1", installs[0])
-            self.assertIn("--editable", installs[0])
-            self.assertEqual(installs[0].count("--requirement"), 3)
-            environment.provision(options, source)
-            self.assertEqual(len(installs), 1)
-            environment.provision(options | {"dependency": ["extra-driver>=2"]}, source)
             self.assertEqual(len(installs), 2)
+            self.assertIn("--no-deps", installs[0])
+            self.assertIn("extra-driver>=1", installs[1])
+            self.assertIn("--editable", installs[1])
+            self.assertEqual(installs[1].count("--requirement"), 3)
+            environment.provision(options, source)
+            self.assertEqual(len(installs), 2)
+            environment.provision(options | {"dependency": ["extra-driver>=2"]}, source)
+            self.assertEqual(len(installs), 4)
             with patch.object(environment, "installed_fingerprint", return_value="manually-modified"):
                 environment.provision(options | {"dependency": ["extra-driver>=2"]}, source)
-            self.assertEqual(len(installs), 3)
+            self.assertEqual(len(installs), 6)
             # Explicit roots override inherited values, but retain repository roots.
             _, env = environment.provision(options | {"platforms_dir": "/explicit:/second"}, source)
             self.assertTrue(env["QIBOLAB_PLATFORMS"].startswith("/explicit:/second" + os.pathsep))

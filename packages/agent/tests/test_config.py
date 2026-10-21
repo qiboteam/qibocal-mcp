@@ -69,6 +69,18 @@ class ConfigTests(unittest.TestCase):
             self.command("show")
         self.assertFalse((self.directory / "absent").exists())
 
+    def test_bare_command_shows_location_and_settings(self):
+        self.assertEqual(
+            self.command(), f"Configuration file: {self.path}\n{{}}"
+        )
+        self.assertFalse(self.path.exists())
+        self.command("set", "agent.platform", "qpu")
+        self.assertEqual(
+            self.command(),
+            f"Configuration file: {self.path}\n"
+            + json.dumps({"agent": {"platform": "qpu"}}, indent=2),
+        )
+
     def test_named_agent_management_and_nested_report_settings(self):
         self.command("set", "agents.local.platform", "local-qpu")
         self.command("set", "agents.remote.platform", "remote-qpu")
