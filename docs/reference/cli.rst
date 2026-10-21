@@ -233,6 +233,7 @@ qibocal-mcp-config
 
 .. code-block:: text
 
+   qibocal-mcp-config [--config FILE]
    qibocal-mcp-config [--config FILE] path
    qibocal-mcp-config [--config FILE] show
    qibocal-mcp-config [--config FILE] get KEY
@@ -242,7 +243,8 @@ qibocal-mcp-config
 ``KEY`` is ``agents.NAME.key`` or ``agents.NAME.report.key`` for named
 settings, or ``section.key`` for the unnamed ``agent`` and ``report``
 defaults, with underscore-separated setting names.
-``path`` prints an absolute path without creating anything.
+Without a subcommand, it prints the file's location followed by its stored
+settings. ``path`` prints an absolute path without creating anything.
 ``show`` prints stored JSON only. ``get`` prints strings as plain text and
 arrays/numbers as JSON; missing settings error.
 ``set`` writes sparse validated configuration atomically and creates parent

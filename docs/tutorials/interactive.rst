@@ -9,6 +9,11 @@ The simulator behaves like real hardware from the tools' point of view, so
 every step carries over unchanged to an actual chip. At the end, you add a
 second configuration for a real platform and switch between the two.
 
+Two machines are involved: **your computer**, where you type every command and
+chat with Copilot, and **the cluster**, where the calibration server, your
+platform files and the reports live. Each step says where it runs, and each
+path says which machine it belongs to.
+
 Before you start, collect these values. The tutorial uses the placeholders on
 the left:
 
@@ -32,7 +37,7 @@ the left:
 1. Connect to the cluster without a password
 --------------------------------------------
 
-The tools open SSH connections on their own, so they cannot type a password.
+*On your computer.* The tools open SSH connections on their own, so they cannot type a password.
 Create a key and copy it to the cluster:
 
 .. code-block:: sh
@@ -61,6 +66,8 @@ Check that it works. This must print ``ok`` without asking anything:
 2. Check the cluster
 --------------------
 
+*On your computer.* This command runs on the cluster through SSH:
+
 .. code-block:: sh
 
    ssh mycluster 'python3 --version; git --version'
@@ -75,14 +82,15 @@ Python must be version 3.12 or 3.13.
 3. Get the simulator
 --------------------
 
-Clone the simulator into your home folder on the cluster:
+*On your computer.* Clone the simulator into your home folder on the cluster:
 
 .. code-block:: sh
 
    ssh mycluster 'git clone git@github.com:qiboteam/qibolab-simulator.git'
 
-Its example platforms are in ``~/qibolab-simulator/examples/platforms``. This
-tutorial uses the one called ``qutrits``.
+Its example platforms are now on the cluster, in
+``~/qibolab-simulator/examples/platforms``. This tutorial uses the one called
+``qutrits``.
 
 .. note::
 
@@ -92,8 +100,9 @@ tutorial uses the one called ``qutrits``.
 4. Tell Qibocal about your setup
 --------------------------------
 
-Qibocal keeps your setup in a configuration file, so you never repeat it.
-Run these commands from the ``qibocal-mcp-servers`` folder:
+*On your computer.* Qibocal keeps your setup in a configuration file on your
+computer, so you never repeat it. Run these commands from the
+``qibocal-mcp-servers`` folder:
 
 .. code-block:: sh
 
@@ -112,14 +121,27 @@ Each setting answers one question:
 The quotes around the folder keep ``~`` as it is: it then refers to your
 home folder *on the cluster*, not on your computer.
 
-You can also edit the file directly. ``qibocal-mcp-config path`` prints its
-location, and ``qibocal-mcp-config show`` prints its content.
+To see where the file is and what it contains, run the command alone:
+
+.. code-block:: sh
+
+   .venv/bin/qibocal-mcp-config
+
+You can edit that file directly instead of using ``set``.
+
+.. tip::
+
+   Reports go to ``~/.cache/qibocal/agent/runs/default`` on the cluster. To
+   keep them elsewhere, set ``output`` to a folder on the cluster, for example
+   ``.venv/bin/qibocal-mcp-config set agent.output '~/calibration-runs'``.
+   With SLURM, choose a folder the compute nodes can also see.
 
 5. Add the platform's dependencies
 ----------------------------------
 
-Most platforms need extra Python packages, such as instrument drivers. List
-them under ``dependency``, and they are installed on the cluster for you.
+*On your computer.* Most platforms need extra Python packages, such as
+instrument drivers. List them under ``dependency``, and they are installed on
+the cluster for you.
 The format is the same as the dependencies in a ``pyproject.toml`` file.
 
 The simulator is itself such a package. Install it from your clone:
@@ -147,15 +169,15 @@ The configuration file now looks like this:
 
 .. tip::
 
-   A ``file://`` address needs the full path of the folder on the cluster,
+   A ``file://`` address needs the full path of the folder *on the cluster*,
    without ``~``. For a real chip, list its drivers instead, for example
    ``"qibolab-qblox==0.0.4"`` for Qblox instruments.
 
 6. Prepare the environment on the cluster
 -----------------------------------------
 
-The first launch installs Qibocal, the server and your dependencies on the
-cluster, which takes a few minutes. Do it once now, so that Copilot does not
+*On your computer.* The first launch installs Qibocal, the server and your
+dependencies on the cluster, which takes a few minutes. Do it once now, so that Copilot does not
 give up waiting later:
 
 .. code-block:: sh
@@ -174,8 +196,8 @@ dependencies, the next launch installs the new ones.
 7. Register the server in Copilot
 ---------------------------------
 
-Open ``~/.copilot/mcp-config.json`` in your editor, creating the folder and
-the file if needed. Add the path printed at the end of the installation:
+*On your computer.* Open ``~/.copilot/mcp-config.json`` in your editor,
+creating the folder and the file if needed. Add the path printed at the end of the installation:
 
 .. code-block:: json
 
@@ -199,7 +221,7 @@ file.
 8. Calibrate
 ------------
 
-Start Copilot:
+*On your computer.* Start Copilot:
 
 .. code-block:: sh
 
@@ -241,7 +263,7 @@ run before approving. Each experiment is a SLURM job, so expect queue waits.
 9. Find the results
 -------------------
 
-Reports are saved on the cluster, in
+*On your computer.* Reports are saved on the cluster, in
 ``~/.cache/qibocal/agent/runs/default/sessions/``, one folder per calibration
 session. Copilot's summary tells you the exact folder. Accepted updates are
 saved as new snapshots there: your platform files are never overwritten.
@@ -259,7 +281,7 @@ in the Qibocal Report interface. Keep it running while you browse. See
 10. Several setups: named configurations
 ----------------------------------------
 
-The ``agent`` section is your default configuration. You can store more
+*On your computer.* The ``agent`` section is your default configuration. You can store more
 configurations, each under its own name, in the ``agents`` section. For
 example, to add a real chip called ``platinum``:
 

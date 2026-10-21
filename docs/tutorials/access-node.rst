@@ -105,6 +105,17 @@ Compared with the first tutorial, two settings change:
 Through SSH that environment is created automatically. Here you request it,
 so that your dependencies stay out of the project's own ``.venv``.
 
+Run ``.venv/bin/qibocal-mcp-config`` alone to see where the configuration
+file is and what it contains.
+
+.. tip::
+
+   ``venv`` can also point to an environment you already have, such as
+   ``'~/envs/qibo'``. It is then used in place, keeping its packages as far as
+   possible; see :ref:`existing-environments`. To keep the reports outside
+   ``~/.cache``, set ``output`` as well, for example
+   ``.venv/bin/qibocal-mcp-config set agent.output '~/calibration-runs'``.
+
 5. Add the platform's dependencies
 ----------------------------------
 
