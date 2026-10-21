@@ -53,7 +53,7 @@ Get the project into your home folder and install it:
    git clone https://github.com/qiboteam/qibocal-mcp-servers.git
    cd qibocal-mcp-servers
    uv sync
-   realpath .venv/bin/qibocal-mcp-remote
+   realpath .venv/bin/qibocal-agent
 
 Keep the printed path for later. ``uv`` also installs a suitable Python, so
 the cluster's own ``python3`` version does not matter here.
@@ -91,30 +91,26 @@ From the ``qibocal-mcp-servers`` folder:
 
 .. code-block:: sh
 
-   .venv/bin/qibocal-mcp-config set agent.platform qutrits
-   .venv/bin/qibocal-mcp-config set agent.platforms_dir '~/qibolab-simulator/examples/platforms'
-   .venv/bin/qibocal-mcp-config set agent.partition PARTITION
-   .venv/bin/qibocal-mcp-config set agent.venv qibocal-mcp
+   .venv/bin/qibocal-agent config set default.platform qutrits
+   .venv/bin/qibocal-agent config set default.platforms_dir '~/qibolab-simulator/examples/platforms'
+   .venv/bin/qibocal-agent config set default.partition PARTITION
 
-Compared with the first tutorial, two settings change:
+Compared with the first tutorial, the only difference is that there is no
+``ssh``: you are already on the cluster. The server and your dependencies get
+their own Python environment, in ``~/.cache/qibocal/agents/envs/default``,
+separate from the project's ``.venv``.
 
-* there is no ``ssh``, because you are already on the cluster;
-* ``venv`` names the Python environment that will hold the server and your
-  dependencies, in ``~/.cache/qibocal/agent/envs/qibocal-mcp``.
-
-Through SSH that environment is created automatically. Here you request it,
-so that your dependencies stay out of the project's own ``.venv``.
-
-Run ``.venv/bin/qibocal-mcp-config`` alone to see where the configuration
+Run ``.venv/bin/qibocal-agent config`` alone to see where the configuration
 file is and what it contains.
 
 .. tip::
 
-   ``venv`` can also point to an environment you already have, such as
-   ``'~/envs/qibo'``. It is then used in place, keeping its packages as far as
-   possible; see :ref:`existing-environments`. To keep the reports somewhere
-   else than ``~/.local/share/qibocal/runs``, set ``output`` as well, for example
-   ``.venv/bin/qibocal-mcp-config set agent.output '~/calibration-runs'``.
+   ``venv`` selects another environment, for example one you already have,
+   such as ``'~/envs/qibo'``. It is then used in place, keeping its packages as
+   far as possible; see :ref:`existing-environments`. To keep the reports
+   elsewhere than ``~/.local/share/qibocal/agents/runs/default``, set
+   ``output``, for example
+   ``.venv/bin/qibocal-agent config set default.output '~/calibration-runs'``.
 
 5. Add the platform's dependencies
 ----------------------------------
@@ -123,7 +119,7 @@ This step is the same as in the first tutorial:
 
 .. code-block:: sh
 
-   .venv/bin/qibocal-mcp-config set agent.dependency \
+   .venv/bin/qibocal-agent config set default.dependency \
      '["qibolab-simulator @ file:///home/USER/qibolab-simulator"]'
 
 The configuration file now looks like this:
@@ -131,14 +127,15 @@ The configuration file now looks like this:
 .. code-block:: json
 
    {
-     "agent": {
-       "platform": "qutrits",
-       "platforms_dir": "~/qibolab-simulator/examples/platforms",
-       "partition": "PARTITION",
-       "venv": "qibocal-mcp",
-       "dependency": [
-         "qibolab-simulator @ file:///home/USER/qibolab-simulator"
-       ]
+     "agents": {
+       "default": {
+         "platform": "qutrits",
+         "platforms_dir": "~/qibolab-simulator/examples/platforms",
+         "partition": "PARTITION",
+         "dependency": [
+           "qibolab-simulator @ file:///home/USER/qibolab-simulator"
+         ]
+       }
      }
    }
 
@@ -149,7 +146,7 @@ Create the environment once, so that Copilot does not give up waiting later:
 
 .. code-block:: sh
 
-   .venv/bin/qibocal-mcp-remote < /dev/null
+   .venv/bin/qibocal-agent mcp < /dev/null
 
 It installs Qibocal, the server and the simulator, then exits by itself.
 
@@ -170,7 +167,8 @@ in step 2:
    {
      "mcpServers": {
        "qibocal": {
-         "command": "/home/USER/qibocal-mcp-servers/.venv/bin/qibocal-mcp-remote"
+         "command": "/home/USER/qibocal-mcp-servers/.venv/bin/qibocal-agent",
+         "args": ["mcp"]
        }
      }
    }
@@ -197,17 +195,13 @@ so expect queue waits.
 9. Browse the results
 ---------------------
 
-Reports are in ``~/.local/share/qibocal/runs/default/sessions/`` on the
-cluster. To browse them with Qibocal Report, give the report server its own
-environment, then start it on the access node:
+Reports are in ``~/.local/share/qibocal/agents/runs/default/sessions/`` on the
+cluster. To browse them with Qibocal Report, start the report server on the
+access node:
 
 .. code-block:: sh
 
-   .venv/bin/qibocal-mcp-config set report.venv qibocal-report
-   .venv/bin/qibocal-report-server
-
-Without the first setting, the report server would reuse the ``venv`` of
-step 4 and install itself next to the calibration server.
+   .venv/bin/qibocal-agent report
 
 It prints a local address, by default ``http://127.0.0.1:8000``. That address
 is local to the access node, so forward it to your computer. In a second
@@ -225,8 +219,7 @@ Report interface on your computer.
 
 Named configurations, switching within a session and changing the starting
 configuration work exactly as in :doc:`the first tutorial <interactive>`.
-Just leave out ``ssh``. Named configurations get their own environment
-automatically, so they do not need ``venv`` either.
+Just leave out ``ssh``.
 
 Next steps
 ----------

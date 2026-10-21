@@ -9,12 +9,13 @@ Qibocal calibration for AI agents, split into two Python packages:
   node), or on a SLURM access node with ``--partition`` to dispatch one job
   per operation. Install it on the execution host; connect any MCP-capable
   interface.
-* **qibocal-agent** — the orchestration. It reaches those servers from
-  anywhere: ``qibocal-mcp-remote`` starts the server through SSH (provisioning
-  a managed Python environment when asked) and serves it to your local MCP
-  client; ``qibocal-agent`` runs an autonomous calibration agent on top;
-  ``qibocal-report-server`` browses the generated reports;
-  ``qibocal-mcp-config`` stores your defaults so a launch reduces to a name.
+* **qibocal-agent** — the orchestration, one command with a subcommand per
+  task. It reaches those servers from anywhere: ``qibocal-agent mcp`` starts
+  the server through SSH (provisioning a managed Python environment when
+  needed) and serves it to your local MCP client; ``qibocal-agent run`` runs
+  an autonomous calibration agent on top; ``qibocal-agent report`` browses the
+  generated reports; ``qibocal-agent config`` stores your configurations so a
+  launch reduces to a name.
 
 If you work directly on the machine that reaches the hardware, the MCP package
 alone is enough. Install the orchestration package on your own machine when the

@@ -20,7 +20,7 @@ that can read images and call tools, and store it in the configuration:
 
 .. code-block:: sh
 
-   .venv/bin/qibocal-mcp-config set agent.model openai:gpt-4.1
+   .venv/bin/qibocal-agent config set default.model openai:gpt-4.1
 
 Then make the provider's credentials available in your terminal:
 
@@ -43,7 +43,7 @@ include what to calibrate, the hardware limits, a budget and when to stop:
 
 .. code-block:: sh
 
-   .venv/bin/qibocal-agent \
+   .venv/bin/qibocal-agent run \
      "Calibrate qubit 0's drive frequency using spectroscopy. Sweep no wider
       than 20 MHz, use drive amplitude at most 0.1 and at most 100 shots.
       Run at most two protocols. Inspect plots before accepting an update.
@@ -65,7 +65,7 @@ summary of what it ran, what it changed and where the reports are.
 --------------------
 
 The reports are in the same place as in the interactive tutorial, and
-``qibocal-report-server`` shows them. Do not take the summary on trust: open
+``qibocal-agent report`` shows them. Do not take the summary on trust: open
 the reports of the accepted updates and judge the fits yourself.
 :doc:`../guides/artifacts` explains what to look for.
 
@@ -80,21 +80,21 @@ Pass a configuration name as the first argument:
 
 .. code-block:: sh
 
-   .venv/bin/qibocal-agent platinum "YOUR BOUNDED OBJECTIVE"
+   .venv/bin/qibocal-agent run platinum "YOUR BOUNDED OBJECTIVE"
 
 Named configurations inherit nothing, not even the model, so store one for
 each name you use with the agent:
 
 .. code-block:: sh
 
-   .venv/bin/qibocal-mcp-config set agents.platinum.model openai:gpt-4.1
+   .venv/bin/qibocal-agent config set platinum.model openai:gpt-4.1
 
 You can also save a reviewed objective, and then launch with the name alone:
 
 .. code-block:: sh
 
-   .venv/bin/qibocal-mcp-config set agents.platinum.objective "YOUR BOUNDED OBJECTIVE"
-   .venv/bin/qibocal-agent platinum
+   .venv/bin/qibocal-agent config set platinum.objective "YOUR BOUNDED OBJECTIVE"
+   .venv/bin/qibocal-agent run platinum
 
 Next steps
 ----------

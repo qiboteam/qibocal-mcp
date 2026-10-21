@@ -101,17 +101,18 @@ Its example platforms are now on the cluster, in
 --------------------------------
 
 *On your computer.* Qibocal keeps your setup in a configuration file on your
-computer, so you never repeat it. Run these commands from the
-``qibocal-mcp-servers`` folder:
+computer, so you never repeat it. It can hold several configurations, each
+with a name; the one called ``default`` is used unless you ask for another.
+Run these commands from the ``qibocal-mcp-servers`` folder:
 
 .. code-block:: sh
 
-   .venv/bin/qibocal-mcp-config set agent.platform qutrits
-   .venv/bin/qibocal-mcp-config set agent.platforms_dir '~/qibolab-simulator/examples/platforms'
-   .venv/bin/qibocal-mcp-config set agent.ssh mycluster
-   .venv/bin/qibocal-mcp-config set agent.partition PARTITION
+   .venv/bin/qibocal-agent config set default.platform qutrits
+   .venv/bin/qibocal-agent config set default.platforms_dir '~/qibolab-simulator/examples/platforms'
+   .venv/bin/qibocal-agent config set default.ssh mycluster
+   .venv/bin/qibocal-agent config set default.partition PARTITION
 
-Each setting answers one question:
+Each ``default.`` setting answers one question:
 
 * ``platform``: which platform to calibrate;
 * ``platforms_dir``: the folder on the cluster that contains it;
@@ -125,15 +126,15 @@ To see where the file is and what it contains, run the command alone:
 
 .. code-block:: sh
 
-   .venv/bin/qibocal-mcp-config
+   .venv/bin/qibocal-agent config
 
 You can edit that file directly instead of using ``set``.
 
 .. tip::
 
-   Reports go to ``~/.local/share/qibocal/runs/default`` on the cluster. To
+   Reports go to ``~/.local/share/qibocal/agents/runs/default`` on the cluster. To
    keep them elsewhere, set ``output`` to a folder on the cluster, for example
-   ``.venv/bin/qibocal-mcp-config set agent.output '~/calibration-runs'``.
+   ``.venv/bin/qibocal-agent config set default.output '~/calibration-runs'``.
    With SLURM, choose a folder the compute nodes can also see.
 
 5. Add the platform's dependencies
@@ -148,7 +149,7 @@ The simulator is itself such a package. Install it from your clone:
 
 .. code-block:: sh
 
-   .venv/bin/qibocal-mcp-config set agent.dependency \
+   .venv/bin/qibocal-agent config set default.dependency \
      '["qibolab-simulator @ file:///home/USER/qibolab-simulator"]'
 
 The configuration file now looks like this:
@@ -156,14 +157,16 @@ The configuration file now looks like this:
 .. code-block:: json
 
    {
-     "agent": {
-       "platform": "qutrits",
-       "platforms_dir": "~/qibolab-simulator/examples/platforms",
-       "ssh": "mycluster",
-       "partition": "PARTITION",
-       "dependency": [
-         "qibolab-simulator @ file:///home/USER/qibolab-simulator"
-       ]
+     "agents": {
+       "default": {
+         "platform": "qutrits",
+         "platforms_dir": "~/qibolab-simulator/examples/platforms",
+         "ssh": "mycluster",
+         "partition": "PARTITION",
+         "dependency": [
+           "qibolab-simulator @ file:///home/USER/qibolab-simulator"
+         ]
+       }
      }
    }
 
@@ -182,7 +185,7 @@ give up waiting later:
 
 .. code-block:: sh
 
-   .venv/bin/qibocal-mcp-remote < /dev/null
+   .venv/bin/qibocal-agent mcp < /dev/null
 
 You see installation messages, and the command exits by itself when done.
 Later launches reuse the environment and start quickly. When you change the
@@ -204,13 +207,15 @@ creating the folder and the file if needed. Add the path printed at the end of t
    {
      "mcpServers": {
        "qibocal": {
-         "command": "/full/path/to/qibocal-mcp-servers/.venv/bin/qibocal-mcp-remote"
+         "command": "/full/path/to/qibocal-mcp-servers/.venv/bin/qibocal-agent",
+         "args": ["mcp"]
        }
      }
    }
 
-That is all Copilot needs: every setting comes from Qibocal's configuration
-file.
+That is all Copilot needs: ``mcp`` is the ``qibocal-agent`` subcommand that
+serves the calibration tools, and every setting comes from Qibocal's
+configuration file.
 
 .. tip::
 
@@ -264,7 +269,7 @@ run before approving. Each experiment is a SLURM job, so expect queue waits.
 -------------------
 
 *On your computer.* Reports are saved on the cluster, in
-``~/.local/share/qibocal/runs/default/sessions/``, one folder per calibration
+``~/.local/share/qibocal/agents/runs/default/sessions/``, one folder per calibration
 session. Copilot's summary tells you the exact folder. Accepted updates are
 saved as new snapshots there: your platform files are never overwritten.
 
@@ -272,7 +277,7 @@ To browse the reports in Qibocal Report, run from the project folder:
 
 .. code-block:: sh
 
-   .venv/bin/qibocal-report-server
+   .venv/bin/qibocal-agent report
 
 It opens an SSH tunnel to the cluster and prints a local address to register
 in the Qibocal Report interface. Keep it running while you browse. See
@@ -281,26 +286,26 @@ in the Qibocal Report interface. Keep it running while you browse. See
 10. Several setups: named configurations
 ----------------------------------------
 
-*On your computer.* The ``agent`` section is your default configuration. You can store more
-configurations, each under its own name, in the ``agents`` section. For
-example, to add a real chip called ``platinum``:
+*On your computer.* So far you have used the ``default`` configuration. You
+can store more, each under its own name. For example, to add a real chip
+called ``platinum``:
 
 .. code-block:: sh
 
-   .venv/bin/qibocal-mcp-config set agents.platinum.platform qw5q_platinum
-   .venv/bin/qibocal-mcp-config set agents.platinum.platforms_dir '~/qibolab_platforms_qrc'
-   .venv/bin/qibocal-mcp-config set agents.platinum.ssh mycluster
-   .venv/bin/qibocal-mcp-config set agents.platinum.partition qw5q_platinum
-   .venv/bin/qibocal-mcp-config set agents.platinum.dependency '["qibolab-qblox==0.0.4"]'
+   .venv/bin/qibocal-agent config set platinum.platform qw5q_platinum
+   .venv/bin/qibocal-agent config set platinum.platforms_dir '~/qibolab_platforms_qrc'
+   .venv/bin/qibocal-agent config set platinum.ssh mycluster
+   .venv/bin/qibocal-agent config set platinum.partition qw5q_platinum
+   .venv/bin/qibocal-agent config set platinum.dependency '["qibolab-qblox==0.0.4"]'
 
-A named configuration contains all its settings: it does not inherit anything
-from the default one. It also gets its own environment and report folder on the
-cluster, ``~/.local/share/qibocal/runs/platinum``, so the simulator and the
-chip never interfere. Prepare its environment once, as in step 6:
+Each configuration contains all its settings: ``platinum`` inherits nothing
+from ``default``. Each also gets its own environment and report folder on the
+cluster, here ``~/.local/share/qibocal/agents/runs/platinum``, so the simulator
+and the chip never interfere. Prepare its environment once, as in step 6:
 
 .. code-block:: sh
 
-   .venv/bin/qibocal-mcp-remote platinum < /dev/null
+   .venv/bin/qibocal-agent mcp platinum < /dev/null
 
 Switch within a session
 ~~~~~~~~~~~~~~~~~~~~~~~
@@ -310,8 +315,7 @@ You do not need to restart Copilot to change configuration. Just ask:
 * *"List the qibocal configurations"* shows every stored configuration and
   which one is active.
 * *"Switch to the platinum configuration"* closes the current server and
-  starts the selected one. Ask to switch to the default configuration to go
-  back.
+  starts the selected one. Ask to switch to ``default`` to go back.
 
 Switching ends the current calibration session, so finish or reject pending
 updates first. Configurations you add while Copilot is running can be used
@@ -320,16 +324,17 @@ right away.
 Change the starting configuration
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-Copilot starts with the default configuration. To start with a named one
-instead, add its name to the registration in ``~/.copilot/mcp-config.json``:
+Copilot starts with the ``default`` configuration. To start with another one,
+add its name after ``mcp`` in the registration, in
+``~/.copilot/mcp-config.json``:
 
 .. code-block:: json
 
    {
      "mcpServers": {
        "qibocal": {
-         "command": "/full/path/to/qibocal-mcp-servers/.venv/bin/qibocal-mcp-remote",
-         "args": ["platinum"]
+         "command": "/full/path/to/qibocal-mcp-servers/.venv/bin/qibocal-agent",
+         "args": ["mcp", "platinum"]
        }
      }
    }

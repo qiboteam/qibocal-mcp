@@ -38,7 +38,7 @@ For example, a generic MCP client configuration entry looks like:
    }
 
 To launch the server from your own machine when the hardware is behind SSH,
-configure ``qibocal-mcp-remote`` from the orchestration package as the
+configure ``qibocal-agent mcp`` from the orchestration package as the
 subprocess instead; see :doc:`../tutorials/interactive`.
 
 The server accepts the MCP connection and lists its tools, prompt and resource

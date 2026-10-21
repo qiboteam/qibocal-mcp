@@ -1,9 +1,16 @@
-"""Sphinx configuration; documentation builds do not import hardware code."""
+"""Sphinx configuration; the CLI reference imports the commands, not hardware code."""
 
 project = "qibocal-mcp-servers"
 author = "The Qibo team"
 copyright = "2026, The Qibo team"
-extensions = []
+extensions = ["sphinx_click"]
+# One manual page per command, generated from the click definitions.
+man_pages = [
+    ("man/qibocal-mcp", "qibocal-mcp", "serve Qibocal calibration over MCP",
+     [author], 1),
+    ("man/qibocal-agent", "qibocal-agent", "calibrate Qibocal platforms with AI agents",
+     [author], 1),
+]
 root_doc = "index"
 exclude_patterns = ["_build", ".DS_Store", "Thumbs.db"]
 html_theme = "furo"

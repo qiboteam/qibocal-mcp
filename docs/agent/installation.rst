@@ -27,7 +27,7 @@ full path of the one your assistant will launch, and keep it for later:
 
 .. code-block:: sh
 
-   realpath .venv/bin/qibocal-mcp-remote
+   realpath .venv/bin/qibocal-agent
 
 Finally, you need an AI assistant that supports MCP servers. The tutorials use
 GitHub Copilot CLI, which needs Node.js:
@@ -84,7 +84,7 @@ What runs on the cluster
 On the first launch, the orchestration creates a Python environment on the
 access node and installs the server and Qibocal in it. The access node needs
 ``python3`` 3.12 or 3.13, ``git``, and ``pip`` or ``uv``. The environment lives
-in ``~/.cache/qibocal/agent/envs/`` on the cluster and is reused afterwards.
+in ``~/.cache/qibocal/agents/envs/`` on the cluster and is reused afterwards.
 
 Your platform's drivers are installed there too, when you list them as
 dependencies, as the interactive tutorial shows. Chrome, which draws the report

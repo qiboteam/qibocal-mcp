@@ -12,11 +12,12 @@ There are two ways to calibrate:
   Copilot CLI. You chat with the assistant, and it runs the experiments and
   shows you the results. This is the best way to start: you see every step
   and can steer at any time.
-* **Autonomously**, with ``qibocal-agent``. You give it an objective with
+* **Autonomously**, with ``qibocal-agent run``. You give it an objective with
   hardware limits, and it plans, runs and inspects experiments on its own.
 
-Both use the same configuration file, so the setup you make for interactive
-use also works for the autonomous agent.
+Both are subcommands of ``qibocal-agent`` and use the same configuration
+file, so the setup you make for interactive use also works for the autonomous
+agent.
 
 Start with the installation, then follow the interactive tutorial from the
 beginning. It is self-contained and uses a simulator, so you can learn the

@@ -1,60 +1,64 @@
 Persistent configuration
 ========================
 
-This is the complete settings reference for the orchestration package.
-For the three or four settings a first run actually needs, see
-:doc:`../tutorials/interactive`; everything on this page is optional.
-The pure ``qibocal-mcp`` server reads no configuration file — it takes
-command-line flags only — so stored defaults on an execution host can never
-silently change what a launch does: ``qibocal-agent`` and
-``qibocal-mcp-remote`` always pass fully resolved settings to the server they
-launch, and internal SLURM workers read no user configuration either.
+This is the complete settings reference for ``qibocal-agent``. For the few
+settings a first run actually needs, see :doc:`../tutorials/interactive`;
+everything on this page is optional. The pure ``qibocal-mcp`` server reads no
+configuration file, only command-line options, so stored settings on an
+execution host can never silently change what a launch does:
+``qibocal-agent`` always passes fully resolved settings to the server it
+launches, and internal SLURM workers read no user configuration either.
 
 File selection
 --------------
 
-Configuration is a JSON file named ``agent.json`` with an optional ``agents``
-object keyed by agent name, plus optional top-level ``agent`` and ``report``
-objects as unnamed defaults. The default path is selected in this order:
+Configurations are stored in a JSON file named ``agents.json``. Its location
+is selected in this order:
 
-1. If ``QIBOCAL_MCP_CONFIG_DIR`` is nonempty:
-   ``$QIBOCAL_MCP_CONFIG_DIR/agent.json``.
+1. If ``QIBOCAL_AGENTS_CONFIG_DIR`` is nonempty:
+   ``$QIBOCAL_AGENTS_CONFIG_DIR/agents.json``.
 2. Otherwise, if ``XDG_CONFIG_HOME`` is nonempty:
-   ``$XDG_CONFIG_HOME/qibocal/agent.json``.
-3. Otherwise: ``~/.config/qibocal/agent.json``.
+   ``$XDG_CONFIG_HOME/qibocal/agents.json``.
+3. Otherwise: ``~/.config/qibocal/agents.json``.
 
 Empty environment values fall through, as in qibocal-report. This reuses the
-configuration folder but configuration management never accesses Qibocal
-Report's ``servers.json`` or authentication files.
+configuration folder, but never accesses Qibocal Report's ``servers.json`` or
+authentication files. ``qibocal-agent config`` prints the selected location
+and the file's content.
 
-``qibocal-agent``, ``qibocal-mcp-remote`` and ``qibocal-report-server``
-all accept:
+Two options of ``qibocal-agent``, written before the subcommand, change the
+selection:
 
-* ``--config FILE``: read only that file; an explicitly selected missing file
-  is an error.
-* ``--no-config``: ignore configuration completely.
+* ``--config FILE`` reads only that file; a missing explicit file is an error.
+* ``--no-config`` ignores configuration files completely.
 
-These flags are mutually exclusive. A missing default file means there are
-no stored defaults. Malformed JSON, unknown keys, unreadable files, invalid
-types, empty or whitespace-only strings and invalid timeouts surface errors;
-they never silently fall back to defaults. The whole selected file is
-validated, including sections not used by the current command.
+These options are mutually exclusive. A missing default file means there are
+no stored settings. Malformed JSON, unknown keys, unreadable files, invalid
+types, empty or whitespace-only strings and invalid timeouts are errors; they
+never silently fall back to defaults. The whole file is validated, including
+configurations not used by the current command.
 
-Named local and remote agents
------------------------------
+The file was previously called ``agent.json``, with a top-level ``agent``
+section. That file is no longer read, and a warning says so; move its
+``agent`` settings into ``agents.default`` and its ``report`` settings into
+``agents.default.report``.
 
-Each named entry uses the agent settings listed below, plus optional
-``objective`` (nonempty string) and ``report`` (report settings object):
+Configurations
+--------------
+
+The file holds named configurations under ``agents``. ``default`` is used
+whenever no name is given; any other name is selected explicitly. Each entry
+takes the settings listed below, plus an optional ``objective`` (nonempty
+string) and ``report`` (report server settings):
 
 .. code-block:: json
 
    {
      "agents": {
-       "local": {
+       "default": {
          "platform": "YOUR_PLATFORM",
          "model": "openai:gpt-4.1",
-         "objective": "Inspect existing evidence only. Do not acquire or update; stop on errors.",
-         "output": "/absolute/local/runs"
+         "objective": "Inspect existing evidence only. Do not acquire or update; stop on errors."
        },
        "myremote": {
          "platform": "YOUR_PLATFORM",
@@ -62,38 +66,40 @@ Each named entry uses the agent settings listed below, plus optional
          "partition": "PARTITION",
          "workdir": "/shared/calibration",
          "output": "/shared/calibration/runs",
-         "report": {"venv": "qibocal-report", "port": 8000}
+         "report": {"port": 8000}
        }
      }
    }
 
-Select an entry with its name:
+Every subcommand takes the name as its first argument:
 
 .. code-block:: sh
 
-   qibocal-agent local
-   qibocal-mcp-remote myremote
-   qibocal-report-server myremote
+   qibocal-agent mcp myremote
+   qibocal-agent run myremote "YOUR_BOUNDED_OBJECTIVE"
+   qibocal-agent report myremote
 
-``qibocal-agent NAME`` needs a saved model and bounded objective; pass a
-second positional argument to override the objective. ``qibocal-mcp-remote``
-needs neither: your interactive client brings its own model.
+``qibocal-agent run`` needs a stored or explicit model and a bounded
+objective; a single argument is a configuration name if one is stored with it,
+and the objective for ``default`` otherwise. ``qibocal-agent mcp`` needs
+neither: your interactive client brings its own model.
+
 Names start with a letter or digit and contain only letters, digits,
-underscores or hyphens. Unknown names error rather than falling back to another
-deployment. Named entries do not inherit top-level unnamed defaults or each
-other's settings. Explicit CLI flags still override the selected entry.
-With no named entries, the old positional-objective syntax remains supported;
-use ``--no-config`` for an ad-hoc launch alongside named configurations.
+underscores or hyphens; ``agent`` and ``agents`` are reserved. Unknown names
+are errors rather than falling back to another configuration. Configurations
+never inherit from each other, ``default`` included. Explicit CLI options
+override the selected configuration. With ``--no-config``, the command-line
+options alone form an ad-hoc ``default`` configuration.
 
 Settings and built-in defaults
 ------------------------------
 
-Keys use underscores in JSON; the corresponding CLI flags use hyphens.
-Every setting is optional in the file. Calibration commands require
-``platform`` supplied by configuration or CLI at runtime; ``qibocal-agent``
-also requires ``model``.
+Keys use underscores in JSON; the corresponding CLI options use hyphens.
+Every setting is optional in the file. Commands require ``platform``,
+supplied by the configuration or the CLI; ``qibocal-agent run`` also requires
+``model``. In the table, ``NAME`` is the name of the selected configuration.
 
-.. list-table:: Agent settings (unnamed ``agent`` section and named entries)
+.. list-table:: Configuration settings
    :header-rows: 1
    :widths: 22 20 58
 
@@ -105,13 +111,16 @@ also requires ``model``.
      - Unset; required at runtime. Installed platform name.
    * - ``model``
      - Nonempty string
-     - Unset; required by ``qibocal-agent`` only. Pydantic AI model identifier,
-       ``github-copilot:MODEL_ID`` or ``openwebui:MODEL_ID``; see
+     - Unset; required by ``qibocal-agent run`` only. Pydantic AI model
+       identifier, ``github-copilot:MODEL_ID`` or ``openwebui:MODEL_ID``; see
        :doc:`model-providers`.
    * - ``model_base_url``
      - Nonempty string
      - Unset; endpoint override for ``openwebui:`` or ``github-copilot:``.
        OpenWebUI URLs include ``/api``. No credentials in URLs.
+   * - ``objective``
+     - Nonempty string
+     - Unset; the bounded objective of ``qibocal-agent run``.
    * - ``ssh``
      - Nonempty string
      - Unset; SSH host/alias of the access node when provided.
@@ -120,26 +129,24 @@ also requires ``model``.
      - Unset; direct execution rather than SLURM dispatch.
    * - ``output``
      - Nonempty string
-     - Agent name for named entries; ``default`` for the unnamed one.
-       Artifact output directory on the execution host.
+     - ``NAME``, under the data folder below. Report folder on the execution
+       host.
    * - ``workdir``
      - Nonempty string
-     - Agent name for named entries; otherwise no working-directory override.
-       Server launch directory (and SLURM worker directory).
+     - ``NAME``, under the cache folder below. Server launch directory, and
+       SLURM worker directory.
    * - ``platforms_dir``
      - Nonempty string
      - Unset; inherits execution-host ``QIBOLAB_PLATFORMS`` after any managed
        repository roots. Explicit path lists take precedence over those roots.
    * - ``venv``
      - Nonempty string
-     - Agent name for named entries unless ``server_python`` is explicit.
-       Unnamed invocations leave it unset; unnamed SSH launches without
-       explicit ``server_python`` default to ``qibocal-mcp``.
+     - ``NAME``, under the cache folder below, unless ``server_python`` is set.
+       Managed environment, or an existing one used in place.
    * - ``server_python``
      - Nonempty string
-     - Unset; current interpreter locally, managed environment with SSH.
-       Explicit values select a preinstalled server and bypass automatic
-       environment/core-server installation. Mutually exclusive with ``venv``.
+     - Unset. An existing interpreter that already contains the server,
+       bypassing the managed environment. Mutually exclusive with ``venv``.
    * - ``platform_repo``
      - JSON array of nonempty strings
      - ``[]``. Trusted platform repositories, in lookup order.
@@ -152,36 +159,30 @@ also requires ``model``.
        effective ``partition``.
    * - ``timeout``
      - Positive finite JSON number
-     - ``3600`` seconds per operation, including queue waiting.
-       Used by ``qibocal-agent``; interactive clients configure their own.
+     - ``3600`` seconds per operation, including queue waiting. Used by
+       ``qibocal-agent run`` and ``qibocal-agent mcp``; interactive clients
+       also configure their own.
 
 String values are not coerced from other types. ``null`` and booleans are not
 valid settings; a timeout must be numeric, not a quoted string, and cannot
-be zero, negative or nonfinite.
-Use ``unset`` to remove a stored value and return to the built-in default
-(unless explicitly overridden on the CLI); do not store ``null``.
+be zero, negative or nonfinite. Use ``unset`` to remove a stored value and
+return to the built-in default; do not store ``null``. API keys are not valid
+settings: keep credentials in environment or provider settings.
 
-Objectives can be saved only on named agents, under ``agents.NAME.objective``.
-Supply operator-approved limits, an execution budget and stopping criteria.
-API keys are not valid configuration settings; keep credentials in
-environment/provider settings.
+Precedence is **explicit CLI > selected configuration > built-in default**.
 
-Precedence is **explicit CLI > command's own section > built-in default**.
-Selecting a name reads ``agents.NAME`` only.
-
-Report server defaults
+Report server settings
 ----------------------
 
-``qibocal-report-server`` uses **explicit CLI > report section > selected agent
-settings > built-in default**. It inherits only ``agent.output``, ``agent.ssh``,
-``agent.workdir`` and an explicitly configured ``agent.venv`` for unnamed
-defaults. With a name, it inherits those fields from ``agents.NAME`` and uses
-``agents.NAME.report`` instead of the top-level ``report`` section. A platform or
-model is not required, and scheduling, driver dependencies and interpreter
-settings are not inherited. Overrides passed to an earlier agent invocation
-are not persisted: supply the same location overrides to the report command.
+``qibocal-agent report`` uses **explicit CLI > NAME.report > NAME's locations
+> built-in default**. From the configuration itself it only inherits
+``output``, ``ssh`` and ``workdir``, so that it serves the reports where the
+server writes them. It never uses the calibration environment: the report
+server always has its own, ``qibocal-report`` unless ``NAME.report.venv`` says
+otherwise. A platform or model is not required. Overrides passed to an earlier
+command are not persisted: give the same location overrides to ``report``.
 
-The ``report`` section accepts only:
+The ``report`` object accepts only:
 
 .. list-table::
    :header-rows: 1
@@ -192,20 +193,16 @@ The ``report`` section accepts only:
      - Built-in default and meaning
    * - ``output``
      - Nonempty string
-     - Agent name for named entries; ``default`` otherwise.
-       Directory to serve; created if absent.
+     - The configuration's ``output``. Directory to serve; created if absent.
    * - ``ssh``
      - Nonempty string
-     - Unset; local execution. Otherwise SSH host/alias containing the reports.
+     - The configuration's ``ssh``; unset for local reports.
    * - ``workdir``
      - Nonempty string
-     - Agent name for named entries; unset otherwise.
-       Working directory on the report host, as for the agent.
+     - The configuration's ``workdir``. Working directory on the report host.
    * - ``venv``
      - Nonempty string
-     - Agent name for named entries; ``qibocal-report`` otherwise.
-       Always-managed environment on the report host.
-       Explicit agent environments are inherited.
+     - ``qibocal-report``. Managed environment on the report host.
    * - ``port``
      - JSON integer, 1 through 65535
      - ``8000``. Local port used in the frontend registration URL.
@@ -221,19 +218,17 @@ The URL is printed after the health endpoint responds; installation and server
 logs go to stderr. The server and tunnel remain attached until Ctrl+C.
 With SLURM, serve the shared output directory on the access node, not a
 compute-node job. The bootstrap uses resolved settings, not the remote host's
-``agent.json``. Upstream Qibocal Report maintains its own server registry.
+``agents.json``. Upstream Qibocal Report maintains its own server registry.
 
 The latest report ``main`` commit is resolved over HTTPS on each launch,
 installed if needed, and its provenance and dependencies checked before launch.
 Network or installation failures prevent startup rather than using a stale
-version. A dedicated report environment is recommended to avoid
-changing an agent environment's dependencies; use ``report.venv`` to override
-an inherited environment. Report and calibration provisioning share the same
-environment lock. No frontend build, Qibolab platform or Chrome setup is
-required to start the backend for registration in an existing frontend.
+version. Report and calibration provisioning share the same environment lock.
+No frontend build, Qibolab platform or Chrome setup is required to start the
+backend for registration in an existing frontend.
 
-Agent list overrides and isolation
-----------------------------------
+List overrides
+--------------
 
 An explicit ``--slurm-arg``, ``--platform-repo`` or ``--dependency`` list
 replaces its entire configured list rather than appending to it. Repeated CLI
@@ -241,7 +236,7 @@ occurrences form the replacement list:
 
 .. code-block:: sh
 
-   qibocal-agent --slurm-arg=--account=ACCOUNT \
+   qibocal-agent run --slurm-arg=--account=ACCOUNT \
      --slurm-arg=--time=00:15:00 "YOUR_BOUNDED_OBJECTIVE"
 
 Use the equals form for dashed values. A nonempty effective ``slurm_arg``
@@ -252,8 +247,8 @@ single-task lifecycle; see :doc:`networking`.
 Execution-host paths and environment selection
 ----------------------------------------------
 
-Relative configured directories are resolved under the execution host's cache
-root, independently of the JSON file's location or current working directory:
+Relative configured directories are resolved on the execution host,
+independently of the JSON file's location or the current working directory:
 
 .. list-table::
    :header-rows: 1
@@ -262,24 +257,24 @@ root, independently of the JSON file's location or current working directory:
    * - Setting
      - Base directory
    * - ``venv``
-     - ``$XDG_CACHE_HOME/qibocal/agent/envs/``
+     - ``$XDG_CACHE_HOME/qibocal/agents/envs/``
    * - ``workdir``
-     - ``$XDG_CACHE_HOME/qibocal/agent/work/``
+     - ``$XDG_CACHE_HOME/qibocal/agents/work/``
    * - ``output``
-     - ``$XDG_DATA_HOME/qibocal/runs/``
+     - ``$XDG_DATA_HOME/qibocal/agents/runs/``
 
 Reports are user data, so they live under the data home; environments and
-working directories can be recreated, so they live in the cache. Unset or
-empty ``XDG_CACHE_HOME`` falls back to ``~/.cache``, and ``XDG_DATA_HOME`` to
+working directories can be recreated, so they live in the cache. Both are
+scoped to ``agents``, apart from other Qibocal runs. Unset or empty
+``XDG_CACHE_HOME`` falls back to ``~/.cache``, and ``XDG_DATA_HOME`` to
 ``~/.local/share``. Nested relative paths, including ``./`` and ``../``, are
 resolved against these bases.
-For a named agent ``lab``, omitted directories default to ``lab``:
-``~/.cache/qibocal/agent/envs/lab``, ``~/.cache/qibocal/agent/work/lab``
-and ``~/.local/share/qibocal/runs/lab``. The unnamed configuration writes
-its reports to ``~/.local/share/qibocal/runs/default``; it gets no implied
-environment or working directory. The report command uses the same locations
-unless overridden. An explicit ``server_python`` suppresses the
-implicit managed agent environment.
+
+Omitted directories default to the configuration's name. For ``lab``:
+``~/.cache/qibocal/agents/envs/lab``, ``~/.cache/qibocal/agents/work/lab``
+and ``~/.local/share/qibocal/agents/runs/lab``; for the default one,
+``.../default``. The report command uses the same locations unless
+overridden. An explicit ``server_python`` suppresses the managed environment.
 
 Absolute paths are not rebased, and ``~`` expands on the execution host,
 including remotely. SSH uses the remote host's home and cache environment,
@@ -288,24 +283,19 @@ Stored values remain unchanged; configuration management does not create
 runtime directories.
 
 Explicit CLI ``--output`` and ``--workdir`` retain their current-directory
-semantics and override configured paths. ``~`` in ``platforms_dir`` entries expands
-on the execution host, so ``~/platforms`` means the remote home over SSH.
-Executable settings remain literal, and environment-variable strings are not
-expanded in path values.
-Prefer absolute shared paths for SSH/SLURM. A Python executable setting should
-name an executable, not a shell command such as ``uv run python``.
+semantics and override configured paths. ``~`` in ``platforms_dir`` entries
+expands on the execution host, so ``~/platforms`` means the remote home over
+SSH. Executable settings remain literal, and environment-variable strings are
+not expanded in path values. Prefer absolute shared paths for SSH/SLURM. A
+Python executable setting should name an executable, not a shell command such
+as ``uv run python``.
 
-Unnamed SSH launches without explicit ``server_python`` provision the named
-``qibocal-mcp`` environment even when ``venv`` is unset. Named agents default
-to their own managed environment locally and remotely. Unnamed local launches
-manage environments only with an effective ``venv``.
 ``server_python`` and ``venv`` are mutually exclusive; this avoids split
 environments. An explicit server interpreter must already contain the server.
-Repository and dependency settings still install into that interpreter, or the
-selected existing interpreter when no managed environment is requested. This is
-an intentional modification; use ``venv`` for isolation.
-The pure server's ``--worker-python`` flag similarly selects an externally
-managed compute-node interpreter that must already contain the server.
+Repository and dependency settings still install into that interpreter. This
+is an intentional modification; use ``venv`` for isolation. The pure server's
+``--worker-python`` option similarly selects an externally managed
+compute-node interpreter that must already contain the server.
 
 .. _existing-environments:
 
@@ -316,7 +306,7 @@ Existing environments
 you use for other Qibo work. A valid environment (with ``pyvenv.cfg`` and an
 executable ``bin/python``) is then used in place: it is never copied,
 recreated or replaced, and an existing folder that is not an environment is
-an error. Relative names still resolve under ``qibocal/agent/envs``, so pass
+an error. Relative names still resolve under ``qibocal/agents/envs``, so pass
 an absolute path, or one starting with ``~``, to select an environment
 elsewhere.
 
@@ -370,7 +360,7 @@ A subdirectory must be relative and stay inside the checkout: traversal,
 absolute paths and symlink escapes are rejected.
 
 Each URL/ref combination has its own cached clone under the execution host's
-``qibocal/agent`` cache. Omitting the ref captures the repository's default
+``qibocal/agents`` cache. Omitting the ref captures the repository's default
 branch on the first clone. Subsequent launches reuse clones **without automatic
 pull, fetch or reset**, preventing unexpected hardware-definition changes.
 Pin a commit for reproducibility. To refresh, choose a new ref or explicitly
@@ -442,18 +432,19 @@ Never store credentials in repository URLs or configuration. See
 :doc:`networking` for host environments and shared caches, and
 :doc:`../agent/installation` for remote bootstrap prerequisites.
 
-Manage defaults without hardware
+Manage the file without hardware
 --------------------------------
 
-The dedicated command is:
+The dedicated subcommand is:
 
 .. code-block:: text
 
-   qibocal-mcp-config [--config FILE] path|show|get KEY|set KEY VALUE|unset KEY
+   qibocal-agent [--config FILE] config [path|show|get KEY|set KEY VALUE|unset KEY]
 
-``KEY`` is ``agents.NAME.key`` or ``agents.NAME.report.key`` for named agents,
-or ``section.key`` for the unnamed ``agent`` and ``report`` defaults.
-It operates only on stored configuration, performs no hardware imports and
+``KEY`` is ``NAME.setting``, or ``NAME.report.setting`` for the report server,
+for example ``default.platform`` or ``lab.report.port``. Without a
+subcommand, it prints the file's location followed by its content. It
+operates only on the stored configuration, performs no hardware imports and
 does not connect to instruments.
 
 .. list-table:: Subcommands
@@ -474,8 +465,8 @@ does not connect to instruments.
      - Validate and write a sparse configuration atomically, creating parent
        directories as needed. A missing file is allowed.
    * - ``unset KEY``
-     - Remove the setting and remove its section if empty. A missing key
-       is an error.
+     - Remove the setting, and the configuration if it becomes empty. A
+       missing key is an error.
 
 With explicit ``--config FILE``, missing files are errors for reads and
 ``unset``, but allowed for ``set``. ``path`` only prints the location.
@@ -488,26 +479,26 @@ String settings take literal text, **not JSON-quoted strings**.
 
 .. code-block:: sh
 
-   qibocal-mcp-config set agents.local.platform YOUR_PLATFORM
-   qibocal-mcp-config set agents.local.model openai:gpt-4.1
-   qibocal-mcp-config set agents.local.objective "YOUR_BOUNDED_OBJECTIVE"
-   qibocal-mcp-config set agents.local.partition PARTITION
-   qibocal-mcp-config set agents.local.venv /shared/qibocal-agent/env
-   qibocal-mcp-config set agents.local.platform_repo '["https://github.com/YOUR_ORG/platforms.git#ref=COMMIT&subdirectory=platforms"]'
-   qibocal-mcp-config set agents.local.dependency '["YOUR_DRIVER_PACKAGE==VERSION"]'
-   qibocal-mcp-config set agents.local.timeout 7200
-   qibocal-mcp-config set agents.local.report.port 8000
-   qibocal-mcp-config set agents.local.slurm_arg '["--account=quantum", "--time=00:15:00"]'
-   qibocal-mcp-config get agents.local.slurm_arg
-   qibocal-mcp-config unset agents.local.slurm_arg
+   qibocal-agent config set local.platform YOUR_PLATFORM
+   qibocal-agent config set local.model openai:gpt-4.1
+   qibocal-agent config set local.objective "YOUR_BOUNDED_OBJECTIVE"
+   qibocal-agent config set local.partition PARTITION
+   qibocal-agent config set local.venv /shared/qibocal-agent/env
+   qibocal-agent config set local.platform_repo '["https://github.com/YOUR_ORG/platforms.git#ref=COMMIT&subdirectory=platforms"]'
+   qibocal-agent config set local.dependency '["YOUR_DRIVER_PACKAGE==VERSION"]'
+   qibocal-agent config set local.timeout 7200
+   qibocal-agent config set local.report.port 8000
+   qibocal-agent config set local.slurm_arg '["--account=quantum", "--time=00:15:00"]'
+   qibocal-agent config get local.slurm_arg
+   qibocal-agent config unset local.slurm_arg
 
 For a separate project-specific file, put ``--config`` before the subcommand:
 
 .. code-block:: sh
 
-   qibocal-mcp-config --config ./agent.json set agents.local.model openai:gpt-4.1
-   qibocal-mcp-config --config ./agent.json set agents.local.platform YOUR_PLATFORM
-   qibocal-agent --config ./agent.json local "YOUR_BOUNDED_OBJECTIVE"
+   qibocal-agent --config ./agents.json config set local.model openai:gpt-4.1
+   qibocal-agent --config ./agents.json config set local.platform YOUR_PLATFORM
+   qibocal-agent --config ./agents.json run local "YOUR_BOUNDED_OBJECTIVE"
 
 Do not add comments to the JSON. Omitting settings is how you request built-in
 defaults; ``show`` will not fill them in. Storing scheduling arguments before
