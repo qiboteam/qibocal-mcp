@@ -14,7 +14,7 @@ The ``qibocal-agent`` package contains the orchestration that launches and
 reaches those servers: ``DeploymentSettings`` and ``launch_for`` in
 ``qibocal_agent/deployment.py`` build the local or SSH launch,
 ``qibocal_agent/environment.py`` provisions managed execution environments,
-and ``qibocal-mcp-remote`` hands the resulting stdio stream to any interactive
+and ``qibocal-agent mcp`` hands the resulting stdio stream to any interactive
 MCP client. ``qibocal-agent`` remains a one-shot autonomous CLI;
 ``open_calibration_agent`` keeps an MCP session alive for multiple Python
 turns. Both fetch the server's ``calibrate`` prompt and context as their

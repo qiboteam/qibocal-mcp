@@ -1,14 +1,14 @@
 """Backend-neutral agent deployment settings and stdio launch construction."""
 
-import argparse
 import json
 import os
 import shlex
 import sys
+from collections.abc import Mapping
 from dataclasses import dataclass, field, fields
 from pathlib import Path
 
-from .config import ConfigError, add_deployment_arguments, validate_value
+from .config import AGENT_FIELDS, DEFAULT, ConfigError, check_setting
 from .environment import source_payload
 
 
@@ -36,7 +36,7 @@ class DeploymentSettings:
                 continue
             value = getattr(self, item.name)
             if value is not None:
-                validate_value(f"agent.{item.name}", value)
+                check_setting(item.name, AGENT_FIELDS[item.name], value)
         if self.platform is None:
             raise ConfigError("platform is required")
         if self.slurm_arg and self.partition is None:
@@ -45,12 +45,12 @@ class DeploymentSettings:
             raise ConfigError("--venv cannot be combined with --server-python")
 
     @classmethod
-    def from_namespace(cls, args: argparse.Namespace) -> "DeploymentSettings":
-        """Discard backend-specific arguments, keeping shared defaults."""
+    def from_values(cls, values: Mapping[str, object]) -> "DeploymentSettings":
+        """Keep the deployment fields of resolved settings, dropping the others."""
         return cls(**{
-            item.name: getattr(args, item.name)
+            item.name: values[item.name]
             for item in fields(cls)
-            if hasattr(args, item.name)
+            if item.name in values
         })
 
 
@@ -78,7 +78,7 @@ def launch_for(settings: DeploymentSettings) -> ServerLaunch:
     command += [f"--slurm-arg={arg}" for arg in settings.slurm_arg]
     venv = settings.venv
     if settings.ssh and settings.server_python is None and venv is None:
-        venv = "qibocal-mcp"
+        venv = DEFAULT
     if venv is not None or settings.platform_repo or settings.dependency or settings.directories:
         options = {
             "venv": venv,
@@ -114,24 +114,4 @@ def launch_for(settings: DeploymentSettings) -> ServerLaunch:
         command=command[0], args=command[1:],
         env=dict(os.environ),
         cwd=settings.workdir if "workdir" not in settings.directories else None,
-    )
-
-
-def add_agent_deployment_arguments(parser: argparse.ArgumentParser) -> None:
-    """Keep hardware/deployment arguments identical across agent entry points."""
-    parser.add_argument("--platform")
-    parser.add_argument("--output")
-    parser.add_argument("--ssh", help="SSH host/alias for the access node")
-    parser.add_argument("--partition", help="New SLURM job for each protocol/update")
-    parser.add_argument(
-        "--server-python", help="Server Python path, on the SSH host if remote"
-    )
-    parser.add_argument("--workdir", help="Working directory on the server/compute nodes")
-    parser.add_argument(
-        "--platforms-dir", help="QIBOLAB_PLATFORMS on the server/compute nodes"
-    )
-    parser.add_argument("--slurm-arg", action="append", help="Extra srun option")
-    add_deployment_arguments(parser)
-    parser.add_argument(
-        "--timeout", type=float, help="Seconds per operation, including queue wait"
     )

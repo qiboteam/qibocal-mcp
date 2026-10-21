@@ -16,8 +16,8 @@ accepts more options in ``~/.copilot/mcp-config.json``:
      "mcpServers": {
        "qibocal": {
          "type": "local",
-         "command": "/full/path/to/qibocal-mcp-servers/.venv/bin/qibocal-mcp-remote",
-         "args": [],
+         "command": "/full/path/to/qibocal-mcp-servers/.venv/bin/qibocal-agent",
+         "args": ["mcp"],
          "env": { "SSH_AUTH_SOCK": "${SSH_AUTH_SOCK}" },
          "tools": ["*"],
          "timeout": 3600000
@@ -46,8 +46,8 @@ registration, using the flags of :doc:`../reference/cli`:
    {
      "mcpServers": {
        "qibocal": {
-         "command": "/full/path/to/qibocal-mcp-servers/.venv/bin/qibocal-mcp-remote",
-         "args": ["--platform", "qutrits", "--ssh", "mycluster",
+         "command": "/full/path/to/qibocal-mcp-servers/.venv/bin/qibocal-agent",
+         "args": ["mcp", "--platform", "qutrits", "--ssh", "mycluster",
                   "--partition", "sim"]
        }
      }
@@ -70,9 +70,9 @@ the cluster:
    * - The assistant runs on
      - Register as its command
    * - Your computer, with hardware behind SSH
-     - ``qibocal-mcp-remote``, with ``ssh`` configured
+     - ``qibocal-agent mcp``, with ``ssh`` configured
    * - The SLURM access node
-     - ``qibocal-mcp-remote`` without ``ssh``, as in
+     - ``qibocal-agent mcp`` without ``ssh``, as in
        :doc:`../tutorials/access-node`, or directly
        ``qibocal-mcp --platform NAME --partition QUEUE``
    * - An allocated compute node, or a machine wired to the instruments

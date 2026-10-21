@@ -1,6 +1,5 @@
 """Serve the calibration reports written by the agent."""
 
-import argparse
 import json
 import os
 import shlex
@@ -10,13 +9,14 @@ import subprocess
 import sys
 import threading
 import time
+from collections.abc import Mapping
 from dataclasses import dataclass, field, fields
 from pathlib import Path
 from typing import TextIO
 from urllib.error import HTTPError, URLError
 from urllib.request import ProxyHandler, build_opener
 
-from .config import ConfigError, parse_settings, validate_value
+from .config import DEFAULT, REPORT_ENVIRONMENT, REPORT_FIELDS, ConfigError, check_setting
 from .deployment import ServerLaunch
 from .environment import REPORT_READY_MARKER, DeploymentError
 
@@ -25,10 +25,10 @@ from .environment import REPORT_READY_MARKER, DeploymentError
 class ReportSettings:
     """Resolved report storage, environment and network settings."""
 
-    output: str = "runs"
+    output: str = DEFAULT
     ssh: str | None = None
     workdir: str | None = None
-    venv: str = "qibocal-report"
+    venv: str = REPORT_ENVIRONMENT
     port: int = 8000
     remote_port: int | None = None
     directories: dict[str, str] = field(default_factory=dict)
@@ -41,16 +41,16 @@ class ReportSettings:
                 continue
             value = getattr(self, item.name)
             if value is not None:
-                validate_value(f"report.{item.name}", value)
+                check_setting(f"report.{item.name}", REPORT_FIELDS[item.name], value)
         if self.ssh is None and self.remote_port != self.port:
             raise ConfigError("A distinct --remote-port requires --ssh")
 
     @classmethod
-    def from_namespace(cls, args: argparse.Namespace) -> "ReportSettings":
+    def from_values(cls, values: Mapping[str, object]) -> "ReportSettings":
         return cls(**{
-            item.name: getattr(args, item.name)
+            item.name: values[item.name]
             for item in fields(cls)
-            if hasattr(args, item.name)
+            if item.name in values
         })
 
 
@@ -171,32 +171,3 @@ def run(settings: ReportSettings) -> None:
         if relay is not None:
             relay.join()
             process.stdout.close()
-
-
-def main(argv: list[str] | None = None) -> None:
-    """Start a managed qibocal-report server for the agent's output directory."""
-    parser = argparse.ArgumentParser(
-        description=__doc__, argument_default=argparse.SUPPRESS
-    )
-    parser.add_argument(
-        "agent_name", nargs="?", default=argparse.SUPPRESS,
-        help="Configured agent whose reports should be served",
-    )
-    parser.add_argument("--output", help="Calibration report directory")
-    parser.add_argument("--ssh", help="SSH host/alias containing the reports")
-    parser.add_argument("--workdir", help="Working directory on the report host")
-    parser.add_argument("--venv", help="Managed environment on the report host")
-    parser.add_argument("--port", type=int, help="Local registration URL port")
-    parser.add_argument(
-        "--remote-port", type=int,
-        help="Report-host port when using SSH (defaults to --port)",
-    )
-    args = parse_settings(parser, "report", argv)
-    try:
-        run(ReportSettings.from_namespace(args))
-    except DeploymentError as error:
-        parser.error(str(error))
-
-
-if __name__ == "__main__":
-    main()

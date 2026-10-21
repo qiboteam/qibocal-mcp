@@ -9,10 +9,12 @@ from contextlib import asynccontextmanager
 from pathlib import Path
 from unittest.mock import patch
 
+from click.testing import CliRunner
 from fastmcp import Client, FastMCP
 from fastmcp.exceptions import ToolError
 
 from qibocal_agent import config, remote
+from qibocal_agent.cli import main
 
 
 def fake_server(platform: str, events: list[str]) -> FastMCP:
@@ -45,13 +47,13 @@ class RemoteTests(unittest.IsolatedAsyncioTestCase):
         self.addCleanup(self.temporary.cleanup)
         self.directory = Path(self.temporary.name)
         environment = patch.dict(
-            os.environ, {"QIBOCAL_MCP_CONFIG_DIR": str(self.directory)}
+            os.environ, {"QIBOCAL_AGENTS_CONFIG_DIR": str(self.directory)}
         )
         environment.start()
         self.addCleanup(environment.stop)
         config.save_config({
-            "agent": {"platform": "simulator", "output": "/runs/simulator"},
             "agents": {
+                "default": {"platform": "simulator", "output": "/runs/simulator"},
                 "platinum": {"platform": "qw5q_platinum", "output": "/runs/platinum"},
                 "tuna": {"platform": "tuna5", "output": "/runs/tuna"},
                 "broken": {"output": "/runs/broken"},
@@ -70,16 +72,12 @@ class RemoteTests(unittest.IsolatedAsyncioTestCase):
         stdio.start()
         self.addCleanup(stdio.stop)
 
-    def proxy(self, argv=()):
-        args = remote.parse_settings(
-            remote._parser(), "agent", list(argv), require_model=False
-        )
-        upstream = remote.Upstream(
-            getattr(args, "config", None), not getattr(args, "no_config", False)
-        )
+    def proxy(self, name=None, cli=None, path=None, enabled=True):
+        """Build the proxy as qibocal-agent mcp does."""
+        values = config.resolve("agent", cli or {}, name, config=path, enabled=enabled)
+        upstream = remote.Upstream(path, enabled)
         return remote.create_proxy(
-            upstream, remote.DeploymentSettings.from_namespace(args),
-            getattr(args, "agent_name", None),
+            upstream, remote.DeploymentSettings.from_values(values), values["name"],
         )
 
     async def test_switch_replaces_the_server_and_forwards_its_tools(self):
@@ -91,10 +89,10 @@ class RemoteTests(unittest.IsolatedAsyncioTestCase):
             self.assertEqual(prompt.messages[0].content.text, "policy for simulator")
 
             listing = (await client.call_tool("list_configurations", {})).structured_content
-            self.assertEqual(listing["active"]["name"], None)
+            self.assertEqual(listing["active"]["name"], "default")
             self.assertEqual(listing["active"]["platform"], "simulator")
             entries = {entry["name"]: entry for entry in listing["configurations"]}
-            self.assertEqual(set(entries), {None, "platinum", "tuna", "broken"})
+            self.assertEqual(set(entries), {"default", "platinum", "tuna", "broken"})
             self.assertEqual(entries["platinum"]["platform"], "qw5q_platinum")
             self.assertIn("--platform is required", entries["broken"]["error"])
 
@@ -111,7 +109,7 @@ class RemoteTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(self.events[-1], "close simulator")
 
     async def test_invalid_selection_keeps_the_active_server(self):
-        async with Client(self.proxy(["tuna"])) as client:
+        async with Client(self.proxy("tuna")) as client:
             for name in ("unknown", "broken"):
                 with self.subTest(name=name), self.assertRaises(ToolError):
                     await client.call_tool("switch_configuration", {"name": name})
@@ -135,23 +133,22 @@ class RemoteTests(unittest.IsolatedAsyncioTestCase):
         self.assertIn("cannot launch simulator", stderr.getvalue())
 
     async def test_cli_overrides_apply_only_to_the_initial_configuration(self):
-        async with Client(self.proxy(["--platform", "override"])) as client:
+        async with Client(self.proxy(cli={"platform": "override"})) as client:
             self.assertEqual((await client.call_tool("whoami", {})).data, "override")
             await client.call_tool("switch_configuration", {"name": "tuna"})
             self.assertEqual((await client.call_tool("whoami", {})).data, "tuna5")
 
     async def test_explicit_file_is_reread_and_no_config_disables_switching(self):
         selected = self.directory / "other.json"
-        config.save_config({"agent": {"platform": "first"}}, selected)
-        async with Client(self.proxy(["--config", str(selected)])) as client:
+        config.save_config({"agents": {"default": {"platform": "first"}}}, selected)
+        async with Client(self.proxy(path=selected)) as client:
             # Entries added during the session are usable without restarting.
             config.save_config({
-                "agent": {"platform": "first"},
-                "agents": {"added": {"platform": "later"}},
+                "agents": {"default": {"platform": "first"}, "added": {"platform": "later"}},
             }, selected)
             await client.call_tool("switch_configuration", {"name": "added"})
             self.assertEqual((await client.call_tool("whoami", {})).data, "later")
-        async with Client(self.proxy(["--no-config", "--platform", "adhoc"])) as client:
+        async with Client(self.proxy(cli={"platform": "adhoc"}, enabled=False)) as client:
             listing = (await client.call_tool("list_configurations", {})).structured_content
             self.assertEqual(listing["configurations"], [])
             with self.assertRaisesRegex(ToolError, "--no-config"):
@@ -159,10 +156,10 @@ class RemoteTests(unittest.IsolatedAsyncioTestCase):
             self.assertEqual((await client.call_tool("whoami", {})).data, "adhoc")
 
     def test_command_line_requires_a_platform_but_no_model(self):
-        stderr = io.StringIO()
-        with contextlib.redirect_stderr(stderr), self.assertRaises(SystemExit):
-            remote.main(["--no-config"])
-        self.assertIn("--platform is required", stderr.getvalue())
+        result = CliRunner().invoke(main, ["--no-config", "mcp"])
+        self.assertEqual(result.exit_code, 2)
+        self.assertIn("--platform is required", result.output)
         with patch.object(FastMCP, "run") as run:
-            remote.main(["--no-config", "--platform", "qpu"])
+            result = CliRunner().invoke(main, ["--no-config", "mcp", "--platform", "qpu"])
+        self.assertEqual(result.exit_code, 0, result.output)
         run.assert_called_once_with(transport="stdio", show_banner=False)

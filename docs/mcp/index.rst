@@ -28,7 +28,7 @@ clients without resource support.
 
 To start the server from a different machine than the one it runs on, use the
 companion :doc:`qibocal-agent package <../agent/index>`: its
-``qibocal-mcp-remote`` command carries the same stdio interface over SSH and
+``qibocal-agent mcp`` command carries the same stdio interface over SSH and
 can provision the server environment for you.
 
 Complete the installation below, then configure your client's subprocess and

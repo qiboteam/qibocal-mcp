@@ -1,16 +1,15 @@
 """Serve the calibration MCP over stdio from anywhere, for interactive clients.
 
-Register this command in any MCP client configuration. It resolves the same
-deployment settings as the agent (configuration file, named agents and CLI
-options) and launches the server: directly on this machine, or over SSH to
-the access node, provisioning a managed environment there when required.
+``qibocal-agent mcp`` resolves the same deployment settings as the agent
+(configuration file, named agents and CLI options) and launches the server:
+directly on this machine, or over SSH to the access node, provisioning a
+managed environment there when required.
 
 It stays in between as a thin proxy, forwarding every server tool, prompt and
 resource, so the conversation can switch to another stored configuration with
 the switch_configuration tool, without restarting the client.
 """
 
-import argparse
 import asyncio
 import sys
 from contextlib import AsyncExitStack, asynccontextmanager
@@ -24,8 +23,8 @@ from mcp.types import (
     ToolListChangedNotification,
 )
 
-from .config import ConfigError, load_config, parse_settings
-from .deployment import DeploymentSettings, add_agent_deployment_arguments, launch_for
+from .config import DEFAULT, ConfigError, configured_names, resolve
+from .deployment import DeploymentSettings, launch_for
 from .environment import DeploymentError
 
 INSTRUCTIONS = (
@@ -36,29 +35,6 @@ INSTRUCTIONS = (
     "unfinished work there is abandoned. Read the calibration context again "
     "after switching."
 )
-
-
-class _Parser(argparse.ArgumentParser):
-    """Report invalid settings to the caller instead of exiting the proxy."""
-
-    def error(self, message):
-        raise ConfigError(message)
-
-
-def _parser(cls: type[argparse.ArgumentParser] = argparse.ArgumentParser):
-    parser = cls(description=__doc__, argument_default=argparse.SUPPRESS)
-    parser.add_argument(
-        "agent_name", nargs="?", default=argparse.SUPPRESS,
-        help="Configured agent whose deployment settings should be used",
-    )
-    add_agent_deployment_arguments(parser)
-    return parser
-
-
-def resolve(argv: list[str]) -> DeploymentSettings:
-    """Resolve one configuration, raising ConfigError rather than exiting."""
-    args = parse_settings(_parser(_Parser), "agent", argv, require_model=False)
-    return DeploymentSettings.from_namespace(args)
 
 
 def summary(settings: DeploymentSettings) -> dict:
@@ -88,11 +64,13 @@ class Upstream:
     def current(self) -> Client:
         return self.client if self.client is not None else self.empty
 
-    def selection(self, name: str | None) -> list[str]:
+    def settings_for(self, name: str) -> DeploymentSettings:
+        """Resolve a stored configuration, reading the file again each time."""
         if not self.enabled:
             raise ConfigError("Configuration files are disabled (--no-config)")
-        argv = [] if self.config is None else ["--config", str(self.config)]
-        return argv + ([] if name is None else [name])
+        return DeploymentSettings.from_values(resolve(
+            "agent", {}, None if name == DEFAULT else name, config=self.config,
+        ))
 
     async def close(self) -> None:
         if self.stack is not None:
@@ -121,7 +99,7 @@ class Upstream:
         self.client, self.stack = client, stack
 
 
-def create_proxy(upstream: Upstream, initial: DeploymentSettings, name: str | None) -> FastMCP:
+def create_proxy(upstream: Upstream, initial: DeploymentSettings, name: str) -> FastMCP:
     @asynccontextmanager
     async def lifespan(server):
         try:
@@ -141,23 +119,18 @@ def create_proxy(upstream: Upstream, initial: DeploymentSettings, name: str | No
     async def list_configurations() -> dict:
         """List the stored calibration configurations and show the active one.
 
-        name null denotes the unnamed default configuration. Each entry shows
-        platform, ssh host, SLURM partition and output directory, or the
+        default is the configuration used when no name is given. Each entry
+        shows platform, ssh host, SLURM partition and output directory, or the
         reason it cannot be used.
         """
         configurations = []
-        if upstream.enabled:
-            data = load_config(upstream.config, missing_ok=upstream.config is None)
-            names = [None, *data.get("agents", {})]
-            for candidate in names:
-                entry = {"name": candidate}
-                try:
-                    entry |= summary(resolve(upstream.selection(candidate)))
-                except ConfigError as error:
-                    if candidate is None and "agent" not in data:
-                        continue
-                    entry["error"] = str(error)
-                configurations.append(entry)
+        for candidate in configured_names(upstream.config, enabled=upstream.enabled):
+            entry = {"name": candidate}
+            try:
+                entry |= summary(upstream.settings_for(candidate))
+            except ConfigError as error:
+                entry["error"] = str(error)
+            configurations.append(entry)
         return {
             "active": {
                 "name": upstream.name,
@@ -169,18 +142,18 @@ def create_proxy(upstream: Upstream, initial: DeploymentSettings, name: str | No
         }
 
     @mcp.tool
-    async def switch_configuration(ctx: Context, name: str | None = None) -> dict:
+    async def switch_configuration(ctx: Context, name: str = DEFAULT) -> dict:
         """Replace the active Qibocal server with another stored configuration.
 
-        name selects a named configuration from list_configurations; null
-        selects the unnamed default. The previous server is closed first, so
+        name selects a configuration from list_configurations; omit it for the
+        default one. The previous server is closed first, so
         its run handles expire and any unfinished operation there is abandoned:
         finish or record work before switching. A first launch may provision
         an environment and take minutes. Afterwards, read the calibration
         context again; earlier session IDs and report paths no longer apply.
         """
         async with upstream.lock:
-            settings = resolve(upstream.selection(name))
+            settings = upstream.settings_for(name)
             try:
                 await upstream.connect(name, settings)
             except (DeploymentError, OSError, RuntimeError, ValueError) as error:
@@ -196,22 +169,3 @@ def create_proxy(upstream: Upstream, initial: DeploymentSettings, name: str | No
         return {"active": name, **summary(settings)}
 
     return mcp
-
-
-def main(argv: list[str] | None = None) -> None:
-    """Resolve the initial configuration and serve the switching proxy."""
-    parser = _parser()
-    args = parse_settings(parser, "agent", argv, require_model=False)
-    try:
-        initial = DeploymentSettings.from_namespace(args)
-    except ConfigError as error:
-        parser.error(str(error))
-    upstream = Upstream(
-        getattr(args, "config", None), not getattr(args, "no_config", False),
-    )
-    proxy = create_proxy(upstream, initial, getattr(args, "agent_name", None))
-    proxy.run(transport="stdio", show_banner=False)
-
-
-if __name__ == "__main__":
-    main()

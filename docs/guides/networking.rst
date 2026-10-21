@@ -4,7 +4,7 @@ Networking and execution hosts
 Stdio, not HTTP
 ---------------
 
-An MCP client launches ``qibocal-mcp`` (or ``qibocal-mcp-remote``) as a stdio
+An MCP client launches ``qibocal-mcp`` (or ``qibocal-agent mcp``) as a stdio
 subprocess. The orchestration either launches the Python server locally or
 runs it via SSH. MCP messages, including report images, travel over that
 stream. No HTTP listener, port forwarding or HTTP tunnel is needed.
@@ -59,7 +59,7 @@ Client locations
      - Direct execution, one persistent hardware connection
      - Neither option
 
-The same options apply to ``qibocal-agent`` and ``qibocal-mcp-remote``; on the
+The same options apply to ``qibocal-agent`` and ``qibocal-agent mcp``; on the
 access or compute node the plain ``qibocal-mcp`` server can also be used
 directly, without the orchestration package.
 
@@ -88,7 +88,7 @@ The gateway exports its environment to SLURM workers (``--export=ALL``).
 The remote noninteractive environment also supplies ``PATH`` for bootstrap tools,
 ``HOME`` and ``XDG_CACHE_HOME`` for managed caches, and site-specific browser and
 driver settings. Source snapshots and clones are cached under
-``$XDG_CACHE_HOME/qibocal/agent`` (or ``~/.cache/qibocal/agent``). Named environments
+``$XDG_CACHE_HOME/qibocal/agents`` (or ``~/.cache/qibocal/agents``). Named environments
 use its ``envs/NAME`` directory; a path supplied through ``--venv`` overrides only
 the environment location, not the cache root.
 
@@ -108,9 +108,9 @@ There is no automatic node-local staging or compute-node provisioning. Chrome
 and system instrument drivers must exist on compute nodes as well; Python driver
 packages can be installed with ``--dependency``.
 
-An unnamed SSH agent without explicit ``--server-python`` provisions and reuses a
-managed environment, default name ``qibocal-mcp``; ``--venv NAME_OR_PATH``
-selects another. The remote bootstrap needs ``python3`` 3.12/3.13, Git and
+Every configuration without explicit ``--server-python`` provisions and reuses
+a managed environment named after it, such as ``default``; ``--venv
+NAME_OR_PATH`` selects another. The remote bootstrap needs ``python3`` 3.12/3.13, Git and
 ``pip``/``ensurepip``, ``uv`` or external ``pip>=22.3``. It transfers this
 launching installation's server source and metadata over SSH, using checkout
 source or installed distribution metadata, and installs server dependencies
@@ -122,9 +122,7 @@ Managed environments are POSIX-only. Provisioning locks protect installation,
 not active server sessions: use separate environments for concurrent deployments
 with differing source or dependency settings.
 
-Locally, an unnamed launch without ``venv`` or ``server_python`` uses its
-current interpreter. Named agents default to a managed environment with their
-name, locally and remotely. Explicit ``--server-python`` bypasses automatic
+This holds locally and remotely alike. Explicit ``--server-python`` bypasses automatic
 environment/core-server installation and must already contain the server;
 it cannot coexist with ``--venv``. Repository/dependency options in an
 externally managed environment intentionally install into the selected
@@ -138,8 +136,8 @@ interpreter with ``--worker-python``, which must already contain the server.
 (remotely for SSH). On the standalone server it sets the SLURM worker's
 working directory.
 Configured relative ``output`` paths use the execution host's
-``~/.local/share/qibocal/runs`` data folder, and relative ``workdir`` and
-``venv`` paths its ``~/.cache/qibocal/agent/work`` and ``envs`` cache folders. Named agents default to their name in each
+``~/.local/share/qibocal/agents/runs`` data folder, and relative ``workdir`` and
+``venv`` paths its ``~/.cache/qibocal/agents/work`` and ``envs`` cache folders. Named agents default to their name in each
 folder. All three configured directories expand ``~`` on the execution host.
 Explicit CLI output/workdir overrides retain current-directory semantics.
 Local repository source

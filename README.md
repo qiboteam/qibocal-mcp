@@ -6,10 +6,11 @@ Qibocal calibration for AI agents, as two Python packages:
   Qibocal calibration tools and the reusable `calibrate` prompt over stdio.
   Install it where the instruments are reachable, or on a SLURM access node
   to dispatch one job per operation.
-- [**`qibocal-agent`**](packages/agent) — the orchestration. It reaches those
-  servers from anywhere: start the MCP from your laptop through SSH, run an
-  autonomous calibration agent, browse reports, and store your defaults.
-  Its base installation is light: FastMCP only, no Qibocal or hardware stack.
+- [**`qibocal-agent`**](packages/agent) — the orchestration, one command with a
+  subcommand per task. It reaches those servers from anywhere: start the MCP
+  from your laptop through SSH (`mcp`), run an autonomous calibration agent
+  (`run`), browse reports (`report`), and store your configurations
+  (`config`). Its base installation is light: no Qibocal or hardware stack.
 
 This is a single-platform draft, **not a hardware safety layer**. Supply
 approved hardware limits, an execution budget and stopping criteria;
@@ -21,11 +22,11 @@ Install the project on your computer (`git clone` this repository, then
 `uv sync`), and tell Qibocal about your setup once:
 
 ```sh
-.venv/bin/qibocal-mcp-config set agent.platform YOUR_PLATFORM
-.venv/bin/qibocal-mcp-config set agent.platforms_dir '~/path/to/platforms'
-.venv/bin/qibocal-mcp-config set agent.ssh ACCESS_NODE
-.venv/bin/qibocal-mcp-config set agent.partition PARTITION
-.venv/bin/qibocal-mcp-config set agent.dependency '["YOUR_DRIVER_PACKAGE"]'
+.venv/bin/qibocal-agent config set default.platform YOUR_PLATFORM
+.venv/bin/qibocal-agent config set default.platforms_dir '~/path/to/platforms'
+.venv/bin/qibocal-agent config set default.ssh ACCESS_NODE
+.venv/bin/qibocal-agent config set default.partition PARTITION
+.venv/bin/qibocal-agent config set default.dependency '["YOUR_DRIVER_PACKAGE"]'
 ```
 
 Then register the server in any MCP assistant (Copilot CLI, Claude, Cursor,
@@ -35,7 +36,8 @@ OpenCode, ...), for Copilot in `~/.copilot/mcp-config.json`:
 {
   "mcpServers": {
     "qibocal": {
-      "command": "/full/path/to/qibocal-mcp-servers/.venv/bin/qibocal-mcp-remote"
+      "command": "/full/path/to/qibocal-mcp-servers/.venv/bin/qibocal-agent",
+      "args": ["mcp"]
     }
   }
 }
@@ -58,10 +60,10 @@ With the same configuration, add a model and its credentials, then give the
 agent an objective:
 
 ```sh
-.venv/bin/qibocal-mcp-config set agent.model openai:gpt-4.1
+.venv/bin/qibocal-agent config set default.model openai:gpt-4.1
 export OPENAI_API_KEY=...
 
-.venv/bin/qibocal-agent \
+.venv/bin/qibocal-agent run \
   "Calibrate qubit 0's drive frequency using spectroscopy. Sweep no wider
    than 20 MHz, use drive amplitude at most 0.1 and at most 100 shots.
    Run at most two protocols. Inspect plots before accepting an update.
@@ -76,8 +78,8 @@ and explicitly accepts or rejects fitted updates. See the
 ## Browse calibration reports
 
 ```sh
-qibocal-report-server            # serves ~/.local/share/qibocal/runs/default locally
-qibocal-report-server --ssh ACCESS_NODE --output /shared/calibration/runs
+qibocal-agent report            # serves ~/.local/share/qibocal/agents/runs/default locally
+qibocal-agent report --ssh ACCESS_NODE --output /shared/calibration/runs
 ```
 
 Starts a [Qibocal Report](https://github.com/qiboteam/qibocal-report) backend
@@ -96,8 +98,11 @@ test suite under `packages/*/tests`. Build the docs with:
 
 ```sh
 uv sync --group docs
-uv run sphinx-build -W --keep-going -b html docs docs/_build/html
+uv run poe docs   # HTML site in docs/_build/html
+uv run poe man    # manual pages in docs/_build/man
 ```
+
+Both commands also describe themselves with `--help`.
 
 See [development](docs/development.rst) for the source layout, invariants and
 the pinned Qibocal API.

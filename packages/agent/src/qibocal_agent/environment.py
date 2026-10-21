@@ -32,12 +32,12 @@ REPORT_READY_MARKER = "qibocal-mcp:report-listening"
 
 def cache_home() -> Path:
     root = Path(os.environ.get("XDG_CACHE_HOME") or "~/.cache").expanduser().resolve()
-    return root / "qibocal/agent"
+    return root / "qibocal/agents"
 
 
 def data_home() -> Path:
     root = Path(os.environ.get("XDG_DATA_HOME") or "~/.local/share").expanduser().resolve()
-    return root / "qibocal"
+    return root / "qibocal/agents"
 
 
 def directory_path(value: str, folder: str) -> Path:

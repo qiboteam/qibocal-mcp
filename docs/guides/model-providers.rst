@@ -2,7 +2,7 @@ Model providers
 ===============
 
 This page configures the **Pydantic AI** ``qibocal-agent`` and reusable Python
-API. Interactive MCP clients connected through ``qibocal-mcp-remote`` bring
+API. Interactive MCP clients connected through ``qibocal-agent mcp`` bring
 their own model and authentication and ignore every setting here.
 
 Install the ``agent`` extra for all providers below (``uv sync`` in a
@@ -15,7 +15,7 @@ development checkout already includes it):
 Choose a model with **vision and tool calling**. The agent sends objectives,
 platform context, fitting tables and report images to the selected provider.
 Use an endpoint and data policy approved for your experiment; credentials
-belong in the environment, never objectives or ``agent.json``.
+belong in the environment, never objectives or ``agents.json``.
 These options configure the model connection, not the MCP server's transport.
 Local and SSH/SLURM hardware execution work with either provider.
 
@@ -31,7 +31,7 @@ subscription. For an existing GitHub CLI OAuth login:
 
    # Run gh auth login first if not already authenticated.
    export GITHUB_COPILOT_API_KEY="$(gh auth token)"
-   qibocal-agent --model github-copilot:claude-haiku-4.5 \
+   qibocal-agent run --model github-copilot:claude-haiku-4.5 \
      --platform YOUR_PLATFORM "YOUR_BOUNDED_OBJECTIVE"
 
 Alternatively, set ``GITHUB_COPILOT_API_KEY`` to an existing supported OAuth
@@ -60,7 +60,7 @@ Use the exact catalog ID, including dots.
 
 The default endpoint is ``https://api.githubcopilot.com`` (no ``/v1``).
 For an enterprise endpoint or your own gateway, use ``--model-base-url`` or
-``agent.model_base_url``. Without an explicit endpoint, the native provider
+``NAME.model_base_url``. Without an explicit endpoint, the native provider
 reads ``GITHUB_COPILOT_BASE_URL``, ``COPILOT_API_URL`` or
 ``GITHUB_COPILOT_API_BASE`` before using its default. Authentication or
 entitlement failures are surfaced; there is no fallback to a paid OpenAI API.
@@ -80,7 +80,7 @@ administrator and permitted for your account.
 
    export OPENWEBUI_API_KEY=...
    export OPENWEBUI_BASE_URL=http://localhost:3000/api
-   qibocal-agent --model openwebui:YOUR_MODEL_ID \
+   qibocal-agent run --model openwebui:YOUR_MODEL_ID \
      --platform YOUR_PLATFORM "YOUR_BOUNDED_OBJECTIVE"
 
 The API base URL must include ``/api`` (and any deployment path prefix);
@@ -106,11 +106,11 @@ You can persist the nonsecret endpoint and model:
 
 .. code-block:: sh
 
-   qibocal-mcp-config set agent.model openwebui:YOUR_MODEL_ID
-   qibocal-mcp-config set agent.model_base_url http://localhost:3000/api
-   qibocal-agent --platform YOUR_PLATFORM "YOUR_BOUNDED_OBJECTIVE"
+   qibocal-agent config set default.model openwebui:YOUR_MODEL_ID
+   qibocal-agent config set default.model_base_url http://localhost:3000/api
+   qibocal-agent run --platform YOUR_PLATFORM "YOUR_BOUNDED_OBJECTIVE"
 
-Endpoint precedence is ``--model-base-url`` > ``agent.model_base_url`` >
+Endpoint precedence is ``--model-base-url`` > ``NAME.model_base_url`` >
 ``OPENWEBUI_BASE_URL``. There is no implicit localhost endpoint.
 Do not embed credentials in endpoint URLs.
 
@@ -128,6 +128,6 @@ endpoint. Use ``openai-chat:MODEL_ID`` for an OpenAI-compatible endpoint
 that only exposes Chat Completions.
 
 ``--model-base-url`` is reserved for ``openwebui:`` and ``github-copilot:``.
-Unset ``agent.model_base_url`` when switching to another provider; an
+Unset ``NAME.model_base_url`` when switching to another provider; an
 inapplicable explicit endpoint is an error, not an ignored setting.
 Other provider extras must be installed separately as needed.

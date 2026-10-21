@@ -5,6 +5,7 @@ description = "MCP servers exposing Qibocal calibration: direct hardware and SLU
 readme = "README.md"
 requires-python = ">=3.12,<3.14"
 dependencies = [
+    "click>=8.1,<9",
     "fastmcp>=3.0,<4",
     "kaleido>=1.0,<2",
     "qibocal @ git+https://github.com/qiboteam/qibocal@ae0e797a8c93a1110737f7f75586e628e4a2e543",

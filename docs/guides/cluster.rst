@@ -64,7 +64,7 @@ See :doc:`../guides/networking`.
 .. code-block:: sh
 
    export OPENAI_API_KEY=...
-   qibocal-agent --no-config \
+   qibocal-agent --no-config run \
      --model openai:gpt-4.1 --platform YOUR_PLATFORM \
      --ssh ACCESS_NODE --partition PARTITION \
      --venv /shared/YOUR_USER/qibocal-mcp/env \
@@ -94,8 +94,8 @@ installation's server source and metadata (from this checkout or installed
 distribution metadata) over SSH and installs the server dependencies and
 pinned Qibocal in the managed environment. It checks dependencies and imports
 the server before launch. Configuration and model keys are not
-transferred. Without ``--venv`` an SSH launch still manages an environment named
-``qibocal-mcp``, but its default cache/env location must be shared for SLURM.
+transferred. Without ``--venv`` the launch still manages an environment named
+after the configuration, but its default cache/env location must be shared for SLURM.
 An existing environment is reused, not automatically deleted or recreated;
 installation errors stop startup. Dependencies are additive: removing a
 configured requirement does not uninstall it.
@@ -128,7 +128,7 @@ If your site already provides a shared server interpreter, select it explicitly:
 
 .. code-block:: sh
 
-   qibocal-agent --no-config \
+   qibocal-agent --no-config run \
      --model openai:gpt-4.1 --platform YOUR_PLATFORM \
      --ssh ACCESS_NODE --partition PARTITION \
      --server-python /shared/qibocal-agent/.venv/bin/python \
@@ -160,31 +160,31 @@ Store reviewed agent settings rather than repeating paths every time:
 
 .. code-block:: sh
 
-   qibocal-mcp-config set agents.myremote.platform YOUR_PLATFORM
-   qibocal-mcp-config set agents.myremote.model openai:gpt-4.1
-   qibocal-mcp-config set agents.myremote.objective "YOUR_BOUNDED_OBJECTIVE"
-   qibocal-mcp-config set agents.myremote.ssh ACCESS_NODE
-   qibocal-mcp-config set agents.myremote.partition PARTITION
-   qibocal-mcp-config set agents.myremote.venv /shared/YOUR_USER/qibocal-agent/env
-   qibocal-mcp-config set agents.myremote.workdir /shared/calibration-work
-   qibocal-mcp-config set agents.myremote.platform_repo '["https://github.com/YOUR_ORG/platforms.git#ref=COMMIT&subdirectory=platforms"]'
-   qibocal-mcp-config set agents.myremote.dependency '["YOUR_DRIVER_PACKAGE==VERSION"]'
-   qibocal-mcp-config set agents.myremote.output /shared/calibration-runs
-   qibocal-mcp-config set agents.myremote.timeout 7200
-   qibocal-mcp-config set agents.myremote.slurm_arg '["--account=quantum", "--time=00:15:00"]'
-   qibocal-mcp-config show
+   qibocal-agent config set myremote.platform YOUR_PLATFORM
+   qibocal-agent config set myremote.model openai:gpt-4.1
+   qibocal-agent config set myremote.objective "YOUR_BOUNDED_OBJECTIVE"
+   qibocal-agent config set myremote.ssh ACCESS_NODE
+   qibocal-agent config set myremote.partition PARTITION
+   qibocal-agent config set myremote.venv /shared/YOUR_USER/qibocal-agent/env
+   qibocal-agent config set myremote.workdir /shared/calibration-work
+   qibocal-agent config set myremote.platform_repo '["https://github.com/YOUR_ORG/platforms.git#ref=COMMIT&subdirectory=platforms"]'
+   qibocal-agent config set myremote.dependency '["YOUR_DRIVER_PACKAGE==VERSION"]'
+   qibocal-agent config set myremote.output /shared/calibration-runs
+   qibocal-agent config set myremote.timeout 7200
+   qibocal-agent config set myremote.slurm_arg '["--account=quantum", "--time=00:15:00"]'
+   qibocal-agent config show
 
 Use your actual account, not the illustrative ``quantum`` value. After reviewing
-the file, ``qibocal-agent myremote`` uses those settings and the saved
+the file, ``qibocal-agent run myremote`` uses those settings and the saved
 objective. Explicit CLI settings override the named entry. The server itself
 reads no configuration file and receives fully resolved flags, so configuration
 stored on the access node cannot silently inject another platform or partition.
 The same named entry also works for interactive use:
-``qibocal-mcp-remote myremote`` serves this exact deployment to any MCP client
-(see :doc:`../tutorials/interactive`), and ``qibocal-report-server myremote``
+``qibocal-agent mcp myremote`` serves this exact deployment to any MCP client
+(see :doc:`../tutorials/interactive`), and ``qibocal-agent report myremote``
 browses its reports.
-Unset an existing ``agents.myremote.server_python`` before storing
-``agents.myremote.venv``.
+Unset an existing ``myremote.server_python`` before storing
+``myremote.venv``.
 CLI repository/dependency lists replace the entire corresponding configured
 list. ``get`` returns arrays as JSON, and ``unset`` restores built-in defaults;
 see :doc:`../guides/configuration`.

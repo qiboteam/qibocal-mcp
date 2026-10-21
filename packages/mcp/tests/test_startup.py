@@ -102,7 +102,7 @@ class StartupTests(unittest.IsolatedAsyncioTestCase):
             patch.dict(os.environ, {"HOME": "/remote/home"}),
             patch("qibocal_mcp.server.create_server", return_value=Mock()),
         ):
-            server.main(["--platform", "qpu", "--platforms-dir", "~/platforms:/absolute"])
+            server.main(["--platform", "qpu", "--platforms-dir", "~/platforms:/absolute"], standalone_mode=False)
             self.assertEqual(
                 os.environ["QIBOLAB_PLATFORMS"], "/remote/home/platforms:/absolute"
             )

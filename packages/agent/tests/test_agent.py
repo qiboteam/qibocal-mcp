@@ -1,6 +1,5 @@
 """Check launch commands and SSH quoting without opening a network connection."""
 
-import argparse
 import json
 import os
 import shlex
@@ -30,7 +29,7 @@ class TransportTests(unittest.TestCase):
             platforms_dir=None, partition=None, workdir=None, slurm_arg=[],
         )
         options.update(changes)
-        return argparse.Namespace(**options)
+        return options
 
     def test_direct_compute_node(self):
         transport = transport_for(self.options())
@@ -82,7 +81,7 @@ class TransportTests(unittest.TestCase):
         tokens = shlex.split(transport.args[-1])
         self.assertEqual(tokens[:3], ["exec", "python3", "-c"])
         request = json.loads(tokens[4])
-        self.assertEqual(request["options"]["venv"], "qibocal-mcp")
+        self.assertEqual(request["options"]["venv"], "default")
         self.assertEqual(request["options"]["platforms_dir"], "/explicit")
         self.assertIn("source", request)
         self.assertIn("--platform", tokens[5:])
@@ -116,7 +115,7 @@ class TransportTests(unittest.TestCase):
 
 class AgentProviderTests(unittest.IsolatedAsyncioTestCase):
     async def test_missing_credentials_do_not_launch_hardware_server(self):
-        args = argparse.Namespace(
+        args = dict(
             model="openwebui:model", model_base_url="http://localhost:3000/api"
         )
         with patch.dict(os.environ, {}, clear=True), patch("qibocal_agent.agent.Client") as client:
@@ -125,7 +124,7 @@ class AgentProviderTests(unittest.IsolatedAsyncioTestCase):
         client.assert_not_called()
 
     async def test_resolved_model_is_passed_to_calibration_agent(self):
-        args = argparse.Namespace(
+        args = dict(
             model="openwebui:model", model_base_url="http://localhost:3000/api",
             platform="qpu", timeout=60, objective="Inspect without acquiring",
         )
@@ -147,13 +146,13 @@ class AgentProviderTests(unittest.IsolatedAsyncioTestCase):
         ):
             create_client.return_value.__aenter__.return_value = client
             await run(args)
-        resolve.assert_called_once_with(args.model, base_url=args.model_base_url)
+        resolve.assert_called_once_with(args["model"], base_url=args["model_base_url"])
         self.assertIs(create_agent.call_args.args[0], model)
         self.assertIn("platform context", create_agent.call_args.kwargs["instructions"])
         self.assertTrue(create_agent.call_args.kwargs["instructions"].startswith(POLICY))
         client.get_prompt.assert_awaited_once_with("calibrate")
         toolset.assert_called_once_with(client)
-        calibration.run.assert_awaited_once_with(args.objective)
+        calibration.run.assert_awaited_once_with(args["objective"])
         output.assert_called_once_with("No updates.")
 
     async def test_python_factory_keeps_client_alive_for_multiple_turns(self):

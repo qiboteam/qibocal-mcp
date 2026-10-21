@@ -6,7 +6,7 @@ Where files live
 
 Both direct and queued execution collect one standard Qibocal report per MCP
 session under ``OUTPUT/sessions/<session_id>/``. With default settings this is
-``~/.local/share/qibocal/runs/default/sessions/<session_id>/`` on the execution
+``~/.local/share/qibocal/agents/runs/default/sessions/<session_id>/`` on the execution
 host (``runs/NAME`` for a named configuration). Each execution has a dedicated
 ``data/<protocol>-<iteration>/`` directory; repeated protocols get new iterations
 rather than overwriting earlier runs. Discovery alone does not create a report.
@@ -62,7 +62,7 @@ the protocol, targets and resolved parameters, including platform defaults;
 its update flag becomes true only after an accepted update.
 ``new_platform/`` initially matches ``platform/`` and is refreshed as successful
 executions and accepted updates change the live session state.
-Serve ``OUTPUT`` with ``qibocal-report-server`` to discover these session reports.
+Serve ``OUTPUT`` with ``qibocal-agent report`` to discover these session reports.
 
 ``append_note`` stores session plans/summaries or per-run findings as Qibocal
 notes with content, UTC timestamp and optional caller-supplied author.

@@ -10,8 +10,9 @@ The repository is a uv workspace with two distributions:
 every MCP server and nothing else:
 
 * ``server.py``: responsive direct-server frontend with background hardware
-  startup, and the ``qibocal-mcp`` entry point (plain flags, no configuration
-  file, direct or ``--partition`` gateway mode).
+  startup, and the ``qibocal-mcp`` click command (plain options, no
+  configuration file, direct or ``--partition`` gateway mode). It stays a
+  single command, as the package has nothing else to expose.
 * ``runtime.py``: internal main-thread hardware server, also used directly
   inside SLURM workers.
 * ``slurm.py``: gateway serialization, dispatch and accepted-state handoff.
@@ -31,9 +32,13 @@ every MCP server and nothing else:
   calibration stack.
 
 ``packages/agent`` — the ``qibocal-agent`` distribution (module
-``qibocal_agent``), the orchestration; its base dependencies are empty
-(FastMCP only, no Qibocal) and the ``agent`` extra adds the Pydantic AI stack:
+``qibocal_agent``, the import name of the same package), the orchestration;
+its base dependencies are click and FastMCP, without Qibocal, and the
+``agent`` extra adds the Pydantic AI stack:
 
+* ``cli.py``: the ``qibocal-agent`` click group and its subcommands ``run``,
+  ``mcp``, ``report`` and ``config``. Heavy imports stay inside the
+  subcommands, so ``--help`` remains fast.
 * ``deployment.py``: ``DeploymentSettings`` and the ``launch_for`` stdio
   launch contract (local or SSH).
 * ``environment.py``: execution-host environment bootstrap, cached
@@ -41,26 +46,27 @@ every MCP server and nothing else:
   over SSH, so it must remain a single standard-library file. Its
   ``source_payload`` ships the ``qibocal-mcp`` source from the repository
   checkout or the locally installed distribution.
-* ``remote.py``: the ``qibocal-mcp-remote`` proxy for interactive clients.
+* ``remote.py``: the ``qibocal-agent mcp`` proxy for interactive clients.
   It owns one upstream server, forwards its tools, prompts and resources via
   FastMCP's ``ProxyProvider``, and adds ``list_configurations`` and
   ``switch_configuration``. Switching closes the previous server before
   launching the next, since both may target the same instruments; a failed
   launch leaves the proxy up with only the switching tools.
 * ``agent.py``: Pydantic AI transport adapter, reusable
-  ``open_calibration_agent`` async context manager and one-shot CLI. The
+  ``open_calibration_agent`` async context manager and the one-shot run. The
   calibration policy is fetched from the server's ``calibrate`` prompt, not
   embedded.
 * ``models.py``: GitHub Copilot subscription and OpenWebUI model selection.
-* ``config.py``: validated persistent defaults (``agent``/``report`` sections
-  and named agents) and the ``qibocal-mcp-config`` CLI.
-* ``report.py``: the managed ``qibocal-report-server`` launcher and tunnel.
+* ``config.py``: the validated configuration file, ``agents.json``, holding
+  named configurations (``default`` when no name is given), and ``resolve``,
+  which merges built-ins, a stored configuration and explicit CLI values.
+* ``report.py``: the managed ``qibocal-agent report`` launcher and tunnel.
 
 Each package has its own ``tests/`` directory with ``unittest`` coverage;
 ``packages/mcp/tests`` requires the Qibocal stack, while
 ``packages/agent/tests`` is hardware-free.
 
-Configuration lives in ``qibocal/agent.json``; caches use ``qibocal/agent``
+Configuration lives in ``qibocal/agents.json``; caches use ``qibocal/agents``
 under their respective XDG roots. Review :doc:`mcp/installation` before
 changing the pinned Qibocal API. Preserve stdout for MCP/worker protocols,
 and keep model API calls out of the servers. Operational invariants are
@@ -91,14 +97,14 @@ flags; target-host and worker user configuration must not be read, and the
 server package must keep accepting no configuration file at all.
 Keep provisioning diagnostics on stderr, never the MCP/worker protocol stream.
 
-SSH launches without an explicit server interpreter default to the managed
-``qibocal-mcp`` environment; local launches require ``venv`` to manage an
-environment. Reject ``venv`` combined with an explicit ``server_python``.
+Every configuration without an explicit server interpreter owns a managed
+environment named after it, locally and through SSH. Reject ``venv``
+combined with an explicit ``server_python``.
 Repository/dependency installation without a managed environment intentionally
 modifies the selected interpreter; document that behavior rather than implying
 isolation.
 
-Caches belong to the execution host under ``qibocal/agent``, not notebook
+Caches belong to the execution host under ``qibocal/agents``, not notebook
 ``qibocal/envs``. Reuse environments and fingerprint only successful dependency
 state; reconcile changed source/dependencies/requirements without silently
 continuing on errors or deleting/recreating broken/custom environments.
@@ -152,8 +158,9 @@ Build this documentation
 ------------------------
 
 The site uses native reStructuredText and the Furo theme, following Qibolab's
-Qibo branding. The ``docs`` dependency group installs Sphinx and Furo; no
-Sphinx extensions are needed.
+Qibo branding. The ``docs`` dependency group installs Sphinx, Furo and
+``sphinx-click``, which generates the CLI reference and the manual pages
+from the click commands.
 
 The light/dark Qibo logos and favicon in ``docs/_static/`` are copied unchanged
 from `Qibolab <https://github.com/qiboteam/qibolab/tree/e73aebfac321f99dfa67f19d1567dd84eaf9f980/doc/source>`_.
@@ -163,12 +170,15 @@ Theme colors and repository links are configured in ``docs/conf.py``.
 .. code-block:: sh
 
    uv sync --group docs
-   uv run sphinx-build -W --keep-going -b html docs docs/_build/html
+   uv run poe docs
+   uv run poe man
 
-Open ``docs/_build/html/index.html``. ``-W`` treats warnings as failures;
-``--keep-going`` reports all warnings before the build exits.
-Sphinx reads static documentation without importing project modules, connecting
-to hardware or requesting model credentials. Generated output is not source
+``poe docs`` builds the site in ``docs/_build/html``, and ``poe man`` the
+manual pages ``qibocal-mcp.1`` and ``qibocal-agent.1`` in ``docs/_build/man``,
+from ``docs/man/``; read one with ``man docs/_build/man/qibocal-agent.1``.
+Both run ``sphinx-build`` with ``-W``, treating warnings as failures, and
+``--keep-going``, reporting all of them. The CLI pages import the click
+commands, which import no hardware code and need no model credentials. Generated output is not source
 and should remain untracked.
 
 The documentation mirrors the package split: ``mcp/index`` documents the

@@ -1,8 +1,6 @@
 """A model-directed calibration loop, without a prescribed strategy."""
 
-import argparse
-import asyncio
-from collections.abc import AsyncIterator
+from collections.abc import AsyncIterator, Mapping
 from contextlib import asynccontextmanager
 
 from fastmcp import Client
@@ -13,9 +11,7 @@ from pydantic_ai.exceptions import UserError
 from pydantic_ai.mcp import MCPToolset
 from pydantic_ai.models import Model
 
-from .config import add_agent_selection_arguments, parse_settings
-from .deployment import DeploymentSettings, add_agent_deployment_arguments, launch_for
-from .environment import DeploymentError
+from .deployment import DeploymentSettings, launch_for
 from .models import resolve_model
 
 # The server's wire interface: its context resource and calibration prompt.
@@ -38,12 +34,10 @@ async def calibration_instructions(client: Client) -> str:
     )
 
 
-def transport_for(args: argparse.Namespace | DeploymentSettings) -> StdioTransport:
+def transport_for(settings: Mapping[str, object] | DeploymentSettings) -> StdioTransport:
     """Adapt the shared launch contract to FastMCP's client transport."""
-    settings = (
-        args if isinstance(args, DeploymentSettings)
-        else DeploymentSettings.from_namespace(args)
-    )
+    if not isinstance(settings, DeploymentSettings):
+        settings = DeploymentSettings.from_values(settings)
     launch = launch_for(settings)
     return StdioTransport(
         command=launch.command, args=launch.args, env=launch.env,
@@ -77,37 +71,11 @@ async def open_calibration_agent(
             yield agent
 
 
-async def run(args):
+async def run(values: Mapping[str, object]) -> None:
     """Keep one direct server or gateway alive for the entire calibration."""
-    model = resolve_model(args.model, base_url=args.model_base_url)
+    model = resolve_model(values["model"], base_url=values.get("model_base_url"))
     async with open_calibration_agent(
-        DeploymentSettings.from_namespace(args), model,
+        DeploymentSettings.from_values(values), model,
     ) as agent:
-        result = await agent.run(args.objective)
+        result = await agent.run(values["objective"])
     print(result.output)
-
-
-def main(argv: list[str] | None = None):
-    """Run a calibration objective with a vision-capable model."""
-    parser = argparse.ArgumentParser(
-        description=__doc__, argument_default=argparse.SUPPRESS
-    )
-    add_agent_selection_arguments(parser)
-    parser.add_argument(
-        "--model", help="Pydantic AI model identifier, github-copilot:ID or openwebui:ID",
-    )
-    parser.add_argument(
-        "--model-base-url", help="OpenWebUI API base URL or Copilot endpoint override"
-    )
-    add_agent_deployment_arguments(parser)
-    args = parse_settings(parser, "agent", argv)
-    if args.objective is None:
-        parser.error("An objective is required (pass one or set agents.NAME.objective)")
-    try:
-        asyncio.run(run(args))
-    except (UserError, DeploymentError) as error:
-        parser.error(str(error))
-
-
-if __name__ == "__main__":
-    main()

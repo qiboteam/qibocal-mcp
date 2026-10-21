@@ -1,6 +1,5 @@
 """A responsive MCP frontend with background hardware initialization."""
 
-import argparse
 import asyncio
 import logging
 import os
@@ -9,6 +8,7 @@ from contextlib import asynccontextmanager, redirect_stdout
 from pathlib import Path
 from uuid import UUID, uuid4
 
+import click
 from fastmcp import Client, Context, FastMCP
 from fastmcp.client.transports import StdioTransport
 from fastmcp.tools import ToolResult
@@ -262,43 +262,68 @@ def create_server(
     return mcp
 
 
-def main(argv: list[str] | None = None):
-    """Run a direct hardware server or a SLURM gateway over stdio."""
-    parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--platform", required=True, help="Qibolab platform name")
-    parser.add_argument("--output", default="runs", help="Report output directory")
-    parser.add_argument("--platforms-dir", help="QIBOLAB_PLATFORMS for this process")
-    parser.add_argument("--partition", help="Dispatch each operation through srun")
-    parser.add_argument(
-        "--worker-python", default=sys.executable,
-        help="Python interpreter for compute-node jobs",
-    )
-    parser.add_argument(
-        "--workdir", default=str(Path.cwd()),
-        help="Working directory for compute-node jobs",
-    )
-    parser.add_argument("--slurm-arg", action="append", default=[], help="Extra srun option")
-    args = parser.parse_args(argv)
-    if args.slurm_arg and args.partition is None:
-        parser.error("--slurm-arg requires --partition")
-    if args.platforms_dir is not None:
+@click.command(
+    context_settings={"help_option_names": ["-h", "--help"]},
+    epilog="""\b
+Examples:
+  qibocal-mcp --platform qw5q --output runs
+  qibocal-mcp --platform qw5q --partition qpu --output /shared/runs
+""",
+)
+@click.version_option(package_name="qibocal-mcp", prog_name="qibocal-mcp")
+@click.option("--platform", required=True, help="Qibolab platform name.")
+@click.option(
+    "--output", default="runs", show_default=True, help="Report output folder."
+)
+@click.option(
+    "--platforms-dir",
+    help="Folder with the platform definitions (sets QIBOLAB_PLATFORMS); "
+    "~ is expanded.",
+)
+@click.option(
+    "--partition",
+    help="SLURM partition: dispatch every operation as its own job, from a "
+    "hardware-free gateway.",
+)
+@click.option(
+    "--worker-python", default=sys.executable, show_default="this interpreter",
+    help="Python interpreter of the SLURM jobs.",
+)
+@click.option(
+    "--workdir", default=lambda: str(Path.cwd()), show_default="current folder",
+    help="Working directory of the SLURM jobs.",
+)
+@click.option("--slurm-arg", multiple=True, help="Extra srun option (repeatable).")
+def main(
+    platform: str, output: str, platforms_dir: str | None, partition: str | None,
+    worker_python: str, workdir: str, slurm_arg: tuple[str, ...],
+) -> None:
+    """Serve Qibocal calibration tools over MCP, on stdio.
+
+    Run it where the instruments are reachable, or on a SLURM access node with
+    --partition. Register it as the command of any MCP client; it reads no
+    configuration file.
+    """
+    if slurm_arg and partition is None:
+        raise click.UsageError("--slurm-arg requires --partition")
+    if platforms_dir is not None:
         # Remote launches pass "~" through unexpanded: resolve it on this host.
         os.environ["QIBOLAB_PLATFORMS"] = os.pathsep.join(
-            os.path.expanduser(entry) for entry in args.platforms_dir.split(os.pathsep)
+            os.path.expanduser(entry) for entry in platforms_dir.split(os.pathsep)
         )
     with redirect_stdout(sys.stderr):
-        if args.partition is None:
-            server = create_server(args.platform, output=Path(args.output))
+        if partition is None:
+            server = create_server(platform, output=Path(output))
         else:
             from .slurm import create_slurm_server
 
             server = create_slurm_server(
-                args.platform,
-                output=Path(args.output),
-                partition=args.partition,
-                python=args.worker_python,
-                workdir=Path(args.workdir),
-                slurm_args=args.slurm_arg,
+                platform,
+                output=Path(output),
+                partition=partition,
+                python=worker_python,
+                workdir=Path(workdir),
+                slurm_args=list(slurm_arg),
             )
     server.run(transport="stdio", show_banner=False)
 
