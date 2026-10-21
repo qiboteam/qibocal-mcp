@@ -1,6 +1,5 @@
 """Report server configuration, provisioning and SSH forwarding."""
 
-import argparse
 import contextlib
 import io
 import json
@@ -20,7 +19,10 @@ from pathlib import Path
 from unittest.mock import MagicMock, Mock, patch
 from urllib.error import URLError
 
+from click.testing import CliRunner
+
 from qibocal_agent import config, environment, report
+from qibocal_agent.cli import main
 
 
 class ReportLaunchTests(unittest.TestCase):
@@ -293,127 +295,89 @@ class ReportConfigTests(unittest.TestCase):
         self.addCleanup(temporary.cleanup)
         self.directory = Path(temporary.name)
         settings = patch.dict(
-            os.environ, {"QIBOCAL_MCP_CONFIG_DIR": str(self.directory)}
+            os.environ, {"QIBOCAL_AGENTS_CONFIG_DIR": str(self.directory)}
         )
         settings.start()
         self.addCleanup(settings.stop)
 
-    def parse(self, arguments=()):
-        parser = argparse.ArgumentParser(argument_default=argparse.SUPPRESS)
-        for name in ("output", "ssh", "workdir", "venv"):
-            parser.add_argument("--" + name)
-        parser.add_argument("--port", type=int)
-        parser.add_argument("--remote-port", type=int)
-        return config.parse_settings(parser, "report", list(arguments))
+    def resolve(self, name=None, cli=None, **kwargs):
+        return config.resolve("report", cli or {}, name, **kwargs)
 
-    def test_agent_location_is_inherited_and_report_values_override_it(self):
-        config.save_config({
-            "agent": {
-                "platform": "qpu", "model": "test", "output": "/shared/runs",
-                "ssh": "access", "workdir": "/shared/project", "venv": "agent-env",
-            },
+    def test_locations_are_inherited_and_report_values_override_them(self):
+        config.save_config({"agents": {"default": {
+            "platform": "qpu", "output": "/shared/runs", "ssh": "access",
+            "workdir": "/shared/project", "venv": "agent-env",
             "report": {"port": 8123, "remote_port": 9000},
-        })
-        args = self.parse()
-        self.assertEqual(args.output, "/shared/runs")
-        self.assertEqual(args.ssh, "access")
-        self.assertEqual(args.workdir, "/shared/project")
-        self.assertEqual(args.venv, "agent-env")
-        self.assertEqual((args.port, args.remote_port), (8123, 9000))
-        args = self.parse(["--output", "other", "--port", "7000"])
-        self.assertEqual(args.output, "other")
-        self.assertEqual((args.port, args.remote_port), (7000, 9000))
+        }}})
+        values = self.resolve()
+        self.assertEqual(values["output"], "/shared/runs")
+        self.assertEqual(values["ssh"], "access")
+        self.assertEqual(values["workdir"], "/shared/project")
+        # The report server never shares the calibration environment.
+        self.assertEqual(values["venv"], config.REPORT_ENVIRONMENT)
+        self.assertEqual((values["port"], values["remote_port"]), (8123, 9000))
+        values = self.resolve(cli={"output": "other", "port": 7000})
+        self.assertEqual(values["output"], "other")
+        self.assertEqual((values["port"], values["remote_port"]), (7000, 9000))
+        self.assertEqual(values["directories"], {})
 
     def test_defaults_are_managed_and_use_one_port(self):
-        args = self.parse(["--no-config"])
-        self.assertEqual(args.output, "default")
-        self.assertEqual(args.directories, {"output": "default"})
-        self.assertEqual(args.venv, "qibocal-report")
-        self.assertEqual((args.port, args.remote_port), (8000, 8000))
+        values = self.resolve(enabled=False)
+        self.assertEqual(values["output"], "default")
+        self.assertEqual(values["directories"], {"output": "default", "workdir": "default"})
+        self.assertEqual(values["venv"], config.REPORT_ENVIRONMENT)
+        self.assertEqual((values["port"], values["remote_port"]), (8000, 8000))
 
-    def test_named_agent_needs_no_location_flags(self):
-        config.save_config({
-            "agent": {"ssh": "unrelated", "output": "unrelated"},
-            "report": {"port": 7000},
-            "agents": {
-                "remote": {
-                    "platform": "qpu", "ssh": "node", "output": "/shared/runs",
-                    "workdir": "/shared/project", "venv": "lab",
-                    "report": {"port": 8123, "remote_port": 9000, "venv": "reports"},
-                },
-                "local": {"output": "local-runs"},
+    def test_named_configuration_needs_no_location_flags(self):
+        config.save_config({"agents": {
+            "default": {"ssh": "unrelated", "output": "unrelated"},
+            "remote": {
+                "platform": "qpu", "ssh": "node", "output": "/shared/runs",
+                "workdir": "/shared/project",
+                "report": {"port": 8123, "remote_port": 9000, "venv": "reports"},
             },
-        })
+            "local": {"output": "local-runs"},
+        }})
         with patch.object(report, "run") as run:
-            report.main(["remote"])
-            run.assert_called_with(report.ReportSettings(
-                ssh="node", output="/shared/runs", workdir="/shared/project",
-                venv="reports", port=8123, remote_port=9000,
-            ))
-            report.main(["local"])
-            run.assert_called_with(report.ReportSettings(
-                output="local-runs", workdir="local", venv="local",
-                directories={"output": "local-runs", "workdir": "local"},
-            ))
-            report.main(["remote", "--output", "explicit", "--port", "8124"])
-            self.assertEqual(run.call_args.args[0].output, "explicit")
-            self.assertEqual(run.call_args.args[0].port, 8124)
-            self.assertEqual(run.call_args.args[0].directories, {})
-        with contextlib.redirect_stderr(io.StringIO()), self.assertRaises(SystemExit):
-            report.main(["unknown"])
+            result = CliRunner().invoke(main, ["report", "remote"])
+        self.assertEqual(result.exit_code, 0, result.output)
+        run.assert_called_once_with(report.ReportSettings(
+            ssh="node", output="/shared/runs", workdir="/shared/project",
+            venv="reports", port=8123, remote_port=9000,
+            directories={},
+        ))
+        values = self.resolve("local")
+        self.assertEqual(values["ssh"], None)
+        self.assertEqual(values["directories"], {"output": "local-runs", "workdir": "local"})
+        result = CliRunner().invoke(main, ["report", "unknown"])
+        self.assertEqual(result.exit_code, 2)
+        self.assertIn("Unknown agent: unknown", result.output)
 
     def test_ports_are_validated(self):
-        for option in ("--port", "--remote-port"):
-            for value in ("0", "65536"):
-                with self.subTest(option=option, value=value), self.assertRaises(SystemExit):
-                    self.parse(["--no-config", option, value])
-
-    def test_named_report_defaults_match_agent_directories(self):
-        config.save_config({"agents": {"lab": {"ssh": "remote-host"}}})
-        with patch.object(report, "run") as run:
-            report.main(["lab"])
-        settings = run.call_args.args[0]
-        self.assertEqual((settings.output, settings.workdir, settings.venv), ("lab", "lab", "lab"))
-        launch = report.launch_for(settings)
-        tokens = shlex.split(launch.args[-1])
-        self.assertEqual(tokens[:3], ["exec", "python3", "-c"])
-        request = json.loads(tokens[4])
-        self.assertEqual(request["options"]["directories"], {
-            "output": "lab", "workdir": "lab",
-        })
+        for value in (0, 65536):
+            with self.subTest(value=value), self.assertRaises(config.ConfigError):
+                self.resolve(cli={"port": value}, enabled=False)
 
     def test_distinct_remote_port_requires_ssh(self):
-        with self.assertRaises(SystemExit):
-            self.parse(["--no-config", "--remote-port", "9000"])
-
-    def test_report_section_and_cli_override_inherited_values(self):
-        config.save_config({
-            "agent": {"output": "agent-runs", "venv": "agent-env"},
-            "report": {"output": "report-runs", "venv": "report-env"},
-        })
-        args = self.parse(["--output", "cli-runs"])
-        self.assertEqual(args.output, "cli-runs")
-        self.assertEqual(args.venv, "report-env")
-        self.assertEqual(args.directories, {})
-        self.assertEqual(self.parse().directories, {"output": "report-runs"})
-        self.assertEqual(self.parse(["--no-config"]).output, "default")
+        with self.assertRaisesRegex(config.ConfigError, "requires --ssh"):
+            self.resolve(cli={"remote_port": 9000}, enabled=False)
 
     def test_explicit_config_and_missing_file(self):
         path = self.directory / "project.json"
-        config.save_config({"agent": {"output": "project-runs"}}, path)
-        self.assertEqual(self.parse(["--config", str(path)]).output, "project-runs")
-        with self.assertRaises(SystemExit):
-            self.parse(["--config", str(self.directory / "missing.json")])
+        config.save_config({"agents": {"default": {"output": "project-runs"}}}, path)
+        self.assertEqual(self.resolve(config=path)["output"], "project-runs")
+        with self.assertRaises(config.ConfigError):
+            self.resolve(config=self.directory / "missing.json")
 
-    def test_empty_venv_is_not_masked_by_default(self):
-        with self.assertRaises(SystemExit):
-            self.parse(["--no-config", "--venv", ""])
+    def test_empty_venv_is_rejected(self):
+        with self.assertRaises(config.ConfigError):
+            self.resolve(cli={"venv": ""}, enabled=False)
 
     def test_invalid_report_config_is_rejected(self):
         for data in (
-            {"report": {"port": True}},
-            {"report": {"port": "8000"}},
-            {"report": {"platform": "qpu"}},
+            {"agents": {"default": {"report": {"port": True}}}},
+            {"agents": {"default": {"report": {"port": "8000"}}}},
+            {"agents": {"default": {"report": {"platform": "qpu"}}}},
         ):
             with self.subTest(data=data), self.assertRaises(config.ConfigError):
                 config.validate_config(data)
