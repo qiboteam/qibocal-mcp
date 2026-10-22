@@ -26,7 +26,7 @@ from qibocal_mcp.calibration import PROMPT, instructions_for
 from qibocal_mcp.plots import FIGURES, VIEW
 from qibocal_mcp.runtime import create_server
 from qibocal_mcp.server import create_server as create_frontend
-from qibocal_mcp.targets import Targets
+from qibocal_mcp.targets import Overrides, Targets
 
 
 @dataclass
@@ -132,17 +132,39 @@ class ServerTests(unittest.IsolatedAsyncioTestCase):
                     with self.assertRaisesRegex(ToolError, "already applied"):
                         await client.call_tool("update_platform", {"run_id": run_id})
 
-    async def test_target_wire_schema_matches_qibocal(self):
-        from pydantic import TypeAdapter
+    async def test_targets_match_qibocal_and_tolerate_text(self):
+        from pydantic import TypeAdapter, ValidationError
         from qibocal.auto.task import Targets as QibocalTargets
 
         adapter = TypeAdapter(Targets)
         original = TypeAdapter(QibocalTargets)
-        self.assertEqual(adapter.json_schema(), original.json_schema())
         for targets in ([0], ["0"], ["a"], [[0, 1]], [[0, 1, 2]], []):
-            self.assertEqual(
-                adapter.validate_python(targets), original.validate_python(targets)
+            # Nested lists become Qibocal's tuples in execute_protocol.
+            selected = [
+                tuple(t) if isinstance(t, list) else t
+                for t in adapter.validate_python(targets)
+            ]
+            self.assertEqual(selected, original.validate_python(targets))
+        # Clients that send JSON as text, or a single target, are understood.
+        for text, expected in (("[2]", [2]), ("2", [2]), (2, [2]), ("q2", ["q2"]),
+                               ("[[0, 1]]", [[0, 1]])):
+            self.assertEqual(adapter.validate_python(text), expected)
+        with self.assertRaises(ValidationError):
+            adapter.validate_python([0, [0, 1]])
+        overrides = TypeAdapter(Overrides)
+        self.assertEqual(overrides.validate_python('{"/a": 1}'), {"/a": 1})
+        self.assertIsNone(overrides.validate_python(None))
+
+    async def test_tool_arguments_declare_plain_json_types(self):
+        """Clients may send a field as text when its top level is an anyOf."""
+        async with Client(create_frontend("synthetic")) as client:
+            execute = next(
+                tool for tool in await client.list_tools()
+                if tool.name == "execute_protocol"
             )
+        properties = execute.inputSchema["properties"]
+        self.assertEqual(properties["targets"]["type"], "array")
+        self.assertEqual(properties["platform_overrides"]["type"], "object")
 
     async def test_calibration_prompt_and_alias_tool_need_no_hardware(self):
         platform = CalibrationPlatform(

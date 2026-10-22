@@ -20,7 +20,7 @@ with redirect_stdout(sys.stderr):
     from qibocal import Executor, Note, create_calibration_platform
     from qibocal.auto.operation import Protocol
     from qibocal.auto.serialize import serialize
-    from qibocal.auto.task import Completed, Targets
+    from qibocal.auto.task import Completed
     from qibocal.protocols import PROTOCOLS
 
     from .artifacts import SessionReport
@@ -35,6 +35,7 @@ from .sessions import (
     pointer_value,
     repository_state,
 )
+from .targets import Overrides, Targets
 
 
 def create_server(
@@ -369,7 +370,7 @@ def create_server(
         parameters: dict,
         targets: Targets,
         ctx: Context,
-        platform_overrides: dict | None = None,
+        platform_overrides: Overrides = None,
     ) -> ToolResult:
         """Acquire, fit and report, without applying fitted platform updates.
 

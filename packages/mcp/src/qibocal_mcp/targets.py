@@ -1,13 +1,50 @@
-"""Qibocal-compatible wire types without importing the calibration stack."""
+"""Qibocal-compatible wire types without importing the calibration stack.
 
-from typing import Annotated
+Tool arguments are declared with a plain top-level JSON type: some clients
+turn a top-level anyOf into a text field, and then send JSON as text. Such
+text is parsed as well.
+"""
 
-from pydantic import BeforeValidator, Field, PlainSerializer
+import json
+from typing import Annotated, Any
+
+from pydantic import AfterValidator, BeforeValidator, Field, WithJsonSchema
 
 QubitId = Annotated[int | str, Field(union_mode="left_to_right")]
-QubitPairId = Annotated[
-    tuple[QubitId, QubitId],
-    BeforeValidator(lambda p: tuple(p.split("-")) if isinstance(p, str) else p),
-    PlainSerializer(lambda p: f"{p[0]}-{p[1]}"),
+
+
+def parse_json(value: Any) -> Any:
+    """Decode JSON received as text; leave anything else to validation."""
+    if isinstance(value, str):
+        try:
+            return json.loads(value)
+        except ValueError:
+            return value
+    return value
+
+
+def target_list(value: Any) -> Any:
+    """Accept JSON text, and a single target in place of a list."""
+    value = parse_json(value)
+    return value if isinstance(value, list) else [value]
+
+
+def homogeneous(targets: list) -> list:
+    """Qibocal takes either qubits or multi-qubit targets, not both at once."""
+    if len({isinstance(target, list) for target in targets}) > 1:
+        raise ValueError("Targets must be all qubit IDs, or all lists of qubit IDs")
+    return targets
+
+
+# Qubit IDs, or lists of IDs for multi-qubit protocols, e.g. [0, 1] or [[0, 1]].
+Targets = Annotated[
+    list[QubitId | list[QubitId]],
+    BeforeValidator(target_list),
+    AfterValidator(homogeneous),
 ]
-Targets = list[QubitId] | list[QubitPairId] | list[tuple[QubitId, ...]]
+# Optional JSON object, declared as an object so it is never sent as text.
+Overrides = Annotated[
+    dict | None,
+    BeforeValidator(parse_json),
+    WithJsonSchema({"type": "object", "additionalProperties": True}),
+]

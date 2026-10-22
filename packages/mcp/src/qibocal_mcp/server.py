@@ -17,7 +17,7 @@ from mcp.types import TextResourceContents
 from .calibration import register_calibration_prompt
 from .plots import APP, register_plot_view
 from .sessions import SessionSource
-from .targets import Targets
+from .targets import Overrides, Targets
 
 logger = logging.getLogger(__name__)
 
@@ -225,7 +225,7 @@ def create_server(
     @mcp.tool(app=APP)
     async def execute_protocol(
         protocol: str, parameters: dict, targets: Targets, ctx: Context,
-        platform_overrides: dict | None = None,
+        platform_overrides: Overrides = None,
     ) -> ToolResult:
         """Acquire, fit and report, without applying fitted platform updates.
 
