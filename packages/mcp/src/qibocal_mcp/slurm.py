@@ -13,7 +13,7 @@ from mcp.types import CallToolResult, TextContent
 from .calibration import register_calibration_prompt
 from .plots import APP, register_plot_view
 from .sessions import SessionSource
-from .targets import Targets
+from .targets import Overrides, Targets
 
 
 class SlurmJobs:
@@ -273,7 +273,7 @@ def create_slurm_server(
     @mcp.tool(app=APP)
     async def execute_protocol(
         protocol: str, parameters: dict, targets: Targets,
-        platform_overrides: dict | None = None,
+        platform_overrides: Overrides = None,
     ) -> ToolResult:
         """Run one protocol in a new SLURM job, without fitted platform updates.
 
