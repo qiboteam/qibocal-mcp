@@ -12,13 +12,14 @@ from unittest.mock import patch
 from fastmcp import Client
 from fastmcp.exceptions import ToolError
 from pydantic import ValidationError
-from qibolab import create_platform
 from qibocal import Note
 from qibocal.auto.notes import dump_notes, load_notes
 from qibocal.auto.operation import Protocol
 from qibocal.auto.output import Output
 from qibocal.calibration import CalibrationPlatform
 from qibocal.calibration.calibration import Calibration, QubitCalibration
+from qibolab import create_platform
+from test_server import acquire, fit, update
 
 from qibocal_mcp.calibration import INSTRUCTIONS, TOOLS
 from qibocal_mcp.locking import locked
@@ -28,7 +29,6 @@ from qibocal_mcp.server import create_server as create_frontend
 from qibocal_mcp.sessions import PlatformState
 from qibocal_mcp.slurm import create_slurm_server
 from qibocal_mcp.worker import run
-from test_server import acquire, fit, update
 
 
 class PersistenceTests(unittest.TestCase):

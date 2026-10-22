@@ -137,23 +137,29 @@ cache, working, platform and output paths, with no node-local staging.
 See :doc:`guides/configuration` and :doc:`guides/networking` for the complete
 user-facing contract and trust/authentication requirements.
 
-Existing tests
---------------
+Tests and linting
+-----------------
 
-With the workspace synced:
+With the workspace synced, ``poe`` runs the same checks as continuous
+integration:
 
 .. code-block:: sh
 
    uv sync
-   uv run --directory packages/mcp python -m unittest discover -s tests
-   uv run --directory packages/agent python -m unittest discover -s tests
+   uv run poe test            # both packages' suites, with coverage
+   uv run poe lint            # ruff, as enforced
+   uv run poe lint-warnings   # a broader, advisory rule set
 
-or with pytest, run each package's ``tests`` directory. For changes limited to
-one area, select the matching module, for example:
+``pytest`` alone runs both suites as well; to focus on one area, select a
+package or module, for example
+``uv run pytest packages/agent/tests/test_config.py``. The ruff rules are
+selected explicitly in ``pyproject.toml``, so a newer ruff release does not
+change what fails the build.
 
-.. code-block:: sh
-
-   uv run --directory packages/agent python -m unittest discover -s tests -p 'test_config.py'
+Continuous integration uses the shared ``qiboteam/workflows`` test workflow,
+as Qibocal does, on Ubuntu and macOS with Python 3.12 and 3.13, and uploads
+the coverage to Codecov. Windows is left out, since managed deployment is
+POSIX-only.
 
 Tests use synthetic callbacks and patched transports/rendering to exercise
 behavior without claiming a real hardware calibration or requiring a live

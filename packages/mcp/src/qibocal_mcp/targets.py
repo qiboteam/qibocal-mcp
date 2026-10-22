@@ -4,7 +4,6 @@ from typing import Annotated
 
 from pydantic import BeforeValidator, Field, PlainSerializer
 
-
 QubitId = Annotated[int | str, Field(union_mode="left_to_right")]
 QubitPairId = Annotated[
     tuple[QubitId, QubitId],

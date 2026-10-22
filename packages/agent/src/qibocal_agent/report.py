@@ -16,7 +16,13 @@ from typing import TextIO
 from urllib.error import HTTPError, URLError
 from urllib.request import ProxyHandler, build_opener
 
-from .config import DEFAULT, REPORT_ENVIRONMENT, REPORT_FIELDS, ConfigError, check_setting
+from .config import (
+    DEFAULT,
+    REPORT_ENVIRONMENT,
+    REPORT_FIELDS,
+    ConfigError,
+    check_setting,
+)
 from .deployment import ServerLaunch
 from .environment import REPORT_READY_MARKER, DeploymentError
 
