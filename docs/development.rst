@@ -44,8 +44,13 @@ its base dependencies are click and FastMCP, without Qibocal, and the
 * ``environment.py``: execution-host environment bootstrap, cached
   source/repositories and dependency provisioning; also shipped standalone
   over SSH, so it must remain a single standard-library file. Its
-  ``source_payload`` ships the ``qibocal-mcp`` source from the repository
-  checkout or the locally installed distribution.
+  ``source_payload`` ships the ``qibocal-mcp`` source, found by
+  ``server_module``: the locally installed distribution, the repository
+  checkout around the code, or else the server folder of the source
+  ``qibocal-agent`` was installed from (``direct_url.json``): the same Git
+  commit, exported once into the local cache, or the sibling folder of a local
+  installation. ``qibocal-agent`` must therefore stay deployable on its own,
+  without depending on ``qibocal-mcp`` and its Qibocal stack.
 * ``remote.py``: the ``qibocal-agent mcp`` proxy for interactive clients.
   It owns one upstream server, forwards its tools, prompts and resources via
   FastMCP's ``ProxyProvider``, and adds ``list_configurations`` and

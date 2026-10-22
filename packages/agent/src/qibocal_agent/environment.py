@@ -17,7 +17,7 @@ import tempfile
 import tomllib
 from importlib import metadata, util
 from pathlib import Path, PurePosixPath
-from urllib.parse import parse_qs
+from urllib.parse import parse_qs, unquote
 
 
 class DeploymentError(RuntimeError):
@@ -144,20 +144,83 @@ def locked(path: Path):
             fcntl.flock(stream, fcntl.LOCK_UN)
 
 
-def source_payload() -> str:
-    """Ship the qibocal-mcp server source, not local orchestration or settings."""
+def fetch_server_source(url: str, commit: str, subdirectory: str) -> Path:
+    """Export one project folder of a Git commit into the local cache, once."""
+    if re.fullmatch(r"[0-9a-f]{40}", commit) is None:
+        raise DeploymentError(f"Invalid qibocal-agent source commit: {commit}")
+    path = PurePosixPath(subdirectory)
+    if path.is_absolute() or ".." in path.parts:
+        raise DeploymentError(f"Invalid server subdirectory: {subdirectory}")
+    destination = cache_home() / "server-sources" / commit
+    with locked(destination.with_suffix(".lock")):
+        if not destination.exists():
+            print(f"Fetching the qibocal-mcp source of {commit[:12]}", file=sys.stderr)
+            destination.parent.mkdir(parents=True, exist_ok=True)
+            with tempfile.TemporaryDirectory(dir=destination.parent) as temporary:
+                clone = Path(temporary) / "clone"
+                command([
+                    "git", "clone", "--quiet", "--no-checkout",
+                    "--filter=blob:none", "--", url, str(clone),
+                ])
+                archive = Path(temporary) / "source.tar"
+                command([
+                    "git", "-C", str(clone), "archive", "--format=tar",
+                    f"--output={archive}", commit, "--", subdirectory,
+                ])
+                staged = Path(temporary) / "source"
+                with tarfile.open(archive) as stream:
+                    stream.extractall(staged, filter="data")
+                os.replace(staged, destination)
+    root = destination / subdirectory
+    if not (root / "pyproject.toml").is_file():
+        raise DeploymentError(
+            f"No qibocal-mcp project in {subdirectory} at {commit[:12]} of {url}"
+        )
+    return root
+
+
+def server_module() -> Path:
+    """Locate the qibocal-mcp source matching this installation.
+
+    In order: the installed server, the repository checkout around this file,
+    and otherwise the server folder next to where qibocal-agent was installed
+    from, i.e. the same Git commit or the same local folder. The orchestration
+    then works without installing the server, and its Qibocal stack, locally.
+    """
     spec = util.find_spec("qibocal_mcp")
     if spec is not None and spec.origin is not None:
-        module = Path(spec.origin).resolve().parent
-    else:
-        # A repository checkout can deploy without installing the server locally.
-        checkout = Path(__file__).resolve().parents[3] / "mcp"
-        module = checkout / "src" / "qibocal_mcp"
-        if not (checkout / "pyproject.toml").is_file():
-            raise DeploymentError(
-                "Managed deployment ships the qibocal-mcp source: install "
-                "qibocal-mcp locally or run from the repository checkout"
-            )
+        return Path(spec.origin).resolve().parent
+    parents = Path(__file__).resolve().parents
+    checkout = parents[3] / "mcp" if len(parents) > 3 else None
+    if checkout is not None and (checkout / "pyproject.toml").is_file():
+        return checkout / "src" / "qibocal_mcp"
+    try:
+        origin = json.loads(
+            metadata.distribution("qibocal-agent").read_text("direct_url.json") or "{}"
+        )
+    except metadata.PackageNotFoundError:
+        origin = {}
+    url = origin.get("url")
+    agent = PurePosixPath(origin.get("subdirectory") or ".")
+    server = str(agent.parent / "mcp") if agent.name == "agent" else None
+    vcs = origin.get("vcs_info", {})
+    if url and server and vcs.get("vcs") == "git" and vcs.get("commit_id"):
+        return fetch_server_source(url, vcs["commit_id"], server) / "src" / "qibocal_mcp"
+    if url and url.startswith("file://") and "dir_info" in origin:
+        # A local installation, from the agent folder of a checkout.
+        folder = Path(unquote(url.removeprefix("file://"))).parent / "mcp"
+        if (folder / "pyproject.toml").is_file():
+            return folder / "src" / "qibocal_mcp"
+    raise DeploymentError(
+        "Managed deployment needs the qibocal-mcp source, which was not found: "
+        "install qibocal-agent from the qibocal-mcp-servers Git repository or a "
+        "checkout of it, or install qibocal-mcp next to it"
+    )
+
+
+def source_payload() -> str:
+    """Ship the qibocal-mcp server source, not local orchestration or settings."""
+    module = server_module()
     root = module.parent.parent
     files = {
         f"src/qibocal_mcp/{path.name}": path.read_bytes()

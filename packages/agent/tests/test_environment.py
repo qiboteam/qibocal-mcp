@@ -271,6 +271,84 @@ class EnvironmentTests(unittest.TestCase):
         ).strip()
         return repository, revision
 
+    def commit_workspace(self, repository, server_text):
+        """Commit a workspace with both packages; return the commit."""
+        server = repository / "packages/mcp"
+        (server / "src/qibocal_mcp").mkdir(parents=True, exist_ok=True)
+        (repository / "packages/agent").mkdir(parents=True, exist_ok=True)
+        (repository / "packages/agent/pyproject.toml").write_text('[project]\nname="qibocal-agent"\n')
+        (server / "pyproject.toml").write_text('[project]\nname = "qibocal-mcp"\n')
+        (server / "README.md").write_text("server\n")
+        (server / "src/qibocal_mcp/server.py").write_text(server_text)
+        if not (repository / ".git").exists():
+            environment.command(["git", "init", "--quiet", str(repository)], capture=True)
+        for arguments in (
+            ["add", "."],
+            ["-c", "user.name=Fixture", "-c", "user.email=fixture@example.invalid",
+             "-c", "commit.gpgsign=false", "commit", "--quiet", "-m", server_text],
+        ):
+            environment.command(["git", "-C", str(repository), *arguments], capture=True)
+        return environment.command(
+            ["git", "-C", str(repository), "rev-parse", "HEAD"], capture=True
+        ).strip()
+
+    def installed_agent(self, origin):
+        """Pretend qibocal-agent alone is installed, recording where it came from."""
+        distribution = Mock()
+        distribution.read_text.return_value = json.dumps(origin)
+        return (
+            patch.object(environment.util, "find_spec", return_value=None),
+            patch.object(
+                environment, "__file__",
+                str(self.directory / "env/lib/python3.12/site-packages/qibocal_agent/environment.py"),
+            ),
+            patch.object(environment.metadata, "distribution", return_value=distribution),
+        )
+
+    def test_agent_installed_from_git_ships_the_server_of_the_same_commit(self):
+        repository = self.directory / "workspace"
+        installed = self.commit_workspace(repository, "# installed commit\n")
+        self.commit_workspace(repository, "# later commit\n")
+        origin = {
+            "url": str(repository), "subdirectory": "packages/agent",
+            "vcs_info": {"vcs": "git", "commit_id": installed},
+        }
+        first, second, third = self.installed_agent(origin)
+        with first, second, third, patch.object(
+            environment, "command", wraps=environment.command
+        ) as run:
+            payload = environment.source_payload()
+            clones = [call for call in run.call_args_list if "clone" in call.args[0]]
+            self.assertEqual(environment.source_payload(), payload)
+            # The exported source is cached: the second payload fetches nothing.
+            self.assertEqual(
+                [call for call in run.call_args_list if "clone" in call.args[0]], clones
+            )
+        self.assertEqual(len(clones), 1)
+        source = environment.unpack_source(payload)
+        self.assertEqual(
+            (source / "src/qibocal_mcp/server.py").read_text(), "# installed commit\n"
+        )
+        self.assertIn('name = "qibocal-mcp"', (source / "pyproject.toml").read_text())
+
+    def test_agent_installed_from_a_local_folder_ships_its_sibling_server(self):
+        repository = self.directory / "checkout"
+        self.commit_workspace(repository, "# local\n")
+        origin = {"url": (repository / "packages/agent").as_uri(), "dir_info": {}}
+        first, second, third = self.installed_agent(origin)
+        with first, second, third:
+            source = environment.unpack_source(environment.source_payload())
+        self.assertEqual((source / "src/qibocal_mcp/server.py").read_text(), "# local\n")
+
+    def test_agent_without_a_known_origin_explains_how_to_deploy(self):
+        first, second, third = self.installed_agent({})
+        with first, second, third:
+            with self.assertRaisesRegex(environment.DeploymentError, "Git repository"):
+                environment.source_payload()
+        for commit, subdirectory in (("main", "packages/mcp"), ("a" * 40, "../outside")):
+            with self.subTest(commit=commit), self.assertRaises(environment.DeploymentError):
+                environment.fetch_server_source(str(self.directory), commit, subdirectory)
+
     def test_real_git_clone_pin_subdirectory_and_reuse(self):
         repository, revision = self.create_repository()
         spec = f"{repository}#ref={revision}&subdirectory=platforms"
