@@ -194,9 +194,10 @@ def mcp(ctx: click.Context, name: str | None, **_) -> None:
 
     With NAME, or settings on the command line, launches that Qibocal server,
     locally or through SSH, preparing its environment when needed, and
-    forwards its tools. Without either, starts idle: nothing is launched until
-    the assistant selects a stored configuration, so one registration serves
-    them all. Configurations are listed and switched within the conversation.
+    forwards its tools. Without either, starts idle: the calibration tools are
+    listed, but nothing is launched until the assistant selects a stored
+    configuration, so one registration serves them all. Configurations are
+    listed and switched within the conversation.
     """
     selection = ctx.find_object(Selection)
     from .remote import Upstream, create_proxy

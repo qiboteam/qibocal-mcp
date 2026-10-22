@@ -314,9 +314,9 @@ and the chip never interfere. Prepare its environment once, as in step 6:
 Select and switch within a session
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-The registration starts no configuration: the calibration tools appear once
-one is selected, and you do not need to restart Copilot to change it. Just
-ask:
+The registration starts no configuration. The calibration tools are listed
+from the start, but they answer only once a configuration is selected, and
+you do not need to restart Copilot to change it. Just ask:
 
 * *"List the qibocal configurations"* shows every stored configuration and
   which one is active, if any.

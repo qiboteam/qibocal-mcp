@@ -123,7 +123,13 @@ class RemoteTests(unittest.IsolatedAsyncioTestCase):
         with contextlib.redirect_stderr(stderr):
             async with Client(self.proxy()) as client:
                 names = {tool.name for tool in await client.list_tools()}
-                self.assertEqual(names, {"list_configurations", "switch_configuration"})
+                # The server's tools stay advertised, answering until a switch.
+                self.assertTrue({"list_configurations", "switch_configuration",
+                                 "execute_protocol"} <= names)
+                with self.assertRaisesRegex(ToolError, "No Qibocal configuration is active"):
+                    await client.call_tool("execute_protocol", {
+                        "protocol": "rabi", "parameters": {}, "targets": [0],
+                    })
                 listing = (await client.call_tool("list_configurations", {})).structured_content
                 self.assertFalse(listing["active"]["connected"])
                 self.assertIn("cannot launch simulator", listing["active"]["error"])
@@ -132,6 +138,47 @@ class RemoteTests(unittest.IsolatedAsyncioTestCase):
                 await client.call_tool("switch_configuration", {"name": "platinum"})
                 self.assertEqual((await client.call_tool("whoami", {})).data, "qw5q_platinum")
         self.assertIn("cannot launch simulator", stderr.getvalue())
+
+    async def test_idle_proxy_advertises_the_server_tools_from_the_start(self):
+        """Clients that list tools once still find them after a switch."""
+        idle = remote.create_proxy(remote.Upstream(None, True))
+        async with Client(idle) as client:
+            names = {tool.name for tool in await client.list_tools()}
+            self.assertTrue({
+                "calibrate", "get_calibration_context", "execute_protocol",
+                "update_platform", "start_session", "list_configurations",
+                "switch_configuration",
+            } <= names)
+            schema = next(
+                tool for tool in await client.list_tools() if tool.name == "execute_protocol"
+            ).inputSchema
+            self.assertIn("platform_overrides", schema["properties"])
+            self.assertEqual(
+                [prompt.name for prompt in await client.list_prompts()], ["calibrate"]
+            )
+            # The instructions need no server; everything else asks for a switch.
+            self.assertIn(
+                "calibration agent",
+                (await client.call_tool("calibrate", {})).content[0].text,
+            )
+            with self.assertRaisesRegex(ToolError, "switch_configuration"):
+                await client.call_tool("get_calibration_context", {})
+            with self.assertRaises(Exception):
+                await client.read_resource("qibocal://context")
+            self.assertEqual(self.events, [])
+            await client.call_tool("switch_configuration", {"name": "platinum"})
+            self.assertEqual((await client.call_tool("whoami", {})).data, "qw5q_platinum")
+
+    async def test_idle_proxy_without_definitions_keeps_the_switching_tools(self):
+        stderr = io.StringIO()
+        with (
+            contextlib.redirect_stderr(stderr),
+            patch("qibocal_agent.remote.server_module", side_effect=OSError("offline")),
+        ):
+            async with Client(remote.create_proxy(remote.Upstream(None, True))) as client:
+                names = {tool.name for tool in await client.list_tools()}
+        self.assertEqual(names, {"list_configurations", "switch_configuration"})
+        self.assertIn("only be listed after a switch: offline", stderr.getvalue())
 
     async def test_cli_overrides_apply_only_to_the_initial_configuration(self):
         async with Client(self.proxy(cli={"platform": "override"})) as client:
@@ -160,7 +207,9 @@ class RemoteTests(unittest.IsolatedAsyncioTestCase):
         upstream = remote.Upstream(None, True)
         async with Client(remote.create_proxy(upstream)) as client:
             names = {tool.name for tool in await client.list_tools()}
-            self.assertEqual(names, {"list_configurations", "switch_configuration"})
+            # The server's tools are advertised, but no server is launched.
+            self.assertTrue({"list_configurations", "switch_configuration",
+                             "get_calibration_context"} <= names)
             self.assertEqual(self.events, [], "nothing launched by connecting")
             listing = (await client.call_tool("list_configurations", {})).structured_content
             self.assertIsNone(listing["active"]["name"])
