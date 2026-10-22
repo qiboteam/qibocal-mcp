@@ -67,16 +67,20 @@ subscriptions, OpenWebUI and other providers are described in
 Installing without uv
 ~~~~~~~~~~~~~~~~~~~~~
 
-With ``pip``, install both packages from the checkout:
+With ``pip``, or any other installer, the orchestration package is enough,
+installed from the Git repository:
 
 .. code-block:: sh
 
-   pip install ./packages/mcp "./packages/agent[agent]"
+   pip install "qibocal-agent[agent] @ git+https://github.com/qiboteam/qibocal-mcp-servers@main#subdirectory=packages/agent"
 
-The server package is needed locally even when the hardware is remote: when
-it prepares the environment on the cluster, the orchestration sends the
-server's source from your installation. Drop ``[agent]`` if you do not need
-the autonomous agent.
+Drop ``[agent]`` if you do not need the autonomous agent. When it prepares the
+environment on the cluster, the orchestration sends the server's source along.
+Without the server package installed locally, it takes that source from the
+same commit of the repository, fetched once with ``git`` into
+``~/.cache/qibocal/agents/server-sources``, so your computer needs no Qibocal
+installation. Installing from a checkout folder works the same way, using the
+``packages/mcp`` folder next to it.
 
 What runs on the cluster
 ~~~~~~~~~~~~~~~~~~~~~~~~
