@@ -7,7 +7,8 @@ managed environment there when required.
 
 It stays in between as a thin proxy, forwarding every server tool, prompt and
 resource, so the conversation can switch to another stored configuration with
-the switch_configuration tool, without restarting the client.
+the switch_configuration tool, without restarting the client, and serve the
+reports of the active one to the browser with the open_reports tool.
 
 Without a configuration named, it starts idle: nothing is launched, and the
 calibration tools appear once the assistant selects a configuration — one
@@ -18,6 +19,7 @@ import asyncio
 import sys
 from contextlib import AsyncExitStack, asynccontextmanager
 from pathlib import Path
+from urllib.parse import quote
 
 from fastmcp import Client, Context, FastMCP
 from fastmcp.client.transports import StdioTransport
@@ -30,9 +32,10 @@ from mcp.types import (
     ToolListChangedNotification,
 )
 
-from .config import DEFAULT, ConfigError, configured_names, resolve
+from .config import DEFAULT, REPORT_ENVIRONMENT, ConfigError, configured_names, resolve
 from .deployment import DeploymentSettings, launch_for
 from .environment import DeploymentError, server_module
+from .report import ReportServer, ReportSettings
 
 INSTRUCTIONS = (
     "Calibration tools are forwarded from the Qibocal server of the active "
@@ -42,7 +45,9 @@ INSTRUCTIONS = (
     "answer with an error until a configuration is selected: ask the user which "
     "one, when calibrating is what they want. Switching closes the previous "
     "server: its run handles expire and unfinished work there is abandoned. "
-    "Read the calibration context again after switching."
+    "Read the calibration context again after switching. open_reports serves "
+    "the reports of the active configuration and returns a link for the user "
+    "to open them, with interactive plots, in the browser."
 )
 INACTIVE = (
     "No Qibocal configuration is active: list them with list_configurations "
@@ -50,6 +55,8 @@ INACTIVE = (
 )
 # Served even without a server: it only returns the calibration instructions.
 STATIC_TOOL = "calibrate"
+# The hosted Qibocal Report interface, opening the server given as a query.
+DASHBOARD = "https://qibo.science/qibocal-report/"
 
 
 class Inactive(Middleware):
@@ -61,6 +68,9 @@ class Inactive(Middleware):
         return await call_next(context)
 
     async def on_read_resource(self, context, call_next):
+        # Interactive views are static pages, which hosts may load in advance.
+        if str(context.message.uri).startswith("ui://"):
+            return await call_next(context)
         raise ResourceError(INACTIVE)
 
 
@@ -132,6 +142,8 @@ class Upstream:
         self.lock = asyncio.Lock()
         # Stands in for the server while none is active; built on first use.
         self.empty: Client | None = None
+        # The report server of the active configuration, once requested.
+        self.reports: ReportServer | None = None
 
     async def current(self) -> Client:
         if self.client is not None:
@@ -148,7 +160,46 @@ class Upstream:
             "agent", {}, None if name == DEFAULT else name, config=self.config,
         ))
 
+    def report_settings(self) -> ReportSettings:
+        """Serve where the active server writes, with its stored report settings."""
+        if self.settings is None:
+            raise ConfigError(
+                "No configuration is active: select one with switch_configuration"
+            )
+        stored = {}
+        if self.enabled:
+            stored = resolve(
+                "report", {}, None if self.name in (None, DEFAULT) else self.name,
+                config=self.config,
+            )
+        settings = self.settings
+        port = stored.get("port", 8000)
+        return ReportSettings(
+            output=settings.output, ssh=settings.ssh, workdir=settings.workdir,
+            directories=settings.directories, port=port,
+            venv=stored.get("venv", REPORT_ENVIRONMENT),
+            remote_port=stored.get("remote_port", port) if settings.ssh else port,
+        )
+
+    async def open_reports(self) -> ReportServer:
+        """Start the report server, or reuse it while it runs."""
+        if self.reports is not None and self.reports.running():
+            return self.reports
+        # Owned before it starts, so that closing meanwhile stops it.
+        reports = self.reports = ReportServer(self.report_settings())
+        try:
+            if not await asyncio.to_thread(reports.start):
+                raise DeploymentError("The report server exited while starting")
+        except BaseException:
+            if self.reports is reports:
+                self.reports = None
+            raise
+        return reports
+
     async def close(self) -> None:
+        if self.reports is not None:
+            reports, self.reports = self.reports, None
+            await asyncio.to_thread(reports.stop)
         if self.stack is not None:
             stack, self.stack, self.client = self.stack, None, None
             await stack.aclose()
@@ -248,5 +299,34 @@ def create_proxy(
         ):
             await ctx.send_notification(notification)
         return {"active": name, **summary(settings)}
+
+    @mcp.tool
+    async def open_reports(session_id: str | None = None) -> dict:
+        """Serve the calibration reports of the active configuration to the user.
+
+        Starts a Qibocal Report server where the reports are written, through
+        an SSH tunnel when they are remote, and keeps it until the
+        configuration changes. A first remote launch may install it and take
+        minutes. Give the user the returned dashboard link: it opens the
+        reports in their browser, with interactive plots. With session_id,
+        from the calibration context, report_link also opens that session's
+        report, once the dashboard has connected.
+        """
+        async with upstream.lock:
+            try:
+                reports = await upstream.open_reports()
+            except ConfigError as error:
+                raise ToolError(str(error)) from error
+            except DeploymentError as error:
+                raise ToolError(f"Could not serve the reports: {error}") from error
+        result = {
+            "dashboard": f"{DASHBOARD}#/connect?server={quote(reports.url, safe='')}",
+            "server": reports.url,
+            "output": reports.settings.output,
+        }
+        if session_id is not None:
+            result["report_id"] = f"sessions/{session_id}"
+            result["report_link"] = f"{DASHBOARD}#/reports/sessions/{session_id}"
+        return result
 
     return mcp

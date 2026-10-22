@@ -27,6 +27,7 @@ with redirect_stdout(sys.stderr):
     from .notes import append_note as persist_note
     from .notes import read_notes
 from .calibration import register_calibration_prompt
+from .plots import APP, figures_meta, register_plot_view
 from .sessions import (
     PlatformState,
     SessionSource,
@@ -108,6 +109,7 @@ def create_server(
         lifespan=lifespan,
     )
     register_calibration_prompt(mcp)
+    register_plot_view(mcp)
 
     async def calibration_context(ctx: Context) -> str:
         """Platform targets and built-in protocol parameter definitions, with units."""
@@ -361,7 +363,7 @@ def create_server(
                 "snapshot": str(report_folder / "platform"), **provenance,
             }
 
-    @mcp.tool
+    @mcp.tool(app=APP)
     async def execute_protocol(
         protocol: str,
         parameters: dict,
@@ -430,6 +432,7 @@ def create_server(
                     TextContent(type="text", text=json.dumps(metadata))
                 ]
                 reports = completed.reports
+                plotted = []
                 if reports is not None:
                     # Built-in Qibocal reports return (Plotly figures, HTML table).
                     entries = (
@@ -441,6 +444,7 @@ def create_server(
                         content.append(
                             TextContent(type="text", text=f"Target {target}: {table}")
                         )
+                        plotted.append((target, figures))
                         for number, figure in enumerate(figures):
                             stem = folder / f"report-{index}-{number}"
                             figure.write_html(stem.with_suffix(".html"))
@@ -451,7 +455,10 @@ def create_server(
                                 Image(path=stem.with_suffix(".png")).to_image_content()
                             )
                 completed_runs[run_id] = completed
-                return ToolResult(content=content, structured_content=metadata)
+                return ToolResult(
+                    content=content, structured_content=metadata,
+                    meta=figures_meta(plotted),
+                )
 
     @mcp.tool
     async def update_platform(run_id: str, ctx: Context) -> dict:

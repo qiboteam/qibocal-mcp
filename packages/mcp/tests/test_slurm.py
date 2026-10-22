@@ -21,6 +21,7 @@ from qibolab import create_platform
 from test_server import acquire, fit, report, update
 
 from qibocal_mcp.calibration import PROMPT, instructions_for
+from qibocal_mcp.plots import FIGURES, VIEW
 from qibocal_mcp.slurm import SlurmJobs, create_slurm_server
 from qibocal_mcp.worker import run
 
@@ -131,6 +132,17 @@ class SlurmTests(unittest.IsolatedAsyncioTestCase):
                     {"protocol": "synthetic", "parameters": {"value": 5e9}, "targets": [0]},
                 )
                 self.assertTrue(any(c.type == "image" for c in result.content))
+                # The worker's JSON response keeps the interactive figures.
+                figures = result.meta[FIGURES]["figures"]
+                self.assertEqual(figures[0]["data"][0]["type"], "scatter")
+                execute = next(
+                    tool for tool in await client.list_tools()
+                    if tool.name == "execute_protocol"
+                )
+                self.assertEqual(execute.meta["ui"]["resourceUri"], VIEW)
+                self.assertIn(
+                    VIEW, [str(resource.uri) for resource in await client.list_resources()]
+                )
                 run_id = result.structured_content["run_id"]
                 report_folder = Path(result.structured_content["report_folder"])
                 original_stats = json.loads((report_folder / "meta.json").read_text())["stats"]

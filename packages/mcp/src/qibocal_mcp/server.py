@@ -15,6 +15,7 @@ from fastmcp.tools import ToolResult
 from mcp.types import TextResourceContents
 
 from .calibration import register_calibration_prompt
+from .plots import APP, register_plot_view
 from .sessions import SessionSource
 from .targets import Targets
 
@@ -101,6 +102,7 @@ def create_server(
         lifespan=lifespan,
     )
     register_calibration_prompt(mcp)
+    register_plot_view(mcp)
 
     async def calibration_context(ctx: Context) -> str:
         client = await asyncio.shield(ctx.lifespan_context["ready"])
@@ -220,7 +222,7 @@ def create_server(
             raise ValueError("Hardware process returned no session metadata")
         return result.structured_content
 
-    @mcp.tool
+    @mcp.tool(app=APP)
     async def execute_protocol(
         protocol: str, parameters: dict, targets: Targets, ctx: Context,
         platform_overrides: dict | None = None,

@@ -18,6 +18,10 @@ every MCP server and nothing else:
 * ``slurm.py``: gateway serialization, dispatch and accepted-state handoff.
 * ``worker.py``: one internal operation per allocation, with JSON on
   stdin/stdout. Workers do not read user configuration.
+* ``plots.py``: the MCP Apps view of ``execute_protocol``'s figures, served
+  as ``ui://qibocal/plots.html`` and fed by the Plotly JSON in the result
+  ``_meta``. The HTML lives in the module, as deployment ships only the
+  server's Python files.
 * ``calibration.py``: the calibration policy, registered on every server as
   the ``calibrate`` MCP prompt and the identically named alias tool
   (for interfaces that ignore MCP prompts), plus context/tool identifiers.
@@ -53,10 +57,12 @@ its base dependencies are click and FastMCP, without Qibocal, and the
   without depending on ``qibocal-mcp`` and its Qibocal stack.
 * ``remote.py``: the ``qibocal-agent mcp`` proxy for interactive clients.
   It owns one upstream server, forwards its tools, prompts and resources via
-  FastMCP's ``ProxyProvider``, and adds ``list_configurations`` and
-  ``switch_configuration``. Switching closes the previous server before
-  launching the next, since both may target the same instruments; a failed
-  launch leaves the proxy up with only the switching tools.
+  FastMCP's ``ProxyProvider``, and adds ``list_configurations``,
+  ``switch_configuration`` and ``open_reports``. Switching closes the previous
+  server, and the report server, before launching the next, since both may
+  target the same instruments; a failed launch leaves the proxy up with only
+  the switching tools. While idle, it advertises the server's definitions,
+  and serves its ``ui://`` views, since they are static.
 * ``agent.py``: Pydantic AI transport adapter, reusable
   ``open_calibration_agent`` async context manager and the one-shot run. The
   calibration policy is fetched from the server's ``calibrate`` prompt, not
@@ -65,7 +71,8 @@ its base dependencies are click and FastMCP, without Qibocal, and the
 * ``config.py``: the validated configuration file, ``agents.json``, holding
   named configurations (``default`` when no name is given), and ``resolve``,
   which merges built-ins, a stored configuration and explicit CLI values.
-* ``report.py``: the managed ``qibocal-agent report`` launcher and tunnel.
+* ``report.py``: the managed ``qibocal-agent report`` launcher and tunnel;
+  ``ReportServer`` starts and stops it, for the command and ``open_reports``.
 
 Each package has its own ``tests/`` directory with ``unittest`` coverage;
 ``packages/mcp/tests`` requires the Qibocal stack, while

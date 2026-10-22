@@ -45,7 +45,8 @@ async def run(
                 request["operation"], request["arguments"]
             )
             return CallToolResult(
-                content=result.content, structuredContent=result.structured_content
+                content=result.content, structuredContent=result.structured_content,
+                _meta=result.meta,
             )
 
 

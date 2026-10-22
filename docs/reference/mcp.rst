@@ -5,7 +5,8 @@ Transport and session
 ---------------------
 
 The server and queued gateway expose the same stdio interface, with exactly
-nine tools, one resource and one prompt. Calls are serialized. Run handles
+nine tools, two resources (the calibration context and the interactive plot
+view) and one prompt. Calls are serialized. Run handles
 belong to the current calibration session and cannot be reused after switching
 sessions or after the server/gateway exits.
 Errors are exposed as MCP errors; failed acquisitions and updates are not
@@ -195,12 +196,29 @@ The response contains structured metadata plus text/image content:
   initial ``updated``/``update_started`` flags.
 * Text containing metadata and per-target report tables.
 * PNG reports as MCP image content, not only file paths.
+* The same figures as Plotly JSON, in the result ``_meta`` under
+  ``qibocal/figures``, with the plotly.js version that should draw them.
+  The model does not see this metadata; it feeds the interactive view below.
 
 See :doc:`../guides/artifacts` for on-disk output. Some protocols lack results
 or reports. In queued mode, each call is a fresh job that restores the latest
 accepted platform snapshot and releases the allocation when done.
 Report content comes directly from the protocol callback through
 ``Executor.report``; the bridge does not render a full report-page template.
+
+Interactive plots (MCP Apps)
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+``execute_protocol`` declares the ``ui://qibocal/plots.html`` view (the
+`MCP Apps <https://modelcontextprotocol.io/extensions/apps/overview>`_
+extension). Chat interfaces supporting it for local servers, such as VS Code
+GitHub Copilot (see the `client matrix
+<https://modelcontextprotocol.io/extensions/client-matrix>`_), render the
+run's figures there, interactive, next to the tool call.
+The view loads plotly.js from ``https://cdn.plot.ly``, the only origin its
+content security policy declares, so the browser showing the conversation
+needs to reach it. Other interfaces ignore the view: the PNG images are what
+the model inspects in every case.
 
 get_notes(run_id=None)
 -----------------------
