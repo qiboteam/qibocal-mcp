@@ -21,6 +21,8 @@ from pathlib import Path
 
 from fastmcp import Client, Context, FastMCP
 from fastmcp.client.transports import StdioTransport
+from fastmcp.exceptions import ResourceError, ToolError
+from fastmcp.server.middleware import Middleware
 from fastmcp.server.providers.proxy import ProxyProvider
 from mcp.types import (
     PromptListChangedNotification,
@@ -30,18 +32,81 @@ from mcp.types import (
 
 from .config import DEFAULT, ConfigError, configured_names, resolve
 from .deployment import DeploymentSettings, launch_for
-from .environment import DeploymentError
+from .environment import DeploymentError, server_module
 
 INSTRUCTIONS = (
     "Calibration tools are forwarded from the Qibocal server of the active "
     "configuration. list_configurations shows the stored configurations and "
     "which one is active, if any; switch_configuration starts the server of "
     "one, replacing the active one. When none is active, the calibration tools "
-    "are not available until a configuration is selected: ask the user which "
+    "answer with an error until a configuration is selected: ask the user which "
     "one, when calibrating is what they want. Switching closes the previous "
     "server: its run handles expire and unfinished work there is abandoned. "
     "Read the calibration context again after switching."
 )
+INACTIVE = (
+    "No Qibocal configuration is active: list them with list_configurations "
+    "and select one with switch_configuration, then retry."
+)
+# Served even without a server: it only returns the calibration instructions.
+STATIC_TOOL = "calibrate"
+
+
+class Inactive(Middleware):
+    """Answer calls needing a server until a configuration is selected."""
+
+    async def on_call_tool(self, context, call_next):
+        if context.message.name != STATIC_TOOL:
+            raise ToolError(INACTIVE)
+        return await call_next(context)
+
+    async def on_read_resource(self, context, call_next):
+        raise ResourceError(INACTIVE)
+
+
+def server_definitions() -> FastMCP:
+    """The server's frontend, for its tool definitions; nothing is started.
+
+    Its source is the one deployment ships: installed, in the checkout, or
+    fetched from the commit qibocal-agent was installed from. The frontend
+    imports neither Qibocal nor hardware code.
+    """
+    module = server_module()
+    try:
+        from qibocal_mcp.server import create_server
+    except ImportError:
+        sys.path.insert(0, str(module.parent))
+        from qibocal_mcp.server import create_server
+    return create_server("inactive")
+
+
+async def placeholder() -> FastMCP:
+    """Advertise the server's tools while idle, for clients that list them once.
+
+    Some clients keep the tools listed when they connect, and ignore later
+    list changes: without these definitions, they would never see the
+    calibration tools after a switch.
+    """
+    server = FastMCP("Qibocal (no active configuration)")
+    try:
+        definitions = server_definitions()
+        tools = await definitions.list_tools()
+        prompts = await definitions.list_prompts()
+        resources = await definitions.list_resources()
+    except Exception as error:
+        print(
+            f"The calibration tools will only be listed after a switch: {error}",
+            file=sys.stderr,
+        )
+        return server
+    for tool in tools:
+        server.add_tool(tool)
+    for prompt in prompts:
+        server.add_prompt(prompt)
+    for resource in resources:
+        server.add_resource(resource)
+    server.add_middleware(Inactive())
+    return server
 
 
 def summary(settings: DeploymentSettings) -> dict:
@@ -65,11 +130,15 @@ class Upstream:
         self.client: Client | None = None
         self.stack: AsyncExitStack | None = None
         self.lock = asyncio.Lock()
-        # Listing an unavailable server yields no tools, keeping local tools usable.
-        self.empty = Client(FastMCP("Qibocal (no active configuration)"))
+        # Stands in for the server while none is active; built on first use.
+        self.empty: Client | None = None
 
-    def current(self) -> Client:
-        return self.client if self.client is not None else self.empty
+    async def current(self) -> Client:
+        if self.client is not None:
+            return self.client
+        if self.empty is None:
+            self.empty = Client(await placeholder())
+        return self.empty
 
     def settings_for(self, name: str) -> DeploymentSettings:
         """Resolve a stored configuration, reading the file again each time."""
