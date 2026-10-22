@@ -178,7 +178,7 @@ def run(ctx: click.Context, name: str | None, objective: str | None, **_) -> Non
 
 
 @main.command(epilog="""\b
-Register it in an MCP client, for example:
+Register it once in an MCP client, for example:
   {"mcpServers": {"qibocal": {"command": "/path/to/qibocal-agent",
                               "args": ["mcp"]}}}
 """)
@@ -188,20 +188,31 @@ Register it in an MCP client, for example:
 def mcp(ctx: click.Context, name: str | None, **_) -> None:
     """Serve the calibration MCP over stdio, for interactive assistants.
 
-    Launches the Qibocal server of configuration NAME, locally or through
-    SSH, preparing its environment when needed, and forwards its tools. Stored
-    configurations can then be listed and switched within the conversation.
+    With NAME, or settings on the command line, launches that Qibocal server,
+    locally or through SSH, preparing its environment when needed, and
+    forwards its tools. Without either, starts idle: nothing is launched until
+    the assistant selects a stored configuration, so one registration serves
+    them all. Configurations are listed and switched within the conversation.
     """
+    selection = ctx.find_object(Selection)
+    from .remote import Upstream, create_proxy
+
+    upstream = Upstream(selection.config, selection.enabled)
+    if name is None and selection.enabled and not explicit(ctx, DEPLOYMENT_NAMES):
+        # Idle, but on a file that can be read: a broken one is said at once.
+        try:
+            configured_names(selection.config, enabled=True)
+        except ConfigError as error:
+            raise click.UsageError(str(error)) from error
+        create_proxy(upstream).run(transport="stdio", show_banner=False)
+        return
     values = settings(ctx, "agent", name, DEPLOYMENT_NAMES)
     from .deployment import DeploymentSettings
-    from .remote import Upstream, create_proxy
 
     try:
         initial = DeploymentSettings.from_values(values)
     except ConfigError as error:
         raise click.UsageError(str(error)) from error
-    selection = ctx.find_object(Selection)
-    upstream = Upstream(selection.config, selection.enabled)
     create_proxy(upstream, initial, values["name"]).run(
         transport="stdio", show_banner=False,
     )

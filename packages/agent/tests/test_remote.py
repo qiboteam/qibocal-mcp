@@ -5,6 +5,7 @@ import io
 import os
 import tempfile
 import unittest
+import unittest.mock
 from contextlib import asynccontextmanager
 from pathlib import Path
 from unittest.mock import patch
@@ -154,6 +155,33 @@ class RemoteTests(unittest.IsolatedAsyncioTestCase):
             with self.assertRaisesRegex(ToolError, "--no-config"):
                 await client.call_tool("switch_configuration", {"name": "tuna"})
             self.assertEqual((await client.call_tool("whoami", {})).data, "adhoc")
+
+    async def test_without_a_configuration_nothing_starts_until_one_is_selected(self):
+        upstream = remote.Upstream(None, True)
+        async with Client(remote.create_proxy(upstream)) as client:
+            names = {tool.name for tool in await client.list_tools()}
+            self.assertEqual(names, {"list_configurations", "switch_configuration"})
+            self.assertEqual(self.events, [], "nothing launched by connecting")
+            listing = (await client.call_tool("list_configurations", {})).structured_content
+            self.assertIsNone(listing["active"]["name"])
+            self.assertFalse(listing["active"]["connected"])
+            self.assertEqual(self.events, [], "nor by listing")
+            await client.call_tool("switch_configuration", {"name": "tuna"})
+            self.assertEqual((await client.call_tool("whoami", {})).data, "tuna5")
+        self.assertEqual(self.events, ["open tuna5", "close tuna5"])
+
+    def test_the_command_starts_idle_unless_a_configuration_is_given(self):
+        started = []
+
+        def proxy(upstream, initial=None, name=None):
+            started.append(name if initial is not None else None)
+            return unittest.mock.Mock()
+
+        with patch("qibocal_agent.remote.create_proxy", side_effect=proxy):
+            for arguments in (["mcp"], ["mcp", "tuna"], ["mcp", "--platform", "adhoc"]):
+                result = CliRunner().invoke(main, arguments)
+                self.assertEqual(result.exit_code, 0, result.output)
+        self.assertEqual(started, [None, "tuna", "default"])
 
     def test_command_line_requires_a_platform_but_no_model(self):
         result = CliRunner().invoke(main, ["--no-config", "mcp"])
