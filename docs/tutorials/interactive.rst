@@ -185,7 +185,7 @@ give up waiting later:
 
 .. code-block:: sh
 
-   .venv/bin/qibocal-agent mcp < /dev/null
+   .venv/bin/qibocal-agent mcp default < /dev/null
 
 You see installation messages, and the command exits by itself when done.
 Later launches reuse the environment and start quickly. When you change the
@@ -215,7 +215,9 @@ creating the folder and the file if needed. Add the path printed at the end of t
 
 That is all Copilot needs: ``mcp`` is the ``qibocal-agent`` subcommand that
 serves the calibration tools, and every setting comes from Qibocal's
-configuration file.
+configuration file. One registration serves every configuration: it starts
+nothing by itself, and the server of a configuration is launched once the
+assistant selects it.
 
 .. tip::
 
@@ -233,9 +235,11 @@ configuration file.
    copilot
 
 The first time, log in with ``/login``. Then type ``/mcp show``: the
-``qibocal`` server should be listed. Now ask for a calibration, for example:
+``qibocal`` server should be listed. Now ask for a calibration, naming the
+configuration, for example:
 
-   Calibrate with the qibocal tools, starting from the calibrate tool.
+   Calibrate with the qibocal tools, on the default configuration, starting
+   from the calibrate tool.
    Objective: find the drive frequency of qubit 0 with spectroscopy. Run at
    most two protocols, inspect the plots before accepting any update, and stop
    on errors.
@@ -307,25 +311,28 @@ and the chip never interfere. Prepare its environment once, as in step 6:
 
    .venv/bin/qibocal-agent mcp platinum < /dev/null
 
-Switch within a session
-~~~~~~~~~~~~~~~~~~~~~~~
+Select and switch within a session
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-You do not need to restart Copilot to change configuration. Just ask:
+The registration starts no configuration: the calibration tools appear once
+one is selected, and you do not need to restart Copilot to change it. Just
+ask:
 
 * *"List the qibocal configurations"* shows every stored configuration and
-  which one is active.
-* *"Switch to the platinum configuration"* closes the current server and
-  starts the selected one. Ask to switch to ``default`` to go back.
+  which one is active, if any.
+* *"Switch to the platinum configuration"* starts the selected one, closing
+  the current server if there is one. Ask to switch to ``default`` to go
+  back.
 
 Switching ends the current calibration session, so finish or reject pending
 updates first. Configurations you add while Copilot is running can be used
 right away.
 
-Change the starting configuration
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+Start with a configuration
+~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-Copilot starts with the ``default`` configuration. To start with another one,
-add its name after ``mcp`` in the registration, in
+To have a configuration ready when Copilot starts, rather than selected in
+the conversation, add its name after ``mcp`` in the registration, in
 ``~/.copilot/mcp-config.json``:
 
 .. code-block:: json

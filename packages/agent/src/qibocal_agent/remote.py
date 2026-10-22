@@ -8,6 +8,10 @@ managed environment there when required.
 It stays in between as a thin proxy, forwarding every server tool, prompt and
 resource, so the conversation can switch to another stored configuration with
 the switch_configuration tool, without restarting the client.
+
+Without a configuration named, it starts idle: nothing is launched, and the
+calibration tools appear once the assistant selects a configuration — one
+registration serves them all, and nothing happens until it is used.
 """
 
 import asyncio
@@ -30,10 +34,12 @@ from .environment import DeploymentError
 INSTRUCTIONS = (
     "Calibration tools are forwarded from the Qibocal server of the active "
     "configuration. list_configurations shows the stored configurations and "
-    "which one is active; switch_configuration replaces the server with another "
-    "one. Switching closes the previous server: its run handles expire and "
-    "unfinished work there is abandoned. Read the calibration context again "
-    "after switching."
+    "which one is active, if any; switch_configuration starts the server of "
+    "one, replacing the active one. When none is active, the calibration tools "
+    "are not available until a configuration is selected: ask the user which "
+    "one, when calibrating is what they want. Switching closes the previous "
+    "server: its run handles expire and unfinished work there is abandoned. "
+    "Read the calibration context again after switching."
 )
 
 
@@ -99,11 +105,16 @@ class Upstream:
         self.client, self.stack = client, stack
 
 
-def create_proxy(upstream: Upstream, initial: DeploymentSettings, name: str) -> FastMCP:
+def create_proxy(
+    upstream: Upstream, initial: DeploymentSettings | None = None, name: str | None = None,
+) -> FastMCP:
+    """The proxy, started on `initial`, or idle until a configuration is selected."""
+
     @asynccontextmanager
     async def lifespan(server):
         try:
-            await upstream.connect(name, initial)
+            if initial is not None:
+                await upstream.connect(name, initial)
         except Exception as error:
             # Stay available, so the failure can be read and another configuration chosen.
             print(f"Could not start the Qibocal server: {error}", file=sys.stderr)

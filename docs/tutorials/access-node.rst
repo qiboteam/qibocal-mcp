@@ -146,7 +146,7 @@ Create the environment once, so that Copilot does not give up waiting later:
 
 .. code-block:: sh
 
-   .venv/bin/qibocal-agent mcp < /dev/null
+   .venv/bin/qibocal-agent mcp default < /dev/null
 
 It installs Qibocal, the server and the simulator, then exits by itself.
 
