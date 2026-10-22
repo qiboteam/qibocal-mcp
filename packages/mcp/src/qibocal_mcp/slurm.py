@@ -11,6 +11,7 @@ from fastmcp.tools import ToolResult
 from mcp.types import CallToolResult, TextContent
 
 from .calibration import register_calibration_prompt
+from .plots import APP, register_plot_view
 from .sessions import SessionSource
 from .targets import Targets
 
@@ -156,6 +157,7 @@ def create_slurm_server(
         ),
     )
     register_calibration_prompt(mcp)
+    register_plot_view(mcp)
 
     async def calibration_context() -> str:
         """Discover the platform and protocols through a compute-node job."""
@@ -268,7 +270,7 @@ def create_slurm_server(
             raise ValueError("Worker response has no session metadata")
         return result.structuredContent
 
-    @mcp.tool
+    @mcp.tool(app=APP)
     async def execute_protocol(
         protocol: str, parameters: dict, targets: Targets,
         platform_overrides: dict | None = None,
@@ -287,7 +289,8 @@ def create_slurm_server(
              "platform_overrides": platform_overrides},
         )
         return ToolResult(
-            content=result.content, structured_content=result.structuredContent
+            content=result.content, structured_content=result.structuredContent,
+            meta=result.meta,
         )
 
     @mcp.tool
@@ -299,7 +302,8 @@ def create_slurm_server(
         """
         result = await jobs.call("update_platform", {"run_id": run_id})
         return ToolResult(
-            content=result.content, structured_content=result.structuredContent
+            content=result.content, structured_content=result.structuredContent,
+            meta=result.meta,
         )
 
     return mcp

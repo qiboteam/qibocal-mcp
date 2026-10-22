@@ -287,6 +287,11 @@ It opens an SSH tunnel to the cluster and prints a local address to register
 in the Qibocal Report interface. Keep it running while you browse. See
 :doc:`../guides/artifacts` for the folder layout and how to read a report.
 
+Or, without leaving the conversation, ask Copilot to *open the qibocal
+reports*: it starts the same server and gives you a link that opens the
+dashboard in your browser, with the interactive plots. It keeps running until
+you switch configuration or quit Copilot.
+
 10. Several setups: named configurations
 ----------------------------------------
 

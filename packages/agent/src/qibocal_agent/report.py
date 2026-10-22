@@ -112,57 +112,72 @@ def relay_output(stream: TextIO, ready: threading.Event) -> None:
             sys.stderr.flush()
 
 
-def run(settings: ReportSettings) -> None:
-    """Wait for HTTP readiness, print the registration URL, and own the process."""
-    launch = launch_for(settings)
-    url = f"http://127.0.0.1:{settings.port}"
-    process = None
-    relay = None
-    ready = threading.Event()
-    if settings.ssh is None:
-        ready.set()
-    try:
-        with socket.socket() as listener:
-            # Match the HTTP server's reuse policy for connections in TIME_WAIT.
-            listener.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-            listener.bind(("127.0.0.1", settings.port))
-        process = subprocess.Popen(
-            [launch.command, *launch.args], env=launch.env, cwd=launch.cwd,
-            stdout=subprocess.PIPE if settings.ssh else sys.stderr,
-            start_new_session=True,
-            # Keep SSH's remote PTY without putting our terminal into raw mode.
-            **({"stdin": subprocess.DEVNULL, "text": True} if settings.ssh else {}),
-        )
-        if settings.ssh:
-            relay = threading.Thread(
-                target=relay_output, args=(process.stdout, ready), daemon=True,
-            )
-            relay.start()
-        opener = build_opener(ProxyHandler({}))
-        while process.poll() is None:
-            if not ready.wait(timeout=0.2):
-                continue
+class ReportServer:
+    """One report server process, behind its SSH tunnel when remote."""
+
+    def __init__(self, settings: ReportSettings):
+        self.settings = settings
+        self.url = f"http://127.0.0.1:{settings.port}"
+        self.process: subprocess.Popen | None = None
+        self.relay: threading.Thread | None = None
+
+    def running(self) -> bool:
+        return self.process is not None and self.process.poll() is None
+
+    def start(self) -> bool:
+        """Launch and wait for HTTP readiness; False if the server exited first.
+
+        A remote first launch provisions the report environment, which may
+        take minutes. On failure, the process is stopped.
+        """
+        settings = self.settings
+        launch = launch_for(settings)
+        ready = threading.Event()
+        if settings.ssh is None:
+            ready.set()
+        try:
             try:
-                with opener.open(url + "/api/health", timeout=1) as response:
-                    if response.status == 200:
-                        break
-            except HTTPError as error:
-                raise DeploymentError(
-                    f"Report server health endpoint returned HTTP {error.code}"
-                ) from error
-            except (URLError, TimeoutError, ConnectionError):
-                # Local startup and HTTP readiness can precede a health response.
-                time.sleep(0.2)
-        if process.poll() is None:
-            print(url, flush=True)
-        status = process.wait()
-        if status != 0:
-            raise DeploymentError(f"Report server exited with status {status}")
-    except KeyboardInterrupt:
-        pass
-    except OSError as error:
-        raise DeploymentError(f"Could not start report server: {error}") from error
-    finally:
+                with socket.socket() as listener:
+                    # Match the HTTP server's reuse policy for connections in TIME_WAIT.
+                    listener.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+                    listener.bind(("127.0.0.1", settings.port))
+                process = self.process = subprocess.Popen(
+                    [launch.command, *launch.args], env=launch.env, cwd=launch.cwd,
+                    stdout=subprocess.PIPE if settings.ssh else sys.stderr,
+                    start_new_session=True,
+                    # Keep SSH's remote PTY without putting our terminal into raw mode.
+                    **({"stdin": subprocess.DEVNULL, "text": True} if settings.ssh else {}),
+                )
+            except OSError as error:
+                raise DeploymentError(f"Could not start report server: {error}") from error
+            if settings.ssh:
+                self.relay = threading.Thread(
+                    target=relay_output, args=(process.stdout, ready), daemon=True,
+                )
+                self.relay.start()
+            opener = build_opener(ProxyHandler({}))
+            while process.poll() is None:
+                if not ready.wait(timeout=0.2):
+                    continue
+                try:
+                    with opener.open(self.url + "/api/health", timeout=1) as response:
+                        if response.status == 200:
+                            break
+                except HTTPError as error:
+                    raise DeploymentError(
+                        f"Report server health endpoint returned HTTP {error.code}"
+                    ) from error
+                except (URLError, TimeoutError, ConnectionError):
+                    # Local startup and HTTP readiness can precede a health response.
+                    time.sleep(0.2)
+            return process.poll() is None
+        except BaseException:
+            self.stop()
+            raise
+
+    def stop(self) -> None:
+        """Terminate the process group, once; the server may already be gone."""
+        process, self.process = self.process, None
         if process is not None and process.poll() is None:
             try:
                 os.killpg(process.pid, signal.SIGTERM)
@@ -174,6 +189,22 @@ def run(settings: ReportSettings) -> None:
             except subprocess.TimeoutExpired:
                 os.killpg(process.pid, signal.SIGKILL)
                 process.wait()
+        relay, self.relay = self.relay, None
         if relay is not None:
             relay.join()
             process.stdout.close()
+
+
+def run(settings: ReportSettings) -> None:
+    """Wait for HTTP readiness, print the registration URL, and own the process."""
+    server = ReportServer(settings)
+    try:
+        if server.start():
+            print(server.url, flush=True)
+        status = server.process.wait()
+        if status != 0:
+            raise DeploymentError(f"Report server exited with status {status}")
+    except KeyboardInterrupt:
+        pass
+    finally:
+        server.stop()

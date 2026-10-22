@@ -84,7 +84,9 @@ class RemoteTests(unittest.IsolatedAsyncioTestCase):
     async def test_switch_replaces_the_server_and_forwards_its_tools(self):
         async with Client(self.proxy()) as client:
             names = {tool.name for tool in await client.list_tools()}
-            self.assertEqual(names, {"whoami", "list_configurations", "switch_configuration"})
+            self.assertEqual(names, {
+                "whoami", "list_configurations", "switch_configuration", "open_reports",
+            })
             self.assertEqual((await client.call_tool("whoami", {})).data, "simulator")
             prompt = await client.get_prompt("calibrate")
             self.assertEqual(prompt.messages[0].content.text, "policy for simulator")
@@ -165,6 +167,9 @@ class RemoteTests(unittest.IsolatedAsyncioTestCase):
                 await client.call_tool("get_calibration_context", {})
             with self.assertRaises(Exception):
                 await client.read_resource("qibocal://context")
+            # The interactive plot view is static, so hosts may load it already.
+            view = await client.read_resource("ui://qibocal/plots.html")
+            self.assertIn("ui/initialize", view[0].text)
             self.assertEqual(self.events, [])
             await client.call_tool("switch_configuration", {"name": "platinum"})
             self.assertEqual((await client.call_tool("whoami", {})).data, "qw5q_platinum")
@@ -177,8 +182,89 @@ class RemoteTests(unittest.IsolatedAsyncioTestCase):
         ):
             async with Client(remote.create_proxy(remote.Upstream(None, True))) as client:
                 names = {tool.name for tool in await client.list_tools()}
-        self.assertEqual(names, {"list_configurations", "switch_configuration"})
+        self.assertEqual(names, {"list_configurations", "switch_configuration", "open_reports"})
         self.assertIn("only be listed after a switch: offline", stderr.getvalue())
+
+    async def test_reports_are_served_for_the_active_configuration(self):
+        servers = []
+
+        class Reports:
+            def __init__(self, settings):
+                self.settings = settings
+                self.url = f"http://127.0.0.1:{settings.port}"
+                self.alive = False
+                servers.append(self)
+
+            def start(self):
+                self.alive = True
+                return True
+
+            def running(self):
+                return self.alive
+
+            def stop(self):
+                self.alive = False
+
+        config.save_config({"agents": {
+            "default": {"platform": "simulator"},
+            "lab": {
+                "platform": "chip", "ssh": "node", "output": "/shared/runs",
+                "report": {"port": 8123, "remote_port": 9000},
+            },
+        }})
+        # The fake transport reads the platform of local launches only.
+        local = remote.DeploymentSettings(platform="any")
+        with (
+            patch("qibocal_agent.remote.ReportServer", Reports),
+            patch("qibocal_agent.remote.launch_for", return_value=remote.launch_for(local)),
+        ):
+            async with Client(remote.create_proxy(remote.Upstream(None, True))) as client:
+                with self.assertRaisesRegex(ToolError, "switch_configuration"):
+                    await client.call_tool("open_reports", {})
+                await client.call_tool("switch_configuration", {"name": "lab"})
+                opened = (await client.call_tool(
+                    "open_reports", {"session_id": "abc"},
+                )).structured_content
+                self.assertEqual(opened["server"], "http://127.0.0.1:8123")
+                self.assertEqual(
+                    opened["dashboard"],
+                    "https://qibo.science/qibocal-report/"
+                    "#/connect?server=http%3A%2F%2F127.0.0.1%3A8123",
+                )
+                self.assertEqual(opened["report_id"], "sessions/abc")
+                self.assertTrue(opened["report_link"].endswith("#/reports/sessions/abc"))
+                settings = servers[0].settings
+                self.assertEqual((settings.ssh, settings.output), ("node", "/shared/runs"))
+                self.assertEqual((settings.port, settings.remote_port), (8123, 9000))
+                self.assertEqual(settings.venv, config.REPORT_ENVIRONMENT)
+                # A running server is reused; a switch stops it.
+                await client.call_tool("open_reports", {})
+                self.assertEqual(len(servers), 1)
+                await client.call_tool("switch_configuration", {})
+                self.assertFalse(servers[0].alive)
+                local = (await client.call_tool("open_reports", {})).structured_content
+                self.assertNotIn("report_id", local)
+                self.assertEqual(
+                    (servers[1].settings.ssh, servers[1].settings.port), (None, 8000)
+                )
+                self.assertEqual(servers[1].settings.directories, {
+                    "output": "default", "workdir": "default",
+                })
+            # Closing the proxy stops the report server too.
+            self.assertFalse(servers[1].alive)
+
+    async def test_report_failures_are_tool_errors(self):
+        class Exited:
+            def __init__(self, settings):
+                self.settings = settings
+
+            def start(self):
+                return False
+
+        with patch("qibocal_agent.remote.ReportServer", Exited):
+            async with Client(self.proxy("tuna")) as client:
+                with self.assertRaisesRegex(ToolError, "exited while starting"):
+                    await client.call_tool("open_reports", {})
 
     async def test_cli_overrides_apply_only_to_the_initial_configuration(self):
         async with Client(self.proxy(cli={"platform": "override"})) as client:

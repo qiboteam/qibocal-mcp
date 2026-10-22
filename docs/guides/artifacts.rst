@@ -62,7 +62,9 @@ the protocol, targets and resolved parameters, including platform defaults;
 its update flag becomes true only after an accepted update.
 ``new_platform/`` initially matches ``platform/`` and is refreshed as successful
 executions and accepted updates change the live session state.
-Serve ``OUTPUT`` with ``qibocal-agent report`` to discover these session reports.
+Serve ``OUTPUT`` with ``qibocal-agent report`` to discover these session reports,
+or, from an interactive assistant, ask it to open the reports: see
+:ref:`browse-reports`.
 
 ``append_note`` stores session plans/summaries or per-run findings as Qibocal
 notes with content, UTC timestamp and optional caller-supplied author.
@@ -112,6 +114,26 @@ The Pydantic AI agent consumes those inline images unchanged; interactive MCP
 clients display them according to their own capabilities. If your interface
 drops inline MCP images, stop rather than deciding updates from text alone;
 see :doc:`safety`.
+
+.. _browse-reports:
+
+Interactive plots for you
+-------------------------
+
+The images serve the model. To explore the same figures yourself — zoom,
+hover, toggle traces — there are two ways, depending on the interface:
+
+* **Inline**, in chat interfaces supporting MCP Apps (for example VS Code
+  GitHub Copilot): each ``execute_protocol`` call shows the run's
+  interactive figures next to it. Nothing to configure. Terminal assistants,
+  such as Copilot CLI and Claude Code, do not display them.
+* **In the browser**, in any interface: ask the assistant to *open the
+  reports*. Through ``qibocal-agent mcp``, its ``open_reports`` tool starts a
+  Qibocal Report server where the active configuration writes, through an SSH
+  tunnel when that is remote, and returns a link to the hosted Qibocal Report
+  dashboard, already connected to it. The server stays up until the
+  configuration changes or the assistant exits. Its port, 8000 by default, and
+  environment follow the ``NAME.report`` settings of ``qibocal-agent report``.
 
 .. figure:: ../_images/illustrative-report.svg
    :alt: Synthetic spectroscopy illustration: sample markers are compared with a blue fit across a frequency-offset sweep. The central feature has baseline on both sides, with notes to inspect residual agreement and consult actual fit uncertainty. This picture is illustrative and contains no hardware measurements.

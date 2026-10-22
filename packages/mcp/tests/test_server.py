@@ -8,6 +8,7 @@ from pathlib import Path
 from unittest.mock import patch
 
 import numpy as np
+import plotly
 import plotly.graph_objects as go
 from fastmcp import Client
 from fastmcp.exceptions import ToolError
@@ -22,6 +23,7 @@ from qibocal.update import drive_frequency
 from qibolab import create_platform
 
 from qibocal_mcp.calibration import PROMPT, instructions_for
+from qibocal_mcp.plots import FIGURES, VIEW
 from qibocal_mcp.runtime import create_server
 from qibocal_mcp.server import create_server as create_frontend
 from qibocal_mcp.targets import Targets
@@ -109,6 +111,20 @@ class ServerTests(unittest.IsolatedAsyncioTestCase):
                         "protocol": "synthetic", "parameters": {"value": 5e9}, "targets": [0],
                     })
                     self.assertTrue(any(item.type == "image" for item in result.content))
+                    # Interactive figures travel beside the images, for MCP Apps.
+                    plotted = result.meta[FIGURES]
+                    self.assertEqual(plotted["plotly"], plotly.offline.get_plotlyjs_version())
+                    self.assertEqual(plotted["figures"][0]["target"], "0")
+                    self.assertEqual(plotted["figures"][0]["data"][0]["type"], "scatter")
+                    execute = next(
+                        tool for tool in await client.list_tools()
+                        if tool.name == "execute_protocol"
+                    )
+                    self.assertEqual(execute.meta["ui"]["resourceUri"], VIEW)
+                    view = (await client.read_resource(VIEW))[0]
+                    self.assertEqual(view.mimeType, "text/html;profile=mcp-app")
+                    self.assertIn("ui/notifications/tool-result", view.text)
+                    self.assertIn(FIGURES, view.text)
                     run_id = result.structured_content["run_id"]
                     applied = await client.call_tool("update_platform", {"run_id": run_id})
                     self.assertTrue(applied.structured_content["updated"])
