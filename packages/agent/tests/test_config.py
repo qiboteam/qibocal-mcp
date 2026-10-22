@@ -10,7 +10,7 @@ from unittest.mock import AsyncMock, Mock, patch
 
 from click.testing import CliRunner
 
-from qibocal_agent import agent, config, environment
+from qibocal_agent import agent, config
 from qibocal_agent.cli import main
 
 

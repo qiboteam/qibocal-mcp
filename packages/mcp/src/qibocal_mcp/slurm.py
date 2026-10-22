@@ -11,8 +11,8 @@ from fastmcp.tools import ToolResult
 from mcp.types import CallToolResult, TextContent
 
 from .calibration import register_calibration_prompt
-from .targets import Targets
 from .sessions import SessionSource
+from .targets import Targets
 
 
 class SlurmJobs:

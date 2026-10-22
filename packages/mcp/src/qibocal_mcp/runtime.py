@@ -15,6 +15,7 @@ from fastmcp import Context, FastMCP
 from fastmcp.tools import ToolResult
 from fastmcp.utilities.types import Image
 from mcp.types import ContentBlock, TextContent
+
 with redirect_stdout(sys.stderr):
     from qibocal import Executor, Note, create_calibration_platform
     from qibocal.auto.operation import Protocol
@@ -23,10 +24,15 @@ with redirect_stdout(sys.stderr):
     from qibocal.protocols import PROTOCOLS
 
     from .artifacts import SessionReport
-    from .notes import append_note as persist_note, read_notes
+    from .notes import append_note as persist_note
+    from .notes import read_notes
 from .calibration import register_calibration_prompt
 from .sessions import (
-    PlatformState, SessionSource, pointer_tokens, pointer_value, repository_state,
+    PlatformState,
+    SessionSource,
+    pointer_tokens,
+    pointer_value,
+    repository_state,
 )
 
 

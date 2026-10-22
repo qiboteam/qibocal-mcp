@@ -13,10 +13,9 @@ import sys
 import tempfile
 from collections.abc import Mapping
 from pathlib import Path
-from typing import TypeAlias
 
-ConfigValue: TypeAlias = str | int | float | list[str] | dict[str, "ConfigValue"]
-Configuration: TypeAlias = dict[str, dict[str, ConfigValue]]
+type ConfigValue = str | int | float | list[str] | dict[str, ConfigValue]
+type Configuration = dict[str, dict[str, ConfigValue]]
 
 DEFAULT = "default"
 AGENT_FIELDS = {

@@ -11,7 +11,6 @@ import numpy as np
 import plotly.graph_objects as go
 from fastmcp import Client
 from fastmcp.exceptions import ToolError
-from qibolab import create_platform
 from qibocal.auto.operation import Data, Parameters, Protocol, Results
 from qibocal.auto.output import Output
 from qibocal.auto.task import Action
@@ -20,10 +19,11 @@ from qibocal.calibration.calibration import Calibration, QubitCalibration
 from qibocal.cli.report import generate_figures_and_report
 from qibocal.protocols.utils import PowerLevel
 from qibocal.update import drive_frequency
+from qibolab import create_platform
 
+from qibocal_mcp.calibration import PROMPT, instructions_for
 from qibocal_mcp.runtime import create_server
 from qibocal_mcp.server import create_server as create_frontend
-from qibocal_mcp.calibration import PROMPT, instructions_for
 from qibocal_mcp.targets import Targets
 
 

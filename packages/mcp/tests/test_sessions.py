@@ -9,17 +9,17 @@ from unittest.mock import patch
 
 from fastmcp import Client
 from fastmcp.exceptions import ToolError
-from qibolab import create_platform
 from qibocal.auto.operation import Protocol
 from qibocal.calibration import CalibrationPlatform
 from qibocal.calibration.calibration import Calibration, QubitCalibration
+from qibolab import create_platform
+from test_server import Inputs, acquire, fit, update
 
 from qibocal_mcp.runtime import create_server
 from qibocal_mcp.server import create_server as create_frontend
+from qibocal_mcp.sessions import PlatformState, pointer_tokens, pointer_value
 from qibocal_mcp.slurm import create_slurm_server
 from qibocal_mcp.worker import run
-from qibocal_mcp.sessions import PlatformState, pointer_tokens, pointer_value
-from test_server import Inputs, acquire, fit, update
 
 
 def update_second_transition(results, platform, target):

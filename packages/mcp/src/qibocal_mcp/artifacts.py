@@ -8,7 +8,7 @@ from qibo.backends import construct_backend
 from qibocal.auto.history import History
 from qibocal.auto.operation import DEFAULT_PARENT_PARAMETERS, Protocol
 from qibocal.auto.output import META, Metadata, Output, TaskStats
-from qibocal.auto.task import Action, Completed, Task, TaskId, Targets
+from qibocal.auto.task import Action, Completed, Targets, Task, TaskId
 from qibocal.calibration import CalibrationPlatform
 
 from .notes import read_notes

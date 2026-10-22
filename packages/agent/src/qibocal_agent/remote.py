@@ -23,7 +23,8 @@ from fastmcp import Client, Context, FastMCP
 from fastmcp.client.transports import StdioTransport
 from fastmcp.server.providers.proxy import ProxyProvider
 from mcp.types import (
-    PromptListChangedNotification, ResourceListChangedNotification,
+    PromptListChangedNotification,
+    ResourceListChangedNotification,
     ToolListChangedNotification,
 )
 

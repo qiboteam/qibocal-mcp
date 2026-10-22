@@ -8,7 +8,11 @@ import click
 from click.core import ParameterSource
 
 from .config import (
-    DEFAULT, ConfigError, configured_names, edit, get_config_file, load_config,
+    ConfigError,
+    configured_names,
+    edit,
+    get_config_file,
+    load_config,
     resolve,
 )
 from .environment import DeploymentError
@@ -247,7 +251,8 @@ def report(ctx: click.Context, name: str | None, **_) -> None:
         ctx, "report", name,
         ("output", "ssh", "workdir", "venv", "port", "remote_port"),
     )
-    from .report import ReportSettings, run as run_report
+    from .report import ReportSettings
+    from .report import run as run_report
 
     try:
         run_report(ReportSettings.from_values(values))

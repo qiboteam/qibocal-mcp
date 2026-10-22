@@ -14,15 +14,15 @@ from fastmcp import Client
 from fastmcp.exceptions import ToolError
 from mcp.shared.exceptions import McpError
 from mcp.types import CallToolResult, ImageContent, TextContent
-from qibolab import create_platform
 from qibocal.auto.operation import Protocol
 from qibocal.calibration import CalibrationPlatform
 from qibocal.calibration.calibration import Calibration, QubitCalibration
+from qibolab import create_platform
+from test_server import acquire, fit, report, update
 
 from qibocal_mcp.calibration import PROMPT, instructions_for
 from qibocal_mcp.slurm import SlurmJobs, create_slurm_server
 from qibocal_mcp.worker import run
-from test_server import acquire, fit, report, update
 
 
 class SlurmTests(unittest.IsolatedAsyncioTestCase):
