@@ -44,6 +44,7 @@ A session report contains, depending on protocol support and execution success:
          ... fitted results files, if present ...
          report-0-0.html
          report-0-0.png
+         report-0-0.json   (Plotly figure, when light enough for the plot view)
          ... more target/figure report files, if present ...
          execution_platform/   # immutable state after acquisition/fit, before update
            parameters.json

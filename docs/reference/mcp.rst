@@ -5,7 +5,7 @@ Transport and session
 ---------------------
 
 The server and queued gateway expose the same stdio interface, with exactly
-eleven tools, two resources (the calibration context and the interactive plot
+thirteen tools, two resources (the calibration context and the interactive plot
 view) and one prompt. Acquisitions run in the background, one at a time;
 see :doc:`../guides/architecture`. Run handles
 belong to the current calibration session and cannot be reused after switching
@@ -190,20 +190,20 @@ Use ``patch_platform`` to accept chosen explicit values, or
 ``start_session(source="run")`` to start from the trial checkpoint and apply
 its inspected fitted results in a new session.
 
-The response contains structured metadata plus text/image content:
+The response is kept small, so that clients keep it in the model's context. It
+contains, in order:
 
-* ``run_id``, platform, job ID, protocol, submitted parameters, targets and
-  execution-host ``folder`` for this protocol execution.
-* ``session_id`` and ``report_folder`` for the shared standard Qibocal report.
-* Serialized fitted ``results`` when present, ``supports_update``, and
-  initial ``updated``/``update_started`` flags.
-* Text containing metadata and per-target report tables.
-* PNG reports as MCP image content, not only file paths, followed by a closing
-  text asking the model to show them to the user before its next tool call,
-  unless the interface already displays them.
-* The same figures as Plotly JSON, in the result ``_meta`` under
-  ``qibocal/figures``, with the plotly.js version that should draw them.
-  The model does not see this metadata; it feeds the interactive view below.
+* A note on showing the plots to the user (see below).
+* Text with the run metadata, also returned as structured content:
+  ``run_id``, platform, job ID, protocol, submitted parameters, targets,
+  execution-host ``folder``, ``session_id`` and ``report_folder``,
+  ``supports_update``, initial ``updated``/``update_started`` flags, and
+  ``plots``: per figure, its ``target``, ``image`` path and whether it is
+  ``interactive``.
+* The serialized fitted ``results``, where values larger than 2 kB, typically
+  per-shot or per-point arrays, are replaced by a note: request them with
+  ``get_run_results``. ``run.json`` and ``results.json`` keep them in full.
+* Per target, its report table and PNG reports as MCP image content.
 
 A run outlasting ``wait`` returns its status instead: ``run_id``, ``status``
 (``queued`` while a SLURM job waits for its allocation, then ``running``),
@@ -246,16 +246,33 @@ Report content comes directly from the protocol callback through
 Interactive plots (MCP Apps)
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-``execute_protocol`` declares the ``ui://qibocal/plots.html`` view (the
-`MCP Apps <https://modelcontextprotocol.io/extensions/apps/overview>`_
-extension). Chat interfaces supporting it for local servers, such as VS Code
-GitHub Copilot (see the `client matrix
-<https://modelcontextprotocol.io/extensions/client-matrix>`_), render the
-run's figures there, interactive, next to the tool call.
-The view loads plotly.js from ``https://cdn.plot.ly``, the only origin its
-content security policy declares, so the browser showing the conversation
-needs to reach it. Other interfaces ignore the view: the PNG images are what
-the model inspects in every case.
+``execute_protocol`` and ``get_run`` declare the ``ui://qibocal/plots.html``
+view (the `MCP Apps <https://modelcontextprotocol.io/extensions/apps/overview>`_
+extension). Chat interfaces supporting it, such as VS Code GitHub Copilot (see
+the `client matrix <https://modelcontextprotocol.io/extensions/client-matrix>`_),
+render the run's plots there, next to the tool call. The view fetches each
+figure's Plotly JSON on demand through ``get_run_figures``, a tool reserved to
+it (``visibility: ["app"]``), and draws it interactively; figures heavier than
+200 kB, such as raw single shots, are shown as their PNG instead. It loads
+plotly.js from ``https://cdn.plot.ly``, the only origin its content security
+policy declares. The PNG images are what the model inspects in every case.
+
+The note opening each result with plots depends on whether the client declared
+the MCP Apps capability during initialization, the only signal the server
+relies on. With it, the model is told that the interface shows the plots and
+not to embed them again; without it, that the user cannot see tool results,
+and to embed the listed images in its next message, before any other tool call.
+Each server in a chain (runtime, frontend, gateway, ``qibocal-agent mcp``)
+rewrites the note for its own client, so the one facing the user's interface
+decides.
+
+get_run_results(run_id, fields=None)
+------------------------------------
+
+Return a completed run's fitted results in full, for the rare decision needing
+values left out of the response. Without ``fields``, it lists the available
+fields with their sizes in bytes; with ``fields``, plain names such as
+``["fidelity"]``, it returns those values.
 
 get_notes(run_id=None)
 -----------------------
