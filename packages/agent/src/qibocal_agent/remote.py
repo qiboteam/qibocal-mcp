@@ -47,7 +47,8 @@ INSTRUCTIONS = (
     "server: its run handles expire and unfinished work there is abandoned. "
     "Read the calibration context again after switching. open_reports serves "
     "the reports of the active configuration and returns a link for the user "
-    "to open them, with interactive plots, in the browser."
+    "to open them, with interactive plots, in the browser: call it before the "
+    "first experiment of a configuration, and give the user the link."
 )
 INACTIVE = (
     "No Qibocal configuration is active: list them with list_configurations "
@@ -307,8 +308,9 @@ def create_proxy(
         Starts a Qibocal Report server where the reports are written, through
         an SSH tunnel when they are remote, and keeps it until the
         configuration changes. A first remote launch may install it and take
-        minutes. Give the user the returned dashboard link: it opens the
-        reports in their browser, with interactive plots. With session_id,
+        minutes. Call it before the first experiment, and give the user the
+        returned dashboard link: it opens the reports in their browser, with
+        interactive plots. With session_id,
         from the calibration context, report_link also opens that session's
         report, once the dashboard has connected.
         """

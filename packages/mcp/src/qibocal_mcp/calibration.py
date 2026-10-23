@@ -69,6 +69,15 @@ images and approve the fit first, just as for update_platform. Old run handles
 expire on a successful switch. Refresh get_calibration_context afterwards;
 previously supplied session IDs, report paths and calibration plans may be stale.
 Write a new session plan after switching; old notes remain with the old report.
+Keep the user able to follow along. Before the first experiment, if an
+open_reports tool is available, call it and give the user its dashboard link,
+so they can watch the reports while you work. As each run completes, show the
+user its report images, embedded in your reply when the interface can display
+them, next to your reading of the fit; interfaces that render the interactive
+plot view show it by themselves. Format replies and notes in Markdown: short
+headings, bullet lists, and tables for parameters, fitted values and
+before/after comparisons, always with units. Qibocal Report renders notes as
+Markdown too.
 """
 
 
