@@ -431,7 +431,8 @@ class ServerTests(unittest.IsolatedAsyncioTestCase):
                      "start_session", "get_platform_state", "patch_platform",
                      "append_note", "get_notes", "get_run", "cancel_run",
                      "get_run_results", "get_run_figures",
-                     "get_protocol", "search_platform_state"},
+                     "get_protocol", "search_platform_state",
+                     "list_versions", "diff_platform", "save_platform", "checkout_platform"},
                 )
                 context_text = (
                     await client.read_resource("qibocal://context")
