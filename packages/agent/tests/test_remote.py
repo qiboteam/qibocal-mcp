@@ -266,6 +266,32 @@ class RemoteTests(unittest.IsolatedAsyncioTestCase):
                 with self.assertRaisesRegex(ToolError, "exited while starting"):
                     await client.call_tool("open_reports", {})
 
+    async def test_the_proxy_words_the_plot_reminder_for_its_client(self):
+        from fastmcp.tools import ToolResult
+        from mcp.types import TextContent
+
+        plots = [{"target": "0", "image": "/runs/report-0-0.png", "interactive": True}]
+        inner = TextContent(type="text", text="for the proxy", _meta={"qibocal/reminder": True})
+
+        async def call_next(context):
+            return ToolResult(content=[inner], structured_content={"plots": plots})
+
+        context = unittest.mock.Mock()
+        context.message.name = "execute_protocol"
+        context.fastmcp_context.client_supports_extension.return_value = True
+        result = await remote.ShowPlots().on_call_tool(context, call_next)
+        self.assertEqual(len(result.content), 1)
+        self.assertIn("The interface shows", result.content[0].text)
+        # Without the server's source, the inner reminder is kept.
+        stderr = io.StringIO()
+        with (
+            contextlib.redirect_stderr(stderr),
+            patch("qibocal_agent.remote.server_package", side_effect=OSError("offline")),
+        ):
+            kept = await remote.ShowPlots().on_call_tool(context, call_next)
+        self.assertEqual(kept.content, [inner])
+        self.assertIn("offline", stderr.getvalue())
+
     async def test_cli_overrides_apply_only_to_the_initial_configuration(self):
         async with Client(self.proxy(cli={"platform": "override"})) as client:
             self.assertEqual((await client.call_tool("whoami", {})).data, "override")
