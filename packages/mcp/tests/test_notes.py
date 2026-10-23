@@ -20,6 +20,7 @@ from qibocal.calibration import CalibrationPlatform
 from qibocal.calibration.calibration import Calibration, QubitCalibration
 from qibolab import create_platform
 from test_server import acquire, fit, update
+from test_slurm import piped
 
 from qibocal_mcp.calibration import INSTRUCTIONS, TOOLS
 from qibocal_mcp.locking import locked
@@ -122,11 +123,12 @@ class NotesTests(unittest.IsolatedAsyncioTestCase):
                         if "--snapshot" in command else None
                     ),
                     session_id=command[command.index("--session-id") + 1],
+                    run_id=command[command.index("--run-id") + 1] if "--run-id" in command else None,
                     request=json.loads(request),
                 )
                 return result.model_dump_json(by_alias=True).encode(), b""
 
-            return SimpleNamespace(returncode=0, communicate=communicate)
+            return piped(SimpleNamespace(returncode=0, communicate=communicate))
 
         protocol = Protocol(acquire, fit, update=update)
         with (

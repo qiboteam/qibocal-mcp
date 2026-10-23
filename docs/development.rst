@@ -13,9 +13,15 @@ every MCP server and nothing else:
   startup, and the ``qibocal-mcp`` click command (plain options, no
   configuration file, direct or ``--partition`` gateway mode). It stays a
   single command, as the package has nothing else to expose.
-* ``runtime.py``: internal main-thread hardware server, also used directly
-  inside SLURM workers.
-* ``slurm.py``: gateway serialization, dispatch and accepted-state handoff.
+* ``runtime.py``: internal hardware server, also used directly inside SLURM
+  workers. It creates the platform on the main thread, where Qibolab installs
+  signal handlers, and runs driver work on one dedicated hardware thread.
+* ``runs.py``: acquisitions as background tasks with bounded waits, shared by
+  the runtime and the gateway (``execute_protocol`` and ``get_run``).
+* ``progress.py``: run progress from Qibolab's duration estimates, captured
+  from its logs and relayed to the gateway as marked stderr lines.
+* ``slurm.py``: gateway dispatch (``srun`` for acquisitions, local workers for
+  everything else) and accepted-state handoff.
 * ``worker.py``: one internal operation per allocation, with JSON on
   stdin/stdout. Workers do not read user configuration.
 * ``plots.py``: the MCP Apps view of ``execute_protocol``'s figures, served

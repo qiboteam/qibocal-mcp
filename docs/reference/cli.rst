@@ -17,8 +17,8 @@ qibocal-mcp
 The server reads no configuration file: every setting is an option, so the
 command can be registered as is in any MCP client. Without ``--partition``,
 it connects the hardware directly; with it, it becomes a hardware-free
-gateway that runs every operation as its own SLURM job. Clients set their
-own timeouts, which in queued mode must cover queue waits. No model API call
+gateway that runs every acquisition as its own SLURM job. Long acquisitions
+continue in the background, so client request timeouts need not cover them. No model API call
 is made by this command.
 
 .. click:: qibocal_mcp.server:main

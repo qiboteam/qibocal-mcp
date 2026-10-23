@@ -5,8 +5,9 @@ Transport and session
 ---------------------
 
 The server and queued gateway expose the same stdio interface, with exactly
-nine tools, two resources (the calibration context and the interactive plot
-view) and one prompt. Calls are serialized. Run handles
+ten tools, two resources (the calibration context and the interactive plot
+view) and one prompt. Acquisitions run in the background, one at a time;
+see :doc:`../guides/architecture`. Run handles
 belong to the current calibration session and cannot be reused after switching
 sessions or after the server/gateway exits.
 Errors are exposed as MCP errors; failed acquisitions and updates are not
@@ -49,8 +50,8 @@ Its text content is a JSON object containing:
   ``relaxation_time`` (ns). Omit either to use platform defaults.
 
 Protocol parameters are not a fixed universal schema; consult the installed
-context. Discovery may connect to hardware; in queued mode, reading this
-resource submits a discovery job and may wait for a queue allocation.
+context. Discovery creates the platform without connecting to the instruments,
+and needs no allocation in queued mode.
 
 get_calibration_context()
 -------------------------
@@ -61,9 +62,7 @@ than resources, without executing a calibration protocol or applying fitted
 updates. Choose protocols, targets and parameters from this context before
 calling ``execute_protocol``.
 
-The tool uses the same discovery path as the resource. It may connect to
-hardware, and each call in queued mode submits a discovery job that may wait
-for an allocation.
+The tool uses the same discovery path as the resource.
 
 get_platform_state(path="")
 ---------------------------
@@ -153,6 +152,10 @@ execute_protocol(protocol, parameters, targets, platform_overrides=None)
      - Object or null
      - Optional scalar platform edits for this execution only, using the same
        pointer/value format and validation as ``patch_platform``.
+   * - ``wait``
+     - Number
+     - Seconds to wait for the result (default 45). A longer run continues in
+       the background and returns its status instead.
 
 Single-qubit example:
 
@@ -202,9 +205,25 @@ The response contains structured metadata plus text/image content:
   ``qibocal/figures``, with the plotly.js version that should draw them.
   The model does not see this metadata; it feeds the interactive view below.
 
+A run outlasting ``wait`` returns its status instead: ``run_id``, ``status``
+(``queued`` while a SLURM job waits for its allocation, then ``running``),
+``protocol``, ``targets``, ``elapsed_s``, and ``executions`` and ``estimated_s``,
+the platform executions so far and the sum of Qibolab's duration estimates for
+them. Clients asking for progress also receive it as MCP progress
+notifications. While the run is in progress, another acquisition, an update, an
+edit or a session switch is refused.
+
 See :doc:`../guides/artifacts` for on-disk output. Some protocols lack results
 or reports. In queued mode, each call is a fresh job that restores the latest
 accepted platform snapshot and releases the allocation when done.
+
+get_run(run_id, wait=45)
+------------------------
+
+Wait up to ``wait`` seconds for a run started by ``execute_protocol``, then
+return its result, exactly as ``execute_protocol`` would have, or its status
+again if still in progress. A failed run returns its error. Waiting has no
+effect on the run: a request timing out or cancelled leaves it running.
 Report content comes directly from the protocol callback through
 ``Executor.report``; the bridge does not render a full report-page template.
 
