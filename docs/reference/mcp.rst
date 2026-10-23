@@ -5,7 +5,7 @@ Transport and session
 ---------------------
 
 The server and queued gateway expose the same stdio interface, with exactly
-thirteen tools, two resources (the calibration context and the interactive plot
+fifteen tools, two resources (the calibration context and the interactive plot
 view) and one prompt. Acquisitions run in the background, one at a time;
 see :doc:`../guides/architecture`. Run handles
 belong to the current calibration session and cannot be reused after switching
@@ -43,14 +43,19 @@ Its text content is a JSON object containing:
   path for the shared report, created on the first execution, accepted edit,
   session comment or an explicit ``start_session`` call.
 * ``qubits``: platform qubit IDs.
-* ``protocols``: built-in protocol names mapped to ``parameters`` (the
-  parameter class source, including definitions/units), ``two_qubit_gates``
-  and ``supports_update``.
+* ``protocols``: built-in protocol names mapped to a short ``summary`` (when
+  the acquisition's docstring offers one), their ``parameters`` names, and
+  ``two_qubit_gates`` and ``supports_update``, only listed when true.
+* ``details``: how to read a protocol's definitions, with ``get_protocol``.
 * ``common_parameters``: explanatory text for ``nshots`` (integer) and
   ``relaxation_time`` (ns). Omit either to use platform defaults.
+* ``ranges``: the forms of sweep ranges: a plain ``[start, stop, step]`` is
+  absolute, while labelled forms such as ``["center", width, step]`` are
+  relative to the protocol's default center.
 
-Protocol parameters are not a fixed universal schema; consult the installed
-context. Discovery creates the platform without connecting to the instruments,
+The context is compact JSON, about 14 kB for the built-in protocols: it is read
+by models, at every discovery. Protocol parameters are not a fixed universal
+schema; read the chosen protocol's definitions with ``get_protocol``. Discovery creates the platform without connecting to the instruments,
 and needs no allocation in queued mode.
 
 get_calibration_context()
@@ -64,8 +69,15 @@ calling ``execute_protocol``.
 
 The tool uses the same discovery path as the resource.
 
-get_platform_state(path="")
----------------------------
+get_protocol(name)
+------------------
+
+Return one protocol's ``parameters`` definitions, the source of its parameters
+class with types, defaults and units, together with ``two_qubit_gates``,
+``supports_update`` and ``common_parameters``. Unknown names are errors.
+
+get_platform_state(path="", depth=None)
+---------------------------------------
 
 Inspect the live Qibolab ``Parameters`` and Qibocal ``Calibration`` models,
 without acquiring data or applying updates. The response contains
@@ -84,6 +96,19 @@ platform has a channel named ``0/drive``:
 
    {"path": "/parameters/configs/0~1drive/frequency"}
    {"path": "/calibration/single_qubits/0/qubit/frequency_01"}
+
+With ``depth``, objects and arrays more than ``depth`` levels below ``path`` are
+replaced by a summary such as ``"<object, 12 keys, 3927 bytes: 0/drive, ...>"``,
+so that a large model can be explored before reading the parts of interest:
+``{"depth": 1}`` lists the top-level sections and their sizes.
+
+search_platform_state(query, path="")
+-------------------------------------
+
+Find the JSON pointers under ``path`` whose key, or scalar value, contains
+``query``, case-insensitively, with their values; containers larger than 2 kB
+are summarized as with ``depth``. At most 50 matches are returned, with their
+total ``count``. Read further with ``get_platform_state``.
 
 patch_platform(changes)
 -----------------------
