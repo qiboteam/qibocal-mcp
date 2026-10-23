@@ -20,12 +20,13 @@ async def run(
     snapshot: Path | None,
     request: dict,
     session_id: str | None = None,
+    run_id: str | None = None,
 ) -> CallToolResult:
     """Restore accepted state and execute exactly one requested operation."""
     with redirect_stdout(sys.stderr):
         server = create_server(
             platform, output=output, snapshot=snapshot, restore_runs=True,
-            session_id=session_id,
+            session_id=session_id, next_run_id=run_id,
         )
         async with Client(server) as client:
             if request["operation"] == "context":
@@ -44,6 +45,11 @@ async def run(
             result = await client.call_tool(
                 request["operation"], request["arguments"]
             )
+            # The gateway owns the wait: follow the run to its end.
+            while (result.structured_content or {}).get("status") in {"running", "queued"}:
+                result = await client.call_tool("get_run", {
+                    "run_id": result.structured_content["run_id"], "wait": 3600,
+                })
             return CallToolResult(
                 content=result.content, structuredContent=result.structured_content,
                 _meta=result.meta,
@@ -57,6 +63,7 @@ def main():
     parser.add_argument("--output", type=Path, required=True)
     parser.add_argument("--snapshot", type=Path)
     parser.add_argument("--session-id", required=True)
+    parser.add_argument("--run-id")
     args = parser.parse_args()
     result = asyncio.run(
         run(
@@ -65,6 +72,7 @@ def main():
             snapshot=args.snapshot,
             request=json.load(sys.stdin),
             session_id=args.session_id,
+            run_id=args.run_id,
         )
     )
     print(result.model_dump_json(by_alias=True))
