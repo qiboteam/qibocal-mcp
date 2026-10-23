@@ -18,7 +18,13 @@ from test_slurm import piped
 
 from qibocal_mcp.runtime import create_server
 from qibocal_mcp.server import create_server as create_frontend
-from qibocal_mcp.sessions import PlatformState, pointer_tokens, pointer_value
+from qibocal_mcp.sessions import (
+    PlatformState,
+    outline,
+    pointer_tokens,
+    pointer_value,
+    search,
+)
 from qibocal_mcp.slurm import create_slurm_server
 from qibocal_mcp.worker import run
 
@@ -243,6 +249,23 @@ class SessionTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(state.patched({"/parameters/array/1": 3}).document()["parameters"]["array"], [1, 3])
         with self.assertRaisesRegex(ValueError, "overlap"):
             state.patched({"/parameters/array": None, "/parameters/array/0": 3})
+
+    def test_platform_state_outline_and_search(self):
+        document = {"a/b": {"frequency": 5e9, "items": [1, 2]}, "big": list(range(1000))}
+        self.assertEqual(outline(document, 1), {
+            "a/b": f"<object, 2 keys, {len(json.dumps(document['a/b']))} bytes: frequency, items>",
+            "big": f"<array, 1000 items, {len(json.dumps(document['big']))} bytes>",
+        })
+        self.assertEqual(outline(document, 0)[:9], "<object, ")
+        self.assertEqual(outline(5, 0), 5)
+        found = search(document, "freq")
+        self.assertEqual(found["matches"], [{"path": "/a~1b/frequency", "value": 5e9}])
+        # Values match too; large matched containers are outlined.
+        self.assertEqual(search(document, "5000000000")["count"], 1)
+        many = search(document, "big")
+        self.assertEqual(many["matches"][0]["path"], "/big")
+        self.assertTrue(many["matches"][0]["value"].startswith("<array"))
+        self.assertTrue(search(document, "1")["truncated"])
 
     async def test_queued_edits_and_trials_preserve_accepted_handoff(self):
         from types import SimpleNamespace

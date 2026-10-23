@@ -100,6 +100,78 @@ def pointer_value(document, tokens: list[str]):
     return document
 
 
+# Values larger than this are summarized when outlining or searching.
+VALUE_LIMIT = 2_000
+MATCH_LIMIT = 50
+STATE_DESCRIPTIONS = {
+    "get_platform_state": """Inspect current Parameters and Calibration without executing a protocol.
+
+path is an RFC 6901 JSON pointer; empty selects both complete models.
+Mapping keys are JSON strings. With depth, objects and arrays deeper than
+depth levels are summarized by their keys and size: descend into the parts
+you need. Returns path, value and session metadata.""",
+    "search_platform_state": """Find values in current Parameters and Calibration by text.
+
+Returns the JSON pointers whose key, or scalar value, contains query
+(case-insensitive), under path, with their values; large ones are
+summarized. Read further with get_platform_state.""",
+}
+
+
+def escape(token) -> str:
+    return str(token).replace("~", "~0").replace("/", "~1")
+
+
+def placeholder(value) -> str:
+    """Describe an object or array without its content."""
+    size = len(json.dumps(value))
+    if isinstance(value, dict):
+        keys = list(value)
+        shown = ", ".join(map(str, keys[:20])) + (", ..." if len(keys) > 20 else "")
+        return f"<object, {len(keys)} keys, {size} bytes: {shown}>"
+    return f"<array, {len(value)} items, {size} bytes>"
+
+
+def outline(value, depth: int):
+    """value, with objects and arrays below depth levels summarized."""
+    if not isinstance(value, dict | list) or not value:
+        return value
+    if depth <= 0:
+        return placeholder(value)
+    if isinstance(value, dict):
+        return {key: outline(item, depth - 1) for key, item in value.items()}
+    return [outline(item, depth - 1) for item in value]
+
+
+def search(document, query: str, root: str = "") -> dict:
+    """Pointers whose key or scalar value contains query, case-insensitively."""
+    if not query.strip():
+        raise ValueError("Search query must not be empty")
+    text, query = query, query.casefold()
+    matches = []
+
+    def visit(value, path, key):
+        hit = key is not None and query in str(key).casefold()
+        if isinstance(value, dict | list):
+            if hit:
+                matches.append({"path": path, "value": compact_value(value)})
+            items = value.items() if isinstance(value, dict) else enumerate(value)
+            for name, item in items:
+                visit(item, f"{path}/{escape(name)}", name)
+        elif hit or query in json.dumps(value).casefold():
+            matches.append({"path": path, "value": value})
+
+    visit(document, root, None)
+    return {
+        "query": text, "count": len(matches),
+        "matches": matches[:MATCH_LIMIT], "truncated": len(matches) > MATCH_LIMIT,
+    }
+
+
+def compact_value(value):
+    return value if len(json.dumps(value)) <= VALUE_LIMIT else placeholder(value)
+
+
 def git(repository: Path, *arguments: str) -> str:
     """Keep Git noninteractive and its output outside the MCP stream."""
     result = subprocess.run(

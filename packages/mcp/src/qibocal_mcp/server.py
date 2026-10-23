@@ -14,10 +14,14 @@ from fastmcp.client.transports import StdioTransport
 from fastmcp.tools import ToolResult
 from mcp.types import TextResourceContents
 
-from .calibration import register_calibration_prompt
+from .calibration import (
+    PROTOCOL_DESCRIPTION,
+    PROTOCOL_TOOL,
+    register_calibration_prompt,
+)
 from .plots import APP, APP_ONLY, FIGURE_TOOL, register_plot_view
 from .runs import WAIT
-from .sessions import SessionSource
+from .sessions import STATE_DESCRIPTIONS, SessionSource
 from .targets import Overrides, Targets
 
 logger = logging.getLogger(__name__)
@@ -122,18 +126,26 @@ def create_server(
         """Return the same JSON text as qibocal://context for calibration discovery."""
         return await calibration_context(ctx)
 
-    @mcp.tool
-    async def get_platform_state(ctx: Context, path: str = "") -> dict:
-        """Inspect current Parameters and Calibration without executing a protocol.
-
-        path is an RFC 6901 JSON pointer; empty returns both complete models.
-        Mapping keys are JSON strings. Returns path, value and session metadata.
-        """
+    async def state(name: str, arguments: dict, ctx: Context) -> dict:
         client = await asyncio.shield(ctx.lifespan_context["ready"])
-        result = await client.call_tool("get_platform_state", {"path": path})
+        result = await client.call_tool(name, arguments)
         if result.structured_content is None:
-            raise ValueError("Hardware process returned no platform state")
+            raise ValueError(f"Hardware process returned no {name} result")
         return result.structured_content
+
+    @mcp.tool(name=PROTOCOL_TOOL, description=PROTOCOL_DESCRIPTION)
+    async def get_protocol(name: str, ctx: Context) -> dict:
+        return await state(PROTOCOL_TOOL, {"name": name}, ctx)
+
+    @mcp.tool(description=STATE_DESCRIPTIONS["get_platform_state"])
+    async def get_platform_state(
+        ctx: Context, path: str = "", depth: int | None = None,
+    ) -> dict:
+        return await state("get_platform_state", {"path": path, "depth": depth}, ctx)
+
+    @mcp.tool(description=STATE_DESCRIPTIONS["search_platform_state"])
+    async def search_platform_state(ctx: Context, query: str, path: str = "") -> dict:
+        return await state("search_platform_state", {"query": query, "path": path}, ctx)
 
     @mcp.tool
     async def patch_platform(changes: dict, ctx: Context) -> dict:
