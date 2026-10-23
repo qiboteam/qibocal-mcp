@@ -103,7 +103,7 @@ Its example platforms are now on the cluster, in
 *On your computer.* Qibocal keeps your setup in a configuration file on your
 computer, so you never repeat it. It can hold several configurations, each
 with a name; the one called ``default`` is used unless you ask for another.
-Run these commands from the ``qibocal-mcp-servers`` folder:
+Run these commands from the ``qibocal-mcp`` folder:
 
 .. code-block:: sh
 
@@ -207,7 +207,7 @@ creating the folder and the file if needed. Add the path printed at the end of t
    {
      "mcpServers": {
        "qibocal": {
-         "command": "/full/path/to/qibocal-mcp-servers/.venv/bin/qibocal-agent",
+         "command": "/full/path/to/qibocal-mcp/.venv/bin/qibocal-agent",
          "args": ["mcp"]
        }
      }
@@ -345,7 +345,7 @@ the conversation, add its name after ``mcp`` in the registration, in
    {
      "mcpServers": {
        "qibocal": {
-         "command": "/full/path/to/qibocal-mcp-servers/.venv/bin/qibocal-agent",
+         "command": "/full/path/to/qibocal-mcp/.venv/bin/qibocal-agent",
          "args": ["mcp", "platinum"]
        }
      }

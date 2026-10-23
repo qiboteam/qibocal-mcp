@@ -23,6 +23,6 @@ jobs:
     with:
       python-version: "3.12"
       trigger-label: "${{needs.version.outputs.version}}"
-      project: qibocal-mcp-servers
+      project: qibocal-mcp
       uv-extras: --no-dev --group docs
       output-path: docs/_build/html

@@ -18,8 +18,8 @@ the project and install it:
 
 .. code-block:: sh
 
-   git clone https://github.com/qiboteam/qibocal-mcp-servers.git
-   cd qibocal-mcp-servers
+   git clone https://github.com/qiboteam/qibocal-mcp.git
+   cd qibocal-mcp
    uv sync
 
 The commands are now in the ``.venv/bin`` folder of the project. Print the
@@ -72,7 +72,7 @@ installed from the Git repository:
 
 .. code-block:: sh
 
-   pip install "qibocal-agent[agent] @ git+https://github.com/qiboteam/qibocal-mcp-servers@main#subdirectory=packages/agent"
+   pip install "qibocal-agent[agent] @ git+https://github.com/qiboteam/qibocal-mcp@main#subdirectory=packages/agent"
 
 Drop ``[agent]`` if you do not need the autonomous agent. When it prepares the
 environment on the cluster, the orchestration sends the server's source along.

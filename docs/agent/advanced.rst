@@ -16,7 +16,7 @@ accepts more options in ``~/.copilot/mcp-config.json``:
      "mcpServers": {
        "qibocal": {
          "type": "local",
-         "command": "/full/path/to/qibocal-mcp-servers/.venv/bin/qibocal-agent",
+         "command": "/full/path/to/qibocal-mcp/.venv/bin/qibocal-agent",
          "args": ["mcp"],
          "env": { "SSH_AUTH_SOCK": "${SSH_AUTH_SOCK}" },
          "tools": ["*"],
@@ -46,7 +46,7 @@ registration, using the flags of :doc:`../reference/cli`:
    {
      "mcpServers": {
        "qibocal": {
-         "command": "/full/path/to/qibocal-mcp-servers/.venv/bin/qibocal-agent",
+         "command": "/full/path/to/qibocal-mcp/.venv/bin/qibocal-agent",
          "args": ["mcp", "--platform", "qutrits", "--ssh", "mycluster",
                   "--partition", "sim"]
        }

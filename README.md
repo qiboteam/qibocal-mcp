@@ -36,7 +36,7 @@ OpenCode, ...), for Copilot in `~/.copilot/mcp-config.json`:
 {
   "mcpServers": {
     "qibocal": {
-      "command": "/full/path/to/qibocal-mcp-servers/.venv/bin/qibocal-agent",
+      "command": "/full/path/to/qibocal-mcp/.venv/bin/qibocal-agent",
       "args": ["mcp"]
     }
   }

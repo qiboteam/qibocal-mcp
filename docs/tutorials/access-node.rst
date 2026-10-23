@@ -50,8 +50,8 @@ Get the project into your home folder and install it:
 
 .. code-block:: sh
 
-   git clone https://github.com/qiboteam/qibocal-mcp-servers.git
-   cd qibocal-mcp-servers
+   git clone https://github.com/qiboteam/qibocal-mcp.git
+   cd qibocal-mcp
    uv sync
    realpath .venv/bin/qibocal-agent
 
@@ -87,7 +87,7 @@ Clone the simulator into your home folder:
 4. Tell Qibocal about your setup
 --------------------------------
 
-From the ``qibocal-mcp-servers`` folder:
+From the ``qibocal-mcp`` folder:
 
 .. code-block:: sh
 
@@ -167,7 +167,7 @@ in step 2:
    {
      "mcpServers": {
        "qibocal": {
-         "command": "/home/USER/qibocal-mcp-servers/.venv/bin/qibocal-agent",
+         "command": "/home/USER/qibocal-mcp/.venv/bin/qibocal-agent",
          "args": ["mcp"]
        }
      }

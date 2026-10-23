@@ -213,7 +213,7 @@ def server_module() -> Path:
             return folder / "src" / "qibocal_mcp"
     raise DeploymentError(
         "Managed deployment needs the qibocal-mcp source, which was not found: "
-        "install qibocal-agent from the qibocal-mcp-servers Git repository or a "
+        "install qibocal-agent from the qibocal-mcp Git repository or a "
         "checkout of it, or install qibocal-mcp next to it"
     )
 
