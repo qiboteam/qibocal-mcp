@@ -66,6 +66,22 @@ from .sessions import (
 from .targets import Overrides, Targets
 
 
+def simulation_backend() -> None:
+    """Pin Qibo's global backend to simulation, before any protocol runs.
+
+    Some protocols use it for circuit algebra, e.g. RB's inverse layers via
+    Circuit.unitary(). Created lazily from QIBO_BACKEND and QIBO_PLATFORM, it
+    could be a Qibolab backend loading a second platform for the same hardware,
+    which also fails on the hardware thread (signal handlers, see
+    qiboteam/qibolab#1621). Executions are unaffected: Qibocal passes the
+    session's platform explicitly. To be removed once Qibocal no longer relies
+    on the global backend (qiboteam/qibocal-mcp#55).
+    """
+    from qibo import set_backend
+
+    set_backend("numpy")
+
+
 def overview(protocol: Protocol) -> dict:
     """What choosing a protocol needs; get_protocol has its definitions.
 
@@ -190,6 +206,7 @@ def create_server(
         nonlocal accepted_state, initial_state, startup_version
         # Hardware drivers and Qibocal may print; stdout belongs to MCP.
         with redirect_stdout(sys.stderr):
+            simulation_backend()
             platform = create_calibration_platform(platform_name)
             if snapshot is not None:
                 PlatformState.load(snapshot).apply(platform)
