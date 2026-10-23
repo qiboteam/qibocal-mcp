@@ -40,7 +40,7 @@ with it, and the objective for the default configuration otherwise. ``mcp``
 needs no model: the interactive assistant brings its own, and stored
 configurations can be listed and switched from the conversation. ``report``
 serves the reports where they are, through a private SSH tunnel when remote,
-and prints the address to register in the Qibocal Report interface. ``config``
+and prints the address to register in the Qibocamp interface. ``config``
 manages the file: settings are addressed as ``NAME.setting`` or
 ``NAME.report.setting``; text values are taken literally, and lists and numbers
 as JSON.

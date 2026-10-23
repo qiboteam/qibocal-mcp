@@ -277,14 +277,14 @@ run before approving. Each experiment is a SLURM job, so expect queue waits.
 session. Copilot's summary tells you the exact folder. Accepted updates are
 saved as new snapshots there: your platform files are never overwritten.
 
-To browse the reports in Qibocal Report, run from the project folder:
+To browse the reports in Qibocamp, run from the project folder:
 
 .. code-block:: sh
 
    .venv/bin/qibocal-agent report
 
 It opens an SSH tunnel to the cluster and prints a local address to register
-in the Qibocal Report interface. Keep it running while you browse. See
+in the Qibocamp interface. Keep it running while you browse. See
 :doc:`../guides/artifacts` for the folder layout and how to read a report.
 
 Or, without leaving the conversation, ask Copilot to *open the qibocal

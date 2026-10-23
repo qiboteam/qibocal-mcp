@@ -390,7 +390,7 @@ class ReportProvisionTests(unittest.TestCase):
 
     def test_latest_report_is_installed_and_launched(self):
         installed = {
-            "url": "https://github.com/qiboteam/qibocal-report.git",
+            "url": "https://github.com/qiboteam/qibocamp.git",
             "vcs_info": {"commit_id": self.revision},
         }
         with (
@@ -408,7 +408,7 @@ class ReportProvisionTests(unittest.TestCase):
         self.assertEqual(python, "/env/bin/python")
         self.assertEqual(command.call_args_list[0].args[0], [
             "git", "ls-remote", "--exit-code",
-            "https://github.com/qiboteam/qibocal-report.git", "refs/heads/main",
+            "https://github.com/qiboteam/qibocamp.git", "refs/heads/main",
         ])
         self.assertEqual(command.call_args_list[1].args[0], [
             "install", self.requirement,
@@ -417,7 +417,7 @@ class ReportProvisionTests(unittest.TestCase):
 
     def test_current_main_is_reused_with_shared_environment_lock(self):
         installed = {
-            "url": "https://github.com/qiboteam/qibocal-report.git",
+            "url": "https://github.com/qiboteam/qibocamp.git",
             "vcs_info": {"commit_id": self.revision},
         }
         with (
@@ -434,11 +434,11 @@ class ReportProvisionTests(unittest.TestCase):
 
     def test_wrong_pin_is_selectively_reinstalled(self):
         previous = {
-            "url": "https://github.com/qiboteam/qibocal-report.git",
+            "url": "https://github.com/qiboteam/qibocamp.git",
             "vcs_info": {"commit_id": "9ebca656a21fb926c943191a1fc86330a70e6fe9"},
         }
         correct = {
-            "url": "https://github.com/qiboteam/qibocal-report.git",
+            "url": "https://github.com/qiboteam/qibocamp.git",
             "vcs_info": {"commit_id": self.revision},
         }
         with (
@@ -533,13 +533,13 @@ class ReportProvisionTests(unittest.TestCase):
                 [directory, "--host", "127.0.0.1", "--port", "9000"],
             )
         expression = execute.call_args.args[1][2]
-        cli = types.ModuleType("qibocal_report.cli")
+        cli = types.ModuleType("qibocamp.cli")
         cli.main = Mock()
         output = io.StringIO()
         with (
             patch.dict(sys.modules, {
-                "qibocal_report": types.ModuleType("qibocal_report"),
-                "qibocal_report.cli": cli,
+                "qibocamp": types.ModuleType("qibocamp"),
+                "qibocamp.cli": cli,
             }),
             patch.object(threading, "Thread") as thread,
             patch.object(report.socket, "create_connection", side_effect=[

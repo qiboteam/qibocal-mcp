@@ -64,7 +64,7 @@ The user sees your messages, not necessarily tool calls or their results.
   uncertainty.
 
 ## Notes
-Notes form the session report; Qibocal Report renders them as Markdown.
+Notes form the session report; Qibocamp renders them as Markdown.
 - Before the first experiment, append_note without run_id: objective,
   constraints and plan. After inspecting each run, append_note with its run_id:
   findings, fit quality, uncertainty, and why you accept or reject the update.

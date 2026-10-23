@@ -54,8 +54,8 @@ INACTIVE = (
 )
 # Served even without a server: it only returns the calibration instructions.
 STATIC_TOOL = "calibrate"
-# The hosted Qibocal Report interface, opening the server given as a query.
-DASHBOARD = "https://qibo.science/qibocal-report/"
+# The hosted Qibocamp interface, opening the server given as a query.
+DASHBOARD = "https://qibo.science/qibocamp/"
 
 
 class Inactive(Middleware):
@@ -328,7 +328,7 @@ def create_proxy(
     async def open_reports(session_id: str | None = None) -> dict:
         """Serve the calibration reports of the active configuration to the user.
 
-        Starts a Qibocal Report server where the reports are written, through
+        Starts a Qibocamp server where the reports are written, through
         an SSH tunnel when they are remote, and keeps it until the
         configuration changes. A first remote launch may install it and take
         minutes. Call it before the first experiment, and give the user the

@@ -25,7 +25,7 @@ class DeploymentError(RuntimeError):
 
 
 REPORT_REQUIREMENT = (
-    "qibocal-report @ git+https://github.com/qiboteam/qibocal-report.git@main"
+    "qibocamp @ git+https://github.com/qiboteam/qibocamp.git@main"
 )
 REPORT_READY_MARKER = "qibocal-mcp:report-listening"
 
@@ -61,7 +61,7 @@ def expand_path_list(value: str) -> str:
 
 
 def environment_path(value: str) -> Path:
-    """Keep relative environments separate from Qibocal Report's notebook cache."""
+    """Keep relative environments separate from Qibocamp's notebook cache."""
     return directory_path(value, "envs")
 
 
@@ -806,7 +806,7 @@ def provision_report(options: dict) -> tuple[str, dict[str, str]]:
     path = environment_path(options["venv"])
     with locked(environment_lock(str(path))):
         python = ensure_python(path)
-        installed = installed_distribution_source(python, "qibocal-report")
+        installed = installed_distribution_source(python, "qibocamp")
         source = REPORT_REQUIREMENT.split(" @ git+", 1)[1]
         expected_url, branch = source.rsplit("@", 1)
         reference = f"refs/heads/{branch}"
@@ -818,7 +818,7 @@ def provision_report(options: dict) -> tuple[str, dict[str, str]]:
             len(remote) != 2 or remote[1] != reference
             or re.fullmatch(r"[0-9a-f]{40}", remote[0]) is None
         ):
-            raise DeploymentError(f"Could not resolve qibocal-report branch {branch}")
+            raise DeploymentError(f"Could not resolve qibocamp branch {branch}")
         expected_revision = remote[0]
         requirement = REPORT_REQUIREMENT.rsplit("@", 1)[0] + "@" + expected_revision
         if not matches_qibocal_pin(installed, expected_url, expected_revision):
@@ -827,21 +827,21 @@ def provision_report(options: dict) -> tuple[str, dict[str, str]]:
                 force = "--reinstall" if install[0] == "uv" else "--force-reinstall"
                 command([*install, force, "--no-deps", requirement])
             command([*install, requirement])
-        installed = installed_distribution_source(python, "qibocal-report")
+        installed = installed_distribution_source(python, "qibocamp")
         if not matches_qibocal_pin(installed, expected_url, expected_revision):
-            raise DeploymentError("Installed qibocal-report does not match the latest main commit")
-        command([python, "-c", "import qibocal_report.cli"], capture=True)
+            raise DeploymentError("Installed qibocamp does not match the latest main commit")
+        command([python, "-c", "import qibocamp.cli"], capture=True)
         command(installer(python, "check"))
     return python, dict(os.environ)
 
 
 def launch_report(options: dict, report_arguments: list[str]) -> None:
-    """Provision and replace the bootstrap with qibocal-report."""
+    """Provision and replace the bootstrap with qibocamp."""
     prepare_directories(options, report_arguments, report=True)
     directory = Path(report_arguments[0]).resolve()
     directory.mkdir(parents=True, exist_ok=True)
     python, env = provision_report(options)
-    expression = "from qibocal_report.cli import main; main()"
+    expression = "from qibocamp.cli import main; main()"
     if "notify_ready" in options:
         expression = f"""
 import socket
