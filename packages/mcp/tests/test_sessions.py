@@ -14,6 +14,7 @@ from qibocal.calibration import CalibrationPlatform
 from qibocal.calibration.calibration import Calibration, QubitCalibration
 from qibolab import create_platform
 from test_server import Inputs, acquire, fit, update
+from test_slurm import piped
 
 from qibocal_mcp.runtime import create_server
 from qibocal_mcp.server import create_server as create_frontend
@@ -259,6 +260,7 @@ class SessionTests(unittest.IsolatedAsyncioTestCase):
                         snapshot=Path(command[command.index("--snapshot") + 1]) if "--snapshot" in command else None,
                         request=json.loads(request),
                         session_id=command[command.index("--session-id") + 1],
+                        run_id=command[command.index("--run-id") + 1] if "--run-id" in command else None,
                     )
                 except ToolError as error:
                     process.returncode = 1
@@ -266,7 +268,7 @@ class SessionTests(unittest.IsolatedAsyncioTestCase):
                 return result.model_dump_json(by_alias=True).encode(), b""
 
             process.communicate = communicate
-            return process
+            return piped(process)
 
         with patch("asyncio.create_subprocess_exec", side_effect=start):
             gateway = create_slurm_server(
@@ -594,6 +596,7 @@ class SessionTests(unittest.IsolatedAsyncioTestCase):
                         snapshot=Path(command[command.index("--snapshot") + 1]) if "--snapshot" in command else None,
                         request=json.loads(request),
                         session_id=command[command.index("--session-id") + 1],
+                        run_id=command[command.index("--run-id") + 1] if "--run-id" in command else None,
                     )
                 except ToolError as error:
                     process.returncode = 1
@@ -601,7 +604,7 @@ class SessionTests(unittest.IsolatedAsyncioTestCase):
                 return result.model_dump_json(by_alias=True).encode(), b""
 
             process.communicate = communicate
-            return process
+            return piped(process)
 
         with patch("asyncio.create_subprocess_exec", side_effect=start):
             gateway = create_slurm_server(
@@ -648,6 +651,7 @@ class SessionTests(unittest.IsolatedAsyncioTestCase):
                         snapshot=Path(command[command.index("--snapshot") + 1]) if "--snapshot" in command else None,
                         request=json.loads(request),
                         session_id=command[command.index("--session-id") + 1],
+                        run_id=command[command.index("--run-id") + 1] if "--run-id" in command else None,
                     )
                 except ToolError as error:
                     process.returncode = 1
@@ -655,7 +659,7 @@ class SessionTests(unittest.IsolatedAsyncioTestCase):
                 return result.model_dump_json(by_alias=True).encode(), b""
 
             process.communicate = communicate
-            return process
+            return piped(process)
 
         with patch("asyncio.create_subprocess_exec", side_effect=start):
             gateway = create_slurm_server(

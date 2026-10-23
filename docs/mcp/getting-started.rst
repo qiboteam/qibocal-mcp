@@ -14,7 +14,7 @@ On the machine that reaches the instruments:
 
    qibocal-mcp --platform YOUR_PLATFORM --output runs
 
-On a SLURM access node, dispatch every operation through the queue instead:
+On a SLURM access node, run acquisitions through the queue instead:
 
 .. code-block:: sh
 

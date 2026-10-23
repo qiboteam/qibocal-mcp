@@ -1,4 +1,10 @@
-"""Internal hardware process; platform drivers run on its main thread."""
+"""Internal hardware process.
+
+Qibolab installs signal handlers when a platform is created, which Python only
+allows on the main thread: the platform is created there, by the event loop.
+Driver work (connection, acquisitions, disconnection) runs on one dedicated
+hardware thread instead, so the event loop keeps answering during a run.
+"""
 
 import argparse
 import asyncio
@@ -6,6 +12,7 @@ import inspect
 import json
 import os
 import sys
+from concurrent.futures import ThreadPoolExecutor
 from contextlib import asynccontextmanager, redirect_stdout
 from copy import copy
 from pathlib import Path
@@ -28,6 +35,8 @@ with redirect_stdout(sys.stderr):
     from .notes import read_notes
 from .calibration import register_calibration_prompt, show_images
 from .plots import APP, figures_meta, register_plot_view
+from .progress import Capture
+from .runs import WAIT, Run, Runs
 from .sessions import (
     PlatformState,
     SessionSource,
@@ -45,8 +54,13 @@ def create_server(
     snapshot: Path | None = None,
     restore_runs: bool = False,
     session_id: str | None = None,
+    next_run_id: str | None = None,
 ) -> FastMCP:
-    """Create one server; execution handles live only for its lifetime."""
+    """Create one server; execution handles live only for its lifetime.
+
+    next_run_id names the next execution, for SLURM workers whose gateway
+    hands the run_id out before the job starts.
+    """
     # Qibocal's registry also contains exported parameter/data classes.
     protocols = {
         name: protocol
@@ -56,6 +70,8 @@ def create_server(
     completed_runs: dict[str, Completed] = {}
     updated_runs: set[str] = set()
     lock = asyncio.Lock()
+    runs = Runs()
+    hardware = ThreadPoolExecutor(1, thread_name_prefix="qibocal-hardware")
     output = output.resolve()
     session_id = uuid4().hex if session_id is None else UUID(session_id).hex
     report_folder = output / "sessions" / session_id
@@ -85,12 +101,16 @@ def create_server(
                 if (report_folder / "platform").exists() else accepted_state
             )
             executor = Executor(platform, update=False)
-            platform.connect()
         try:
             yield {"executor": executor}
         finally:
-            with redirect_stdout(sys.stderr):
-                platform.disconnect()
+            # Queued after any run in progress: never disconnect mid-acquisition.
+            await asyncio.get_running_loop().run_in_executor(hardware, disconnect, platform)
+            hardware.shutdown()
+
+    def disconnect(platform) -> None:
+        with redirect_stdout(sys.stderr):
+            platform.disconnect()
 
     mcp = FastMCP(
         "Qibocal",
@@ -176,6 +196,7 @@ def create_server(
         """
         nonlocal accepted_state
         async with lock:
+            runs.ensure_idle()
             executor = ctx.lifespan_context["executor"]
             state = PlatformState.capture(executor.platform).patched(changes)
             candidate = copy(executor.platform)
@@ -200,6 +221,9 @@ def create_server(
             }
 
     def find_run(executor: Executor, run_id: str) -> Completed:
+        active = runs.active()
+        if active is not None and active.run_id == run_id:
+            raise ValueError(f"Run {run_id} is still in progress: wait with get_run")
         if run_id not in completed_runs and restore_runs:
             if UUID(run_id).hex != run_id:
                 raise ValueError("Invalid run_id")
@@ -306,6 +330,7 @@ def create_server(
         if (source == "snapshot") != (snapshot_path is not None):
             raise ValueError("Supply snapshot_path only and always with source=snapshot")
         async with lock:
+            runs.ensure_idle()
             executor = ctx.lifespan_context["executor"]
             provenance = {"source": source, "parent_session_id": session_id}
             candidate = copy(executor.platform)
@@ -359,10 +384,92 @@ def create_server(
             accepted_state = initial_state = state
             completed_runs.clear()
             updated_runs.clear()
+            runs.clear()
             return {
                 "session_id": session_id, "report_folder": str(report_folder),
                 "snapshot": str(report_folder / "platform"), **provenance,
             }
+
+    def acquire(
+        run: Run, executor: Executor, report: SessionReport, protocol: str,
+        parameters: dict, selected: list, platform_overrides: dict | None,
+    ) -> ToolResult:
+        """Connect if needed, acquire, fit and report: on the hardware thread."""
+        with redirect_stdout(sys.stderr), Capture(run.progress):
+            executor.platform.connect()
+            execution = executor
+            if platform_overrides is not None:
+                candidate = copy(executor.platform)
+                state = PlatformState.capture(executor.platform).patched(platform_overrides)
+                state.apply(candidate)
+                execution = Executor(candidate, update=False)
+            bound = protocols[protocol](**parameters)
+            completed = execution(bound, targets=selected)
+            run_id = run.run_id
+            completed = report.add(completed, protocol, parameters, selected)
+            folder = completed.path
+            execution_snapshot = folder / "execution_platform"
+            execution_snapshot.mkdir()
+            execution.platform.dump(execution_snapshot)
+            metadata = {
+                "run_id": run_id,
+                "session_id": session_id,
+                "report_folder": str(report_folder),
+                "platform": platform_name,
+                "slurm_job_id": os.environ.get("SLURM_JOB_ID"),
+                "protocol": protocol,
+                "parameters": parameters,
+                "platform_overrides": platform_overrides,
+                "targets": selected,
+                "folder": str(folder),
+                "results": (
+                    serialize(completed.results.params)
+                    if completed.results is not None
+                    else None
+                ),
+                "supports_update": protocols[protocol].update is not None,
+                "updated": False,
+                "update_started": False,
+            }
+            (folder / "run.json").write_text(
+                json.dumps(metadata, indent=2), encoding="utf-8"
+            )
+            report.save(executor.platform)
+            content: list[ContentBlock] = [
+                TextContent(type="text", text=json.dumps(metadata))
+            ]
+            reports = completed.reports
+            plotted = []
+            if reports is not None:
+                # Built-in Qibocal reports return (Plotly figures, HTML table).
+                entries = (
+                    reports.items()
+                    if isinstance(reports, dict)
+                    else [("all", reports)]
+                )
+                for index, (target, (figures, table)) in enumerate(entries):
+                    content.append(
+                        TextContent(type="text", text=f"Target {target}: {table}")
+                    )
+                    plotted.append((target, figures))
+                    for number, figure in enumerate(figures):
+                        stem = folder / f"report-{index}-{number}"
+                        figure.write_html(stem.with_suffix(".html"))
+                        figure.write_image(
+                            stem.with_suffix(".png"), width=1200, height=700
+                        )
+                        content.append(
+                            Image(path=stem.with_suffix(".png")).to_image_content()
+                        )
+            images = sum(item.type == "image" for item in content)
+            if images:
+                # Repeated where it is needed: models act on the latest result.
+                content.append(TextContent(type="text", text=show_images(images)))
+            completed_runs[run_id] = completed
+            return ToolResult(
+                content=content, structured_content=metadata,
+                meta=figures_meta(plotted),
+            )
 
     @mcp.tool(app=APP)
     async def execute_protocol(
@@ -371,6 +478,7 @@ def create_server(
         targets: Targets,
         ctx: Context,
         platform_overrides: Overrides = None,
+        wait: float = WAIT,
     ) -> ToolResult:
         """Acquire, fit and report, without applying fitted platform updates.
 
@@ -380,9 +488,12 @@ def create_server(
         platform_overrides maps existing JSON pointers to scalar trial values.
         Trials use isolated validated models and never change accepted session
         state, even on failure. Hardware effects are not rolled back.
-        After each call, before another tool call, show the user the returned
+        Waits up to wait seconds: a longer run returns its run_id and progress
+        and continues in the background; get_run waits for its result.
+        After each result, before another tool call, show the user the returned
         images, unless the interface already displays them, and your fit reading.
         """
+        nonlocal next_run_id
         if protocol not in protocols:
             raise ValueError(f"Unknown protocol: {protocol}")
         if not targets:
@@ -390,82 +501,30 @@ def create_server(
         # JSON arrays represent Qibocal's tuple-valued multi-qubit targets.
         selected = [tuple(t) if isinstance(t, list) else t for t in targets]
         async with lock:
+            runs.ensure_idle()
             executor = ctx.lifespan_context["executor"]
-            execution = executor
-            if platform_overrides is not None:
-                candidate = copy(executor.platform)
-                state = PlatformState.capture(executor.platform).patched(platform_overrides)
-                state.apply(candidate)
-                execution = Executor(candidate, update=False)
             with redirect_stdout(sys.stderr):
-                bound = protocols[protocol](**parameters)
                 report = report_for(executor)
-                completed = execution(bound, targets=selected)
-                run_id = uuid4().hex
-                completed = report.add(completed, protocol, parameters, selected)
-                folder = completed.path
-                execution_snapshot = folder / "execution_platform"
-                execution_snapshot.mkdir()
-                execution.platform.dump(execution_snapshot)
-                metadata = {
-                    "run_id": run_id,
-                    "session_id": session_id,
-                    "report_folder": str(report_folder),
-                    "platform": platform_name,
-                    "slurm_job_id": os.environ.get("SLURM_JOB_ID"),
-                    "protocol": protocol,
-                    "parameters": parameters,
-                    "platform_overrides": platform_overrides,
-                    "targets": selected,
-                    "folder": str(folder),
-                    "results": (
-                        serialize(completed.results.params)
-                        if completed.results is not None
-                        else None
-                    ),
-                    "supports_update": protocols[protocol].update is not None,
-                    "updated": False,
-                    "update_started": False,
-                }
-                (folder / "run.json").write_text(
-                    json.dumps(metadata, indent=2), encoding="utf-8"
+            run_id, next_run_id = next_run_id or uuid4().hex, None
+
+            async def work(run: Run) -> ToolResult:
+                return await asyncio.get_running_loop().run_in_executor(
+                    hardware, acquire, run, executor, report, protocol, parameters,
+                    selected, platform_overrides,
                 )
-                report.save(executor.platform)
-                content: list[ContentBlock] = [
-                    TextContent(type="text", text=json.dumps(metadata))
-                ]
-                reports = completed.reports
-                plotted = []
-                if reports is not None:
-                    # Built-in Qibocal reports return (Plotly figures, HTML table).
-                    entries = (
-                        reports.items()
-                        if isinstance(reports, dict)
-                        else [("all", reports)]
-                    )
-                    for index, (target, (figures, table)) in enumerate(entries):
-                        content.append(
-                            TextContent(type="text", text=f"Target {target}: {table}")
-                        )
-                        plotted.append((target, figures))
-                        for number, figure in enumerate(figures):
-                            stem = folder / f"report-{index}-{number}"
-                            figure.write_html(stem.with_suffix(".html"))
-                            figure.write_image(
-                                stem.with_suffix(".png"), width=1200, height=700
-                            )
-                            content.append(
-                                Image(path=stem.with_suffix(".png")).to_image_content()
-                            )
-                images = sum(item.type == "image" for item in content)
-                if images:
-                    # Repeated where it is needed: models act on the latest result.
-                    content.append(TextContent(type="text", text=show_images(images)))
-                completed_runs[run_id] = completed
-                return ToolResult(
-                    content=content, structured_content=metadata,
-                    meta=figures_meta(plotted),
-                )
+
+            runs.start(run_id, protocol, targets, work)
+        return await runs.wait(run_id, wait, ctx)
+
+    @mcp.tool
+    async def get_run(run_id: str, ctx: Context, wait: float = WAIT) -> ToolResult:
+        """Wait for a run started by execute_protocol, and return its result.
+
+        Waits up to wait seconds. A completed run returns what execute_protocol
+        returns: metadata, report tables and images. A run still in progress
+        returns its status and progress again; a failed run returns its error.
+        """
+        return await runs.wait(run_id, wait, ctx)
 
     @mcp.tool
     async def update_platform(run_id: str, ctx: Context) -> dict:
@@ -478,6 +537,7 @@ def create_server(
         """
         nonlocal accepted_state
         async with lock:
+            runs.ensure_idle()
             executor = ctx.lifespan_context["executor"]
             completed = find_run(executor, run_id)
             if run_id in updated_runs:

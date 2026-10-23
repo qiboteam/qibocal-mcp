@@ -22,7 +22,8 @@ instructions, manage their MCP subprocess, and leave strategy to the model:
 there is no prescribed calibration sequence, fit acceptance threshold or
 workflow engine.
 
-``qibocal-mcp`` exposes nine tools, one context resource and one prompt.
+``qibocal-mcp`` exposes ten tools, two resources (the context and the plot
+view) and one prompt.
 ``get_calibration_context`` aliases ``qibocal://context`` for clients without
 resource support; discovery through either interface has the same execution
 effects. The ``calibrate`` prompt/tool is static and has none.
@@ -44,15 +45,24 @@ for the limits of this separation.
 Direct mode
 -----------
 
-With no partition, the server imports Qibocal and creates and connects one
-calibration platform in a background subprocess when its MCP session starts.
-The MCP handshake and tool/resource listing do not wait for this work.
-Context discovery, acquisitions and updates wait for initialization; failures
-are logged on stderr and returned to those requests rather than retried.
-Initialization, execution, updates and disconnection run on that subprocess's
-main thread, as required by Qibolab's signal handlers. The frontend owns the
-subprocess and closes it when the MCP session ends.
-Calls are serialized. An accepted update changes the live platform used by
+With no partition, the server imports Qibocal and creates one calibration
+platform in a background subprocess when its MCP session starts; it connects
+to the instruments at the first acquisition. The MCP handshake and tool/resource
+listing do not wait for this work. Other requests wait for initialization;
+failures are logged on stderr and returned to those requests rather than retried.
+The platform is created on that subprocess's main thread, as Qibolab installs
+signal handlers then. Connection, acquisitions and disconnection run on one
+dedicated hardware thread, so the server keeps answering during a run. The
+frontend owns the subprocess and closes it when the MCP session ends.
+
+Acquisitions run in the background, one at a time. ``execute_protocol`` waits
+for its run up to ``wait`` seconds (45 by default, below common client request
+timeouts), then returns the result, or the run's handle and progress;
+``get_run`` waits again. A client timing out or cancelling a request never stops
+a run. While a run is in progress, notes and reads answer, while updates, edits,
+session switches and other acquisitions are refused. Progress counts Qibolab's
+platform executions and sums their duration estimates: a protocol may execute
+many times, so the total is not known upfront. An accepted update changes the live platform used by
 subsequent acquisitions and saves a snapshot under that run's output directory.
 All executions share a standard Qibocal report under
 ``OUTPUT/sessions/<session_id>/`` with separate protocol/iteration folders.
@@ -82,19 +92,23 @@ Queued mode
 With a partition, the server becomes a hardware-free access-node gateway.
 Every worker receives the gateway's session ID and incrementally loads and
 extends the same report, preserving execution order and timings.
-The gateway serializes operations and launches ``srun`` workers:
+Each operation runs in a fresh worker. Only acquisitions need instruments, so
+only they are ``srun`` jobs; the other operations are software only and run in
+a local worker on the access node, without waiting for an allocation:
 
-1. Reading ``qibocal://context`` or calling ``get_calibration_context`` launches
-   a discovery job, including a platform connection, then returns qubit IDs
-   and protocol definitions.
+1. Reading ``qibocal://context`` or calling ``get_calibration_context`` creates
+   the platform, without connecting, and returns qubit IDs and protocol
+   definitions.
 2. Each ``execute_protocol`` job restores the latest accepted snapshot if one
-   exists, connects, acquires/fits/reports, disconnects and exits.
-3. ``update_platform`` launches a separate job. It restores the saved execution
-   for that run, applies the update and writes a snapshot.
-4. ``patch_platform`` launches a separate job for explicit edits, while
-   ``get_platform_state`` inspects the currently accepted snapshot in a worker.
-   Comment tools also run in workers; a first session comment pins the initial
-   platform snapshot for subsequent jobs without accepting fitted changes.
+   exists, connects, acquires/fits/reports, disconnects and exits. It runs in
+   the background, as in direct mode; its status is ``queued`` until the job
+   starts, and its progress comes from the worker's stderr.
+3. ``update_platform`` restores the saved execution for that run, applies the
+   update and writes a snapshot.
+4. ``patch_platform`` applies explicit edits, while ``get_platform_state``
+   inspects the currently accepted snapshot. A first session comment pins the
+   initial platform snapshot for subsequent jobs without accepting fitted
+   changes.
 5. Only a successful update or edit response advances the gateway's accepted snapshot.
    Subsequent jobs restore both ``parameters.json`` and ``calibration.json``.
 

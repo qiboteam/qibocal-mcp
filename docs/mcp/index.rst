@@ -12,11 +12,11 @@ One command serves two modes over stdio:
   are reachable: a lab workstation or an allocated SLURM compute node. It owns
   one persistent hardware connection.
 * ``qibocal-mcp --platform NAME --partition QUEUE`` — **queued mode**, run on
-  a SLURM access node: a hardware-free gateway dispatches each operation as
-  its own ``srun`` job, so no allocation is held while results are inspected.
+  a SLURM access node: a hardware-free gateway runs each acquisition as its
+  own ``srun`` job, so no allocation is held while results are inspected.
 
-Both modes expose the same interface: nine tools —
-``calibrate``, ``get_calibration_context``, ``execute_protocol``,
+Both modes expose the same interface: ten tools —
+``calibrate``, ``get_calibration_context``, ``execute_protocol``, ``get_run``,
 ``update_platform``, ``start_session``, ``get_platform_state``,
 ``patch_platform``, ``append_note`` and ``get_notes`` — plus the
 ``qibocal://context`` resource and the ``calibrate`` MCP prompt.

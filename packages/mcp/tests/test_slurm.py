@@ -22,8 +22,61 @@ from test_server import acquire, fit, report, update
 
 from qibocal_mcp.calibration import PROMPT, instructions_for, show_images
 from qibocal_mcp.plots import FIGURES, VIEW
+from qibocal_mcp.progress import MARKER
 from qibocal_mcp.slurm import SlurmJobs, create_slurm_server
 from qibocal_mcp.worker import run
+
+
+def piped(process):
+    """Serve a fake process's communicate(request) through the worker's pipes.
+
+    communicate may set process.returncode, which wait() then reports.
+    """
+    code, process.returncode = process.returncode, None
+    process.final = None
+    process.stdout, process.stderr = asyncio.StreamReader(), asyncio.StreamReader()
+    request, finished = bytearray(), asyncio.Event()
+    process.terminated = 0
+
+    async def serve():
+        try:
+            stdout, stderr = await process.communicate(bytes(request))
+        except Exception as error:
+            # As with communicate() itself, the caller sees the error.
+            process.stdout.set_exception(error)
+            process.stderr.set_exception(error)
+            return
+        finally:
+            # Running until wait() reports; communicate may set its status.
+            process.final = code if process.returncode is None else process.returncode
+            process.returncode = None
+        process.stdout.feed_data(stdout)
+        process.stderr.feed_data(stderr)
+        process.stdout.feed_eof()
+        process.stderr.feed_eof()
+        finished.set()
+
+    def close():
+        process.serving = asyncio.ensure_future(serve())
+
+    def terminate():
+        process.terminated += 1
+        process.serving.cancel()
+        process.final = -15
+        finished.set()
+
+    async def wait():
+        await finished.wait()
+        process.returncode = process.final
+        return process.final
+
+    async def drain():
+        pass
+
+    process.stdin = SimpleNamespace(write=request.extend, drain=drain, close=close)
+    process.terminate = process.kill = terminate
+    process.wait = wait
+    return process
 
 
 class SlurmTests(unittest.IsolatedAsyncioTestCase):
@@ -80,6 +133,7 @@ class SlurmTests(unittest.IsolatedAsyncioTestCase):
                         snapshot=snapshot,
                         request=json.loads(request),
                         session_id=command[command.index("--session-id") + 1],
+                        run_id=command[command.index("--run-id") + 1] if "--run-id" in command else None,
                     )
                 except ToolError as error:
                     process.returncode = 1
@@ -87,7 +141,7 @@ class SlurmTests(unittest.IsolatedAsyncioTestCase):
                 return result.model_dump_json(by_alias=True).encode(), b""
 
             process.communicate = communicate
-            return process
+            return piped(process)
 
         def write_image(figure, path, **kwargs):
             Path(path).write_bytes(b"synthetic image")
@@ -116,7 +170,7 @@ class SlurmTests(unittest.IsolatedAsyncioTestCase):
                     {tool.name for tool in await client.list_tools()},
                     {PROMPT, "get_calibration_context", "execute_protocol", "update_platform",
                      "start_session", "get_platform_state", "patch_platform",
-                     "append_note", "get_notes"},
+                     "append_note", "get_notes", "get_run"},
                 )
                 context_text = (
                     await client.read_resource("qibocal://context")
@@ -174,13 +228,15 @@ class SlurmTests(unittest.IsolatedAsyncioTestCase):
                     commands[4][commands[4].index("--snapshot") + 1],
                     accepted.structured_content["snapshot"],
                 )
-                for command in commands:
-                    self.assertEqual(command[0], "srun")
-                    self.assertIn("--partition=qpu", command)
-                    self.assertIn("--ntasks=1", command)
-                    self.assertIn("--account=quantum", command)
-                for platform in platforms:
-                    platform.connect.assert_called_once()
+                # Only acquisitions are SLURM jobs, and only they connect.
+                for command, platform in zip(commands, platforms, strict=True):
+                    acquisition = "--run-id" in command
+                    self.assertEqual(command[0] == "srun", acquisition)
+                    if acquisition:
+                        self.assertIn("--partition=qpu", command)
+                        self.assertIn("--ntasks=1", command)
+                        self.assertIn("--account=quantum", command)
+                    self.assertEqual(platform.connect.call_count, int(acquisition))
                     platform.disconnect.assert_called_once()
                 with self.assertRaisesRegex(ToolError, "Unknown run_id"):
                     await client.call_tool("update_platform", {"run_id": "unknown"})
@@ -242,9 +298,9 @@ class SlurmTests(unittest.IsolatedAsyncioTestCase):
         )
 
     async def test_job_failure_is_not_a_success(self):
-        process = SimpleNamespace(
+        process = piped(SimpleNamespace(
             returncode=1, communicate=AsyncMock(return_value=(b"", b"allocation denied"))
-        )
+        ))
         with patch("asyncio.create_subprocess_exec", return_value=process):
             with self.assertRaisesRegex(RuntimeError, "allocation denied"):
                 await self.jobs().call("context", {})
@@ -277,11 +333,13 @@ class SlurmTests(unittest.IsolatedAsyncioTestCase):
             )
         for status, stdout, stderr, message in cases:
             with self.subTest(message=message, stdout=stdout):
-                process = SimpleNamespace(
-                    returncode=status,
-                    communicate=AsyncMock(return_value=(stdout, stderr)),
-                )
-                with patch("asyncio.create_subprocess_exec", return_value=process):
+                communicate = AsyncMock(return_value=(stdout, stderr))
+                with patch(
+                    "asyncio.create_subprocess_exec",
+                    side_effect=lambda *command, **kwargs: piped(SimpleNamespace(
+                        returncode=status, communicate=communicate,
+                    )),
+                ):
                     gateway = create_slurm_server(
                         "synthetic",
                         partition="qpu",
@@ -295,22 +353,75 @@ class SlurmTests(unittest.IsolatedAsyncioTestCase):
                             await client.read_resource("qibocal://context")
                         with self.assertRaisesRegex(ToolError, message):
                             await client.call_tool("get_calibration_context", {})
-                self.assertEqual(process.communicate.await_count, 2)
-                for call in process.communicate.await_args_list:
+                self.assertEqual(communicate.await_count, 2)
+                for call in communicate.await_args_list:
                     self.assertEqual(
                         json.loads(call.args[0]),
                         {"operation": "context", "arguments": {}},
                     )
 
-    async def test_cancellation_terminates_job_controller(self):
-        process = SimpleNamespace(
-            returncode=None,
-            communicate=AsyncMock(side_effect=asyncio.CancelledError),
-            terminate=Mock(),
-            wait=AsyncMock(return_value=0),
-        )
+    async def test_queued_runs_report_progress_and_notes_need_no_job(self):
+        started, release, commands = asyncio.Event(), asyncio.Event(), []
+        metadata = {"run_id": "abc", "report_folder": "/runs/sessions/s"}
+
+        def start(*command, **kwargs):
+            commands.append(command)
+            process = SimpleNamespace(returncode=0)
+
+            async def communicate(request):
+                if command[0] != "srun":
+                    notes = {"report_folder": "/runs/sessions/s", "notes": []}
+                    result = CallToolResult(content=[], structuredContent=notes)
+                    return result.model_dump_json(by_alias=True).encode(), b""
+                await started.wait()
+                process.stderr.feed_data(
+                    (MARKER + json.dumps({"executions": 3, "estimated_s": 120.0})
+                     + "\n").encode()
+                )
+                await release.wait()
+                result = CallToolResult(content=[], structuredContent=metadata)
+                return result.model_dump_json(by_alias=True).encode(), b""
+
+            process.communicate = communicate
+            return piped(process)
+
+        with patch("asyncio.create_subprocess_exec", side_effect=start):
+            gateway = create_slurm_server(
+                "synthetic", partition="qpu", output=Path("runs"),
+                python=sys.executable, workdir=Path.cwd(), slurm_args=[],
+            )
+            async with Client(gateway) as client:
+                queued = (await client.call_tool("execute_protocol", {
+                    "protocol": "synthetic", "parameters": {}, "targets": [0],
+                    "wait": 0.1,
+                })).structured_content
+                self.assertEqual(queued["status"], "queued")
+                run_id = queued["run_id"]
+                self.assertEqual(commands[0][commands[0].index("--run-id") + 1], run_id)
+                await client.call_tool("append_note", {"content": "Queued, waiting"})
+                self.assertNotEqual(commands[-1][0], "srun")
+                started.set()
+                running = (await client.call_tool(
+                    "get_run", {"run_id": run_id, "wait": 0.2},
+                )).structured_content
+                self.assertEqual(running["status"], "running")
+                self.assertEqual((running["executions"], running["estimated_s"]), (3, 120.0))
+                with self.assertRaisesRegex(ToolError, "in progress"):
+                    await client.call_tool("update_platform", {"run_id": "abc"})
+                release.set()
+                done = await client.call_tool("get_run", {"run_id": run_id, "wait": 5})
+                self.assertEqual(done.structured_content, metadata)
+        self.assertEqual([command[0] == "srun" for command in commands], [True, False])
+
+    async def test_cancellation_terminates_the_worker(self):
+        async def communicate(request):
+            await asyncio.Event().wait()
+
+        process = piped(SimpleNamespace(returncode=0, communicate=communicate))
         with patch("asyncio.create_subprocess_exec", return_value=process):
+            call = asyncio.create_task(self.jobs().call("context", {}))
+            await asyncio.sleep(0.05)
+            call.cancel()
             with self.assertRaises(asyncio.CancelledError):
-                await self.jobs().call("context", {})
-        process.terminate.assert_called_once()
-        process.wait.assert_awaited_once()
+                await call
+        self.assertEqual(process.terminated, 1)

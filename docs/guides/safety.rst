@@ -84,8 +84,11 @@ operation and includes queue wait and execution. It is not an overall wall-clock
 budget for model reasoning or the full objective. Scheduler ``--time`` requests
 have their own meaning.
 
-Queue/subprocess failures are surfaced to the model as errors. Cancellation of
-an active gateway operation terminates its local ``srun`` controller; cleanup
+Queue/subprocess failures are surfaced to the model as errors. A request timing
+out or being cancelled never stops an acquisition, which continues in the
+background: follow it with ``get_run`` rather than submitting it again.
+``cancel_run`` is not available yet (see `issue #42 <https://github.com/qiboteam/qibocal-mcp-servers/issues/42>`_). When the gateway exits
+during a run, it terminates the job's local ``srun`` controller; cleanup
 waits up to ten seconds before killing a controller that has not exited.
 SLURM/site signal handling governs how quickly the allocation and remote work
 actually stop. Do not assume that closing SSH instantly releases instruments;

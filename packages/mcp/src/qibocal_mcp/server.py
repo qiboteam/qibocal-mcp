@@ -16,6 +16,7 @@ from mcp.types import TextResourceContents
 
 from .calibration import register_calibration_prompt
 from .plots import APP, register_plot_view
+from .runs import WAIT
 from .sessions import SessionSource
 from .targets import Overrides, Targets
 
@@ -222,10 +223,27 @@ def create_server(
             raise ValueError("Hardware process returned no session metadata")
         return result.structured_content
 
+    async def forward(name: str, arguments: dict, ctx: Context) -> ToolResult:
+        """Forward a run's result, metadata and progress unchanged."""
+
+        async def progress(value: float, total: float | None, message: str | None):
+            await ctx.report_progress(value, total, message)
+
+        client = await asyncio.shield(ctx.lifespan_context["ready"])
+        result = await client.call_tool(name, arguments, progress_handler=progress)
+        return ToolResult(
+            content=result.content, structured_content=result.structured_content,
+            meta=result.meta, is_error=result.is_error,
+        )
+
     @mcp.tool(app=APP)
     async def execute_protocol(
-        protocol: str, parameters: dict, targets: Targets, ctx: Context,
+        protocol: str,
+        parameters: dict,
+        targets: Targets,
+        ctx: Context,
         platform_overrides: Overrides = None,
+        wait: float = WAIT,
     ) -> ToolResult:
         """Acquire, fit and report, without applying fitted platform updates.
 
@@ -235,18 +253,25 @@ def create_server(
         platform_overrides maps existing JSON pointers to scalar trial values.
         Trials use isolated validated models and never change accepted session
         state, even on failure. Hardware effects are not rolled back.
-        After each call, before another tool call, show the user the returned
+        Waits up to wait seconds: a longer run returns its run_id and progress
+        and continues in the background; get_run waits for its result.
+        After each result, before another tool call, show the user the returned
         images, unless the interface already displays them, and your fit reading.
         """
-        client = await asyncio.shield(ctx.lifespan_context["ready"])
-        result = await client.call_tool("execute_protocol", {
+        return await forward("execute_protocol", {
             "protocol": protocol, "parameters": parameters, "targets": targets,
-            "platform_overrides": platform_overrides,
-        })
-        return ToolResult(
-            content=result.content, structured_content=result.structured_content,
-            meta=result.meta, is_error=result.is_error,
-        )
+            "platform_overrides": platform_overrides, "wait": wait,
+        }, ctx)
+
+    @mcp.tool
+    async def get_run(run_id: str, ctx: Context, wait: float = WAIT) -> ToolResult:
+        """Wait for a run started by execute_protocol, and return its result.
+
+        Waits up to wait seconds. A completed run returns what execute_protocol
+        returns: metadata, report tables and images. A run still in progress
+        returns its status and progress again; a failed run returns its error.
+        """
+        return await forward("get_run", {"run_id": run_id, "wait": wait}, ctx)
 
     @mcp.tool
     async def update_platform(run_id: str, ctx: Context) -> dict:

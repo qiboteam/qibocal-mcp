@@ -1,7 +1,9 @@
 """Exercise the bridge with the real Executor and synthetic callbacks."""
 
 import json
+import logging
 import tempfile
+import threading
 import unittest
 from dataclasses import dataclass
 from pathlib import Path
@@ -54,6 +56,24 @@ def acquire(pars: Inputs, targets) -> Samples:
 
 
 def acquire_with_defaults(pars: DefaultInputs, targets) -> Samples:
+    return acquire(pars, targets)
+
+
+RELEASE = threading.Event()
+# A valid 1x1 PNG; the full image renderer is exercised separately.
+PNG = bytes.fromhex(
+    "89504e470d0a1a0a0000000d49484452000000010000000108060000001f15c489"
+    "0000000b49444154789c636000020000050001a5f645400000000049454e44ae426082"
+)
+
+
+def slow_acquire(pars: Inputs, targets) -> Samples:
+    """Log Qibolab's estimate, as platform.execute does, then wait for the test."""
+    logging.getLogger("qibolab._core.platform.platform").info(
+        "Pulse execution time: 2.500 s"
+    )
+    if not RELEASE.wait(timeout=30):
+        raise TimeoutError("The test never released the acquisition")
     return acquire(pars, targets)
 
 
@@ -133,6 +153,51 @@ class ServerTests(unittest.IsolatedAsyncioTestCase):
                     self.assertEqual(platform.calibration.single_qubits[0].qubit.frequency_01, 5e9)
                     with self.assertRaisesRegex(ToolError, "already applied"):
                         await client.call_tool("update_platform", {"run_id": run_id})
+
+    async def test_long_runs_continue_in_the_background(self):
+        """A run outlasting the wait leaves the server responsive."""
+        platform = CalibrationPlatform(
+            **vars(create_platform("dummy")),
+            calibration=Calibration(single_qubits={0: QubitCalibration()}),
+        )
+        protocol = Protocol(slow_acquire, fit, report, update)
+        RELEASE.clear()
+        self.addCleanup(RELEASE.set)
+        with (
+            tempfile.TemporaryDirectory() as directory,
+            patch("qibocal_mcp.runtime.create_calibration_platform", return_value=platform),
+            patch("qibocal_mcp.runtime.PROTOCOLS", {"synthetic": protocol}),
+            patch.object(go.Figure, "write_image", lambda figure, file, **kwargs: Path(file).write_bytes(PNG)),
+        ):
+            async with Client(create_server("synthetic", output=Path(directory))) as client:
+                started = (await client.call_tool("execute_protocol", {
+                    "protocol": "synthetic", "parameters": {"value": 5e9}, "targets": [0],
+                    "wait": 0.2,
+                })).structured_content
+                self.assertEqual(started["status"], "running")
+                self.assertEqual((started["executions"], started["estimated_s"]), (1, 2.5))
+                run_id = started["run_id"]
+                # Notes and reads answer meanwhile; state changes and acquisitions wait.
+                await client.call_tool("append_note", {"content": "Waiting for the run"})
+                await client.call_tool("get_platform_state", {})
+                for tool, arguments in (
+                    ("execute_protocol", {"protocol": "synthetic", "parameters": {"value": 1}, "targets": [0]}),
+                    ("update_platform", {"run_id": run_id}),
+                    ("patch_platform", {"changes": {}}),
+                    ("start_session", {}),
+                ):
+                    with self.subTest(tool=tool), self.assertRaisesRegex(ToolError, "in progress"):
+                        await client.call_tool(tool, arguments)
+                polled = await client.call_tool("get_run", {"run_id": run_id, "wait": 0.1})
+                self.assertEqual(polled.structured_content["status"], "running")
+                RELEASE.set()
+                result = await client.call_tool("get_run", {"run_id": run_id, "wait": 10})
+                self.assertEqual(result.structured_content["run_id"], run_id)
+                self.assertEqual(result.content[-1].text, show_images(1))
+                await client.call_tool("update_platform", {"run_id": run_id})
+                self.assertEqual(platform.calibration.single_qubits[0].qubit.frequency_01, 5e9)
+                with self.assertRaisesRegex(ToolError, "Unknown run_id"):
+                    await client.call_tool("get_run", {"run_id": "missing"})
 
     async def test_targets_match_qibocal_and_tolerate_text(self):
         from pydantic import TypeAdapter, ValidationError
@@ -218,7 +283,7 @@ class ServerTests(unittest.IsolatedAsyncioTestCase):
                     {t.name for t in await client.list_tools()},
                     {PROMPT, "get_calibration_context", "execute_protocol", "update_platform",
                      "start_session", "get_platform_state", "patch_platform",
-                     "append_note", "get_notes"},
+                     "append_note", "get_notes", "get_run"},
                 )
                 context_text = (
                     await client.read_resource("qibocal://context")

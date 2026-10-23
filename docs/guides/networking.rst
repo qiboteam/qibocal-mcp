@@ -161,7 +161,9 @@ or detach the job: the gateway needs the worker's request/response stream and
 controlled lifecycle.
 
 The agent timeout includes queue waiting and execution for each operation.
-Standalone MCP clients must configure their own timeout. Queue and subprocess
+Standalone MCP clients need not cover long acquisitions with their own request
+timeout: ``execute_protocol`` returns within its ``wait`` and ``get_run`` follows
+the run. Queue and subprocess
 failures are surfaced as errors, not successful experiments.
 For cancellation behavior, see :doc:`safety`; for a complete launch command,
 see :doc:`cluster`.

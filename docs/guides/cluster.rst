@@ -2,8 +2,8 @@ Cluster deployment in depth
 ===========================
 
 This guide details what the interactive tutorial sets up for you: a
-hardware-free gateway on an access node that dispatches one SLURM job per
-operation, while the agent or assistant and its model stay on your laptop.
+hardware-free gateway on an access node that runs each acquisition as a SLURM
+job, while the agent or assistant and its model stay on your laptop.
 It uses explicit command-line options, so that every deployment choice is
 visible; the same settings can be stored in the configuration file.
 This follows Qibocal's
@@ -114,10 +114,10 @@ sources resolve together, with conflicts reported as errors; see
 entire objective. ``--slurm-arg=--time=00:15:00`` sets a scheduler limit rather
 than replacing the MCP timeout.
 
-The first context read submits a discovery job. Each protocol then gets a fresh
-job that connects, acquires, fits, reports, disconnects and releases its
-allocation. An accepted update is another job that restores the saved execution,
-applies its results and saves a snapshot. Later jobs use the latest accepted
+Each protocol gets a fresh job that connects, acquires, fits, reports,
+disconnects and releases its allocation. Other operations need no allocation:
+an accepted update, for instance, restores the saved execution, applies its
+results and saves a snapshot in a local worker. Later jobs use the latest accepted
 Qibolab parameters *and* Qibocal calibration, not the most recent rejected fit.
 See :doc:`../guides/architecture` for the lifecycle.
 
