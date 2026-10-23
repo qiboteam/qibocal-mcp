@@ -10,6 +10,7 @@ import json
 import logging
 import re
 import sys
+import threading
 import time
 from dataclasses import asdict, dataclass, field
 
@@ -50,17 +51,29 @@ def parse(line: str) -> dict | None:
     return None
 
 
-class Capture(logging.Handler):
-    """Collect Qibolab's estimates during one acquisition."""
+class Cancelled(Exception):
+    """A run stopped on request, between two platform executions."""
 
-    def __init__(self, progress: Progress):
+
+class Capture(logging.Handler):
+    """Collect Qibolab's estimates during one acquisition.
+
+    The estimate is logged right before each platform execution, which makes it
+    the point where a requested cancellation stops the run: the exception
+    propagates from the logging call, so no further pulses are played.
+    """
+
+    def __init__(self, progress: Progress, cancel: threading.Event | None = None):
         super().__init__(logging.INFO)
         self.progress = progress
+        self.cancel = cancel
 
     def emit(self, record: logging.LogRecord) -> None:
         match = ESTIMATE.search(record.getMessage())
         if match is None:
             return
+        if self.cancel is not None and self.cancel.is_set():
+            raise Cancelled("Cancelled before a platform execution")
         estimate = float(match.group(1))
         self.progress.executions += 1
         self.progress.estimated_s += estimate
