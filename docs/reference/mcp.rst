@@ -5,7 +5,7 @@ Transport and session
 ---------------------
 
 The server and queued gateway expose the same stdio interface, with exactly
-thirteen tools, two resources (the calibration context and the interactive plot
+seventeen tools, two resources (the calibration context and the interactive plot
 view) and one prompt. Acquisitions run in the background, one at a time;
 see :doc:`../guides/architecture`. Run handles
 belong to the current calibration session and cannot be reused after switching
@@ -349,6 +349,18 @@ In queued mode this is a separate job that restores the saved execution.
 Only a successful response advances the gateway to the accepted snapshot,
 including both Qibolab parameters and Qibocal calibration. Rejected fits are
 never used as the next job's platform state.
+
+Platform versions
+-----------------
+
+``list_versions(ref=None, limit=20, fetch=False, remote="origin")``,
+``diff_platform(against="source")``, ``save_platform(message, branch,
+confirm=None, push=False, remote=None)`` and ``checkout_platform(ref)`` list,
+compare, save and check out platform versions; see :doc:`../guides/versions`
+for the workflow and its guarantees. Differences list changed values by JSON
+pointer, with ``old`` and ``new`` values (``null`` when absent; values above
+2 kB are summarized by their size), at most 200 of them. In queued mode, they
+run in local workers on the access node, without an allocation.
 
 start_session(source="current", run_id=None, ref=None, platform_path=None, snapshot_path=None, fetch=False, remote=None)
 ------------------------------------------------------------------------------------------------------------------------
