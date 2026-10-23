@@ -282,8 +282,8 @@ def create_slurm_server(
         platform_overrides maps existing JSON pointers to scalar trial values.
         Trials use isolated validated models and never change accepted session
         state, even on failure. Hardware effects are not rolled back.
-        After each call, show the user the returned images and your fit reading
-        in a message before calling another tool.
+        After each call, before another tool call, show the user the returned
+        images, unless the interface already displays them, and your fit reading.
         """
         result = await jobs.call(
             "execute_protocol",

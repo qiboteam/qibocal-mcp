@@ -89,7 +89,7 @@ class PersistenceTests(unittest.TestCase):
         self.assertIn("append_note", TOOLS)
         self.assertIn("get_notes", TOOLS)
         for instruction in (
-            "before the first experiment", "After inspecting each run",
+            "Before the first experiment", "After inspecting each run",
             "Append follow-up notes", "final summary", "new session plan",
             # Keep the user following: dashboard link, images, Markdown.
             "open_reports", "execute_protocol call", "fails or times out", "Markdown",

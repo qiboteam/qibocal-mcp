@@ -39,16 +39,13 @@ from .report import ReportServer, ReportSettings
 
 INSTRUCTIONS = (
     "Calibration tools are forwarded from the Qibocal server of the active "
-    "configuration. list_configurations shows the stored configurations and "
-    "which one is active, if any; switch_configuration starts the server of "
-    "one, replacing the active one. When none is active, the calibration tools "
-    "answer with an error until a configuration is selected: ask the user which "
-    "one, when calibrating is what they want. Switching closes the previous "
-    "server: its run handles expire and unfinished work there is abandoned. "
-    "Read the calibration context again after switching. open_reports serves "
-    "the reports of the active configuration and returns a link for the user "
-    "to open them, with interactive plots, in the browser: call it before the "
-    "first experiment of a configuration, and give the user the link."
+    "configuration. list_configurations shows the stored configurations and the "
+    "active one; switch_configuration starts another, closing the previous "
+    "server, its run handles and unfinished work. Without an active "
+    "configuration, the calibration tools fail: ask the user which one to use. "
+    "After switching, read the calibration context again. Before the first "
+    "experiment of a configuration, call open_reports and give the user its "
+    "link, which opens the reports with interactive plots in the browser."
 )
 INACTIVE = (
     "No Qibocal configuration is active: list them with list_configurations "
