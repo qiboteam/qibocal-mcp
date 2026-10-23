@@ -26,7 +26,7 @@ with redirect_stdout(sys.stderr):
     from .artifacts import SessionReport
     from .notes import append_note as persist_note
     from .notes import read_notes
-from .calibration import register_calibration_prompt
+from .calibration import register_calibration_prompt, show_images
 from .plots import APP, figures_meta, register_plot_view
 from .sessions import (
     PlatformState,
@@ -380,6 +380,8 @@ def create_server(
         platform_overrides maps existing JSON pointers to scalar trial values.
         Trials use isolated validated models and never change accepted session
         state, even on failure. Hardware effects are not rolled back.
+        After each call, show the user the returned images and your fit reading
+        in a message before calling another tool.
         """
         if protocol not in protocols:
             raise ValueError(f"Unknown protocol: {protocol}")
@@ -455,6 +457,10 @@ def create_server(
                             content.append(
                                 Image(path=stem.with_suffix(".png")).to_image_content()
                             )
+                images = sum(item.type == "image" for item in content)
+                if images:
+                    # Repeated where it is needed: models act on the latest result.
+                    content.append(TextContent(type="text", text=show_images(images)))
                 completed_runs[run_id] = completed
                 return ToolResult(
                     content=content, structured_content=metadata,

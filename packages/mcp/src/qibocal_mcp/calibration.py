@@ -71,14 +71,28 @@ previously supplied session IDs, report paths and calibration plans may be stale
 Write a new session plan after switching; old notes remain with the old report.
 Keep the user able to follow along. Before the first experiment, if an
 open_reports tool is available, call it and give the user its dashboard link,
-so they can watch the reports while you work. As each run completes, show the
-user its report images, embedded in your reply when the interface can display
-them, next to your reading of the fit; interfaces that render the interactive
-plot view show it by themselves. Format replies and notes in Markdown: short
+so they can watch the reports while you work; it does not replace showing
+plots in the conversation. The user cannot see tool calls or tool results,
+only your messages. After each execute_protocol call, and before any other tool
+call, send the user a message with that run's report images (embedded when
+your interface can display images, otherwise their report paths) next to your
+reading of the fit and your update decision. Never chain two execute_protocol
+or update_platform calls without a user-visible message in between. If a call
+fails or times out, tell the user immediately. Format replies and notes in Markdown: short
 headings, bullet lists, and tables for parameters, fitted values and
 before/after comparisons, always with units. Qibocal Report renders notes as
 Markdown too.
 """
+
+
+def show_images(count: int) -> str:
+    """The reminder closing every execute_protocol result with images."""
+    return (
+        "The user cannot see tool results, including these images. Before "
+        f"calling any other tool, send the user a message that shows these {count} "
+        "report images (embed them if your interface can; otherwise give their "
+        "report paths), with your reading of each fit and your update decision."
+    )
 
 
 def instructions_for(context: str | None = None) -> str:

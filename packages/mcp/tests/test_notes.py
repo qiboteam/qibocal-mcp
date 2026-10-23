@@ -92,7 +92,7 @@ class PersistenceTests(unittest.TestCase):
             "before the first experiment", "After inspecting each run",
             "Append follow-up notes", "final summary", "new session plan",
             # Keep the user following: dashboard link, images, Markdown.
-            "open_reports", "show the\nuser its report images", "Markdown",
+            "open_reports", "execute_protocol call", "fails or times out", "Markdown",
         ):
             self.assertIn(instruction, INSTRUCTIONS)
 
