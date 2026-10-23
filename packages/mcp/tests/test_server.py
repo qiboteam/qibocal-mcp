@@ -77,6 +77,15 @@ def slow_acquire(pars: Inputs, targets) -> Samples:
     return acquire(pars, targets)
 
 
+def twice_acquire(pars: Inputs, targets) -> Samples:
+    """Two platform executions, the test releasing the first."""
+    slow_acquire(pars, targets)
+    logging.getLogger("qibolab._core.platform.platform").info(
+        "Pulse execution time: 1.000 s"
+    )
+    return acquire(pars, targets)
+
+
 def fit(data: Samples) -> Fit:
     return Fit({q: float(data[q][0]) for q in data.qubits})
 
@@ -199,6 +208,44 @@ class ServerTests(unittest.IsolatedAsyncioTestCase):
                 with self.assertRaisesRegex(ToolError, "Unknown run_id"):
                     await client.call_tool("get_run", {"run_id": "missing"})
 
+    async def test_cancelled_runs_stop_before_the_next_execution(self):
+        platform = CalibrationPlatform(
+            **vars(create_platform("dummy")),
+            calibration=Calibration(single_qubits={0: QubitCalibration()}),
+        )
+        RELEASE.clear()
+        self.addCleanup(RELEASE.set)
+        with (
+            tempfile.TemporaryDirectory() as directory,
+            patch("qibocal_mcp.runtime.create_calibration_platform", return_value=platform),
+            patch("qibocal_mcp.runtime.PROTOCOLS", {
+                "synthetic": Protocol(twice_acquire, fit, report, update),
+            }),
+            patch.object(go.Figure, "write_image", lambda figure, file, **kwargs: Path(file).write_bytes(PNG)),
+        ):
+            async with Client(create_server("synthetic", output=Path(directory))) as client:
+                arguments = {"protocol": "synthetic", "parameters": {"value": 5e9}, "targets": [0]}
+                run_id = (await client.call_tool(
+                    "execute_protocol", {**arguments, "wait": 0.2},
+                )).structured_content["run_id"]
+                # The execution in progress is not interrupted.
+                stopping = await client.call_tool("cancel_run", {"run_id": run_id, "wait": 0.1})
+                self.assertEqual(stopping.structured_content["status"], "cancelling")
+                RELEASE.set()
+                stopped = (await client.call_tool(
+                    "get_run", {"run_id": run_id, "wait": 10},
+                )).structured_content
+                self.assertEqual((stopped["status"], stopped["executions"]), ("cancelled", 1))
+                self.assertEqual(list(Path(directory).rglob("data.npz")), [])
+                with self.assertRaisesRegex(ToolError, "already finished"):
+                    await client.call_tool("cancel_run", {"run_id": run_id})
+                with self.assertRaisesRegex(ToolError, "Unknown run_id"):
+                    await client.call_tool("update_platform", {"run_id": run_id})
+                # The server is idle again: the next run completes.
+                result = await client.call_tool("execute_protocol", arguments)
+                self.assertEqual(result.structured_content["protocol"], "synthetic")
+                self.assertEqual(len(list(Path(directory).rglob("data.npz"))), 1)
+
     async def test_targets_match_qibocal_and_tolerate_text(self):
         from pydantic import TypeAdapter, ValidationError
         from qibocal.auto.task import Targets as QibocalTargets
@@ -283,7 +330,7 @@ class ServerTests(unittest.IsolatedAsyncioTestCase):
                     {t.name for t in await client.list_tools()},
                     {PROMPT, "get_calibration_context", "execute_protocol", "update_platform",
                      "start_session", "get_platform_state", "patch_platform",
-                     "append_note", "get_notes", "get_run"},
+                     "append_note", "get_notes", "get_run", "cancel_run"},
                 )
                 context_text = (
                     await client.read_resource("qibocal://context")

@@ -184,7 +184,7 @@ def create_slurm_server(
         workdir=workdir,
         slurm_args=slurm_args,
     )
-    runs = Runs()
+    runs = Runs(interrupt=True)
 
     @asynccontextmanager
     async def lifespan(server):
@@ -371,6 +371,18 @@ def create_slurm_server(
         returns: metadata, report tables and images. A run still in progress
         returns its status and progress again; a failed run returns its error.
         """
+        return await runs.wait(run_id, wait, ctx)
+
+    @mcp.tool
+    async def cancel_run(run_id: str, ctx: Context, wait: float = WAIT) -> ToolResult:
+        """Stop a run started by execute_protocol, then wait for it to stop.
+
+        Use it only when the user asks, or when a run exceeds approved limits or
+        budget. A local run stops before its next platform execution; a SLURM
+        job is terminated. Waits up to wait seconds; get_run follows it further.
+        A cancelled run saves no results, and hardware effects are not undone.
+        """
+        runs.cancel(run_id)
         return await runs.wait(run_id, wait, ctx)
 
     @mcp.tool

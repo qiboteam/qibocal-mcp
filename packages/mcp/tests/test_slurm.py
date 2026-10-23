@@ -170,7 +170,7 @@ class SlurmTests(unittest.IsolatedAsyncioTestCase):
                     {tool.name for tool in await client.list_tools()},
                     {PROMPT, "get_calibration_context", "execute_protocol", "update_platform",
                      "start_session", "get_platform_state", "patch_platform",
-                     "append_note", "get_notes", "get_run"},
+                     "append_note", "get_notes", "get_run", "cancel_run"},
                 )
                 context_text = (
                     await client.read_resource("qibocal://context")
@@ -412,6 +412,26 @@ class SlurmTests(unittest.IsolatedAsyncioTestCase):
                 done = await client.call_tool("get_run", {"run_id": run_id, "wait": 5})
                 self.assertEqual(done.structured_content, metadata)
         self.assertEqual([command[0] == "srun" for command in commands], [True, False])
+
+    async def test_cancelled_jobs_are_terminated(self):
+        async def communicate(request):
+            await asyncio.Event().wait()
+
+        process = piped(SimpleNamespace(returncode=0, communicate=communicate))
+        with patch("asyncio.create_subprocess_exec", return_value=process):
+            gateway = create_slurm_server(
+                "synthetic", partition="qpu", output=Path("runs"),
+                python=sys.executable, workdir=Path.cwd(), slurm_args=[],
+            )
+            async with Client(gateway) as client:
+                run_id = (await client.call_tool("execute_protocol", {
+                    "protocol": "synthetic", "parameters": {}, "targets": [0], "wait": 0.1,
+                })).structured_content["run_id"]
+                stopped = (await client.call_tool(
+                    "cancel_run", {"run_id": run_id, "wait": 5},
+                )).structured_content
+                self.assertEqual(stopped["status"], "cancelled")
+        self.assertEqual(process.terminated, 1)
 
     async def test_cancellation_terminates_the_worker(self):
         async def communicate(request):

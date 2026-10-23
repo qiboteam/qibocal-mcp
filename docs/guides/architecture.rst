@@ -22,7 +22,7 @@ instructions, manage their MCP subprocess, and leave strategy to the model:
 there is no prescribed calibration sequence, fit acceptance threshold or
 workflow engine.
 
-``qibocal-mcp`` exposes ten tools, two resources (the context and the plot
+``qibocal-mcp`` exposes eleven tools, two resources (the context and the plot
 view) and one prompt.
 ``get_calibration_context`` aliases ``qibocal://context`` for clients without
 resource support; discovery through either interface has the same execution
@@ -59,7 +59,7 @@ Acquisitions run in the background, one at a time. ``execute_protocol`` waits
 for its run up to ``wait`` seconds (45 by default, below common client request
 timeouts), then returns the result, or the run's handle and progress;
 ``get_run`` waits again. A client timing out or cancelling a request never stops
-a run. While a run is in progress, notes and reads answer, while updates, edits,
+a run; ``cancel_run`` does, before the run's next platform execution. While a run is in progress, notes and reads answer, while updates, edits,
 session switches and other acquisitions are refused. Progress counts Qibolab's
 platform executions and sums their duration estimates: a protocol may execute
 many times, so the total is not known upfront. An accepted update changes the live platform used by

@@ -19,7 +19,8 @@ every MCP server and nothing else:
 * ``runs.py``: acquisitions as background tasks with bounded waits, shared by
   the runtime and the gateway (``execute_protocol`` and ``get_run``).
 * ``progress.py``: run progress from Qibolab's duration estimates, captured
-  from its logs and relayed to the gateway as marked stderr lines.
+  from its logs and relayed to the gateway as marked stderr lines. The same
+  log hook, called right before each platform execution, stops a cancelled run.
 * ``slurm.py``: gateway dispatch (``srun`` for acquisitions, local workers for
   everything else) and accepted-state handoff.
 * ``worker.py``: one internal operation per allocation, with JSON on

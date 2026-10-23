@@ -5,7 +5,7 @@ Transport and session
 ---------------------
 
 The server and queued gateway expose the same stdio interface, with exactly
-ten tools, two resources (the calibration context and the interactive plot
+eleven tools, two resources (the calibration context and the interactive plot
 view) and one prompt. Acquisitions run in the background, one at a time;
 see :doc:`../guides/architecture`. Run handles
 belong to the current calibration session and cannot be reused after switching
@@ -224,6 +224,17 @@ Wait up to ``wait`` seconds for a run started by ``execute_protocol``, then
 return its result, exactly as ``execute_protocol`` would have, or its status
 again if still in progress. A failed run returns its error. Waiting has no
 effect on the run: a request timing out or cancelled leaves it running.
+
+cancel_run(run_id, wait=45)
+---------------------------
+
+Stop a run started by ``execute_protocol``, then wait up to ``wait`` seconds for
+it to stop, returning its status. In direct mode, the run stops before its next
+platform execution and reports ``cancelling`` until then; in queued mode, the
+job is terminated. A stopped run reports ``cancelled`` through ``get_run``. It
+saves no data or fitted results and cannot be updated; hardware effects of the
+executions already played are not rolled back. Cancelling a finished run is an
+error.
 Report content comes directly from the protocol callback through
 ``Executor.report``; the bridge does not render a full report-page template.
 

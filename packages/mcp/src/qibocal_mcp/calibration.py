@@ -15,7 +15,7 @@ CONTEXT_TOOL = "get_calibration_context"
 PROMPT = "calibrate"
 TOOLS = (
     PROMPT,
-    CONTEXT_TOOL, "execute_protocol", "get_run", "update_platform", "start_session",
+    CONTEXT_TOOL, "execute_protocol", "get_run", "cancel_run", "update_platform", "start_session",
     "get_platform_state", "patch_platform",
     "append_note", "get_notes",
 )
@@ -42,8 +42,9 @@ result. The rules below are not optional.
   state through the filesystem; source files are never overwritten.
 - Queue waits and long runs are normal. When execute_protocol returns a queued
   or running status, tell the user its progress and estimate, then wait with
-  get_run: never submit the run again. Never blindly retry a failed acquisition
-  or update: it may already have affected hardware.
+  get_run: never submit the run again. Use cancel_run only when the user asks,
+  or when a run exceeds approved limits or budget. Never blindly retry a failed
+  acquisition or update: it may already have affected hardware.
 - Stop when the objective is met, the budget is exhausted, or progress needs
   user input.
 
