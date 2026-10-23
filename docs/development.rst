@@ -38,6 +38,10 @@ every MCP server and nothing else:
   per-directory ``.notes.lock``.
 * ``sessions.py``: paired calibration checkpoints and repository revision
   selection, with explicit configured-remote fetching and no checkout.
+* ``versions.py``: platform versions, for now in the platform's Git
+  repository: history, differences, saves with branch consistency (plumbing
+  commits off the checkout), pushes and checkouts. The tools only speak of
+  versions, so that a database can replace it.
 * ``locking.py``: the shared advisory file lock.
 * ``targets.py``: Qibocal-compatible wire types without importing the
   calibration stack.
