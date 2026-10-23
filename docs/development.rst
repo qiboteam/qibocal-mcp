@@ -25,10 +25,10 @@ every MCP server and nothing else:
   everything else) and accepted-state handoff.
 * ``worker.py``: one internal operation per allocation, with JSON on
   stdin/stdout. Workers do not read user configuration.
-* ``plots.py``: the MCP Apps view of ``execute_protocol``'s figures, served
-  as ``ui://qibocal/plots.html`` and fed by the Plotly JSON in the result
-  ``_meta``. The HTML lives in the module, as deployment ships only the
-  server's Python files.
+* ``plots.py``: report plots. It saves each figure (HTML, PNG, and Plotly
+  JSON when light), serves the MCP Apps view and its on-demand figures, and
+  holds the ``ShowPlots`` middleware, which words the note opening each result
+  with plots for the server's own client; ``qibocal-agent mcp`` loads it too.
 * ``calibration.py``: the calibration policy, registered on every server as
   the ``calibrate`` MCP prompt and the identically named alias tool
   (for interfaces that ignore MCP prompts), plus context/tool identifiers.

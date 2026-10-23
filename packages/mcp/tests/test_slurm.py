@@ -20,8 +20,8 @@ from qibocal.calibration.calibration import Calibration, QubitCalibration
 from qibolab import create_platform
 from test_server import acquire, fit, report, update
 
-from qibocal_mcp.calibration import PROMPT, instructions_for, show_images
-from qibocal_mcp.plots import FIGURES, VIEW
+from qibocal_mcp.calibration import PROMPT, instructions_for
+from qibocal_mcp.plots import FIGURE_TOOL, VIEW, reminder
 from qibocal_mcp.progress import MARKER
 from qibocal_mcp.slurm import (
     LISTED,
@@ -176,7 +176,8 @@ class SlurmTests(unittest.IsolatedAsyncioTestCase):
                     {tool.name for tool in await client.list_tools()},
                     {PROMPT, "get_calibration_context", "execute_protocol", "update_platform",
                      "start_session", "get_platform_state", "patch_platform",
-                     "append_note", "get_notes", "get_run", "cancel_run"},
+                     "append_note", "get_notes", "get_run", "cancel_run",
+                     "get_run_results", "get_run_figures"},
                 )
                 context_text = (
                     await client.read_resource("qibocal://context")
@@ -192,10 +193,9 @@ class SlurmTests(unittest.IsolatedAsyncioTestCase):
                     {"protocol": "synthetic", "parameters": {"value": 5e9}, "targets": [0]},
                 )
                 self.assertTrue(any(c.type == "image" for c in result.content))
-                self.assertEqual(result.content[-1].text, show_images(1))
-                # The worker's JSON response keeps the interactive figures.
-                figures = result.meta[FIGURES]["figures"]
-                self.assertEqual(figures[0]["data"][0]["type"], "scatter")
+                self.assertEqual(
+                    result.content[0].text, reminder(result.structured_content["plots"], False),
+                )
                 execute = next(
                     tool for tool in await client.list_tools()
                     if tool.name == "execute_protocol"
@@ -234,6 +234,11 @@ class SlurmTests(unittest.IsolatedAsyncioTestCase):
                     commands[4][commands[4].index("--snapshot") + 1],
                     accepted.structured_content["snapshot"],
                 )
+                # Figures are read from the run folder by a local worker, on request.
+                figures = (await client.call_tool(
+                    FIGURE_TOOL, {"run_id": run_id},
+                )).structured_content["figures"]
+                self.assertEqual(figures["0"]["data"][0]["type"], "scatter")
                 # Only acquisitions are SLURM jobs, and only they connect.
                 for command, platform in zip(commands, platforms, strict=True):
                     acquisition = "--run-id" in command
@@ -246,7 +251,7 @@ class SlurmTests(unittest.IsolatedAsyncioTestCase):
                     platform.disconnect.assert_called_once()
                 with self.assertRaisesRegex(ToolError, "Unknown run_id"):
                     await client.call_tool("update_platform", {"run_id": "unknown"})
-                self.assertEqual(len(commands), 5)
+                self.assertEqual(len(commands), 6)
                 with self.assertRaisesRegex(ToolError, "update attempted"):
                     await client.call_tool("update_platform", {"run_id": run_id})
 

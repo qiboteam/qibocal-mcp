@@ -33,8 +33,15 @@ with redirect_stdout(sys.stderr):
     from .artifacts import SessionReport
     from .notes import append_note as persist_note
     from .notes import read_notes
-from .calibration import register_calibration_prompt, show_images
-from .plots import APP, figures_meta, register_plot_view
+from .calibration import register_calibration_prompt
+from .plots import (
+    APP,
+    APP_ONLY,
+    FIGURE_TOOL,
+    load_figures,
+    register_plot_view,
+    save_plots,
+)
 from .progress import Capture
 from .runs import WAIT, Run, Runs
 from .sessions import (
@@ -45,6 +52,34 @@ from .sessions import (
     repository_state,
 )
 from .targets import Overrides, Targets
+
+# Larger result values, typically per-shot or per-point arrays, are only sent
+# on request: they stay in run.json and results.json.
+RESULT_LIMIT = 2_000
+
+
+def field_name(key: str) -> str:
+    """A result field's plain name: serialized results use JSON-encoded keys."""
+    try:
+        name = json.loads(key)
+    except ValueError:
+        return key
+    return name if isinstance(name, str) else key
+
+
+def compact(metadata: dict) -> dict:
+    """Run metadata for a response, with large fitted values left out."""
+    results = metadata["results"]
+    if results is None:
+        return metadata
+    summary = {}
+    for name, value in results.items():
+        size = len(json.dumps(value))
+        summary[name] = value if size <= RESULT_LIMIT else (
+            f"<omitted, {size} bytes: get_run_results with fields="
+            f"[{field_name(name)!r}]>"
+        )
+    return {**metadata, "results": summary}
 
 
 def create_server(
@@ -431,45 +466,31 @@ def create_server(
                 "updated": False,
                 "update_started": False,
             }
+            reports = completed.reports
+            # Built-in Qibocal reports return (Plotly figures, HTML table).
+            entries = (
+                [] if reports is None
+                else reports.items() if isinstance(reports, dict)
+                else [("all", reports)]
+            )
+            metadata["plots"] = save_plots(
+                folder, [(target, figures) for target, (figures, _) in entries]
+            )
             (folder / "run.json").write_text(
                 json.dumps(metadata, indent=2), encoding="utf-8"
             )
             report.save(executor.platform)
+            summary = compact(metadata)
             content: list[ContentBlock] = [
-                TextContent(type="text", text=json.dumps(metadata))
+                TextContent(type="text", text=json.dumps(summary))
             ]
-            reports = completed.reports
-            plotted = []
-            if reports is not None:
-                # Built-in Qibocal reports return (Plotly figures, HTML table).
-                entries = (
-                    reports.items()
-                    if isinstance(reports, dict)
-                    else [("all", reports)]
-                )
-                for index, (target, (figures, table)) in enumerate(entries):
-                    content.append(
-                        TextContent(type="text", text=f"Target {target}: {table}")
-                    )
-                    plotted.append((target, figures))
-                    for number, figure in enumerate(figures):
-                        stem = folder / f"report-{index}-{number}"
-                        figure.write_html(stem.with_suffix(".html"))
-                        figure.write_image(
-                            stem.with_suffix(".png"), width=1200, height=700
-                        )
-                        content.append(
-                            Image(path=stem.with_suffix(".png")).to_image_content()
-                        )
-            images = sum(item.type == "image" for item in content)
-            if images:
-                # Repeated where it is needed: models act on the latest result.
-                content.append(TextContent(type="text", text=show_images(images)))
+            images = iter(metadata["plots"])
+            for target, (figures, table) in entries:
+                content.append(TextContent(type="text", text=f"Target {target}: {table}"))
+                for _ in figures:
+                    content.append(Image(path=next(images)["image"]).to_image_content())
             completed_runs[run_id] = completed
-            return ToolResult(
-                content=content, structured_content=metadata,
-                meta=figures_meta(plotted),
-            )
+            return ToolResult(content=content, structured_content=summary)
 
     @mcp.tool(app=APP)
     async def execute_protocol(
@@ -490,8 +511,8 @@ def create_server(
         state, even on failure. Hardware effects are not rolled back.
         Waits up to wait seconds: a longer run returns its run_id and progress
         and continues in the background; get_run waits for its result.
-        After each result, before another tool call, show the user the returned
-        images, unless the interface already displays them, and your fit reading.
+        After each result with plots, before another tool call, message the user
+        your fit reading, showing the plots as the result's opening note says.
         """
         nonlocal next_run_id
         if protocol not in protocols:
@@ -516,7 +537,7 @@ def create_server(
             runs.start(run_id, protocol, targets, work)
         return await runs.wait(run_id, wait, ctx)
 
-    @mcp.tool
+    @mcp.tool(app=APP)
     async def get_run(run_id: str, ctx: Context, wait: float = WAIT) -> ToolResult:
         """Wait for a run started by execute_protocol, and return its result.
 
@@ -537,6 +558,38 @@ def create_server(
         """
         runs.cancel(run_id)
         return await runs.wait(run_id, wait, ctx)
+
+    def run_metadata(ctx: Context, run_id: str) -> dict:
+        completed = find_run(ctx.lifespan_context["executor"], run_id)
+        return json.loads((completed.path / "run.json").read_text(encoding="utf-8"))
+
+    @mcp.tool
+    async def get_run_results(
+        run_id: str, ctx: Context, fields: list[str] | None = None,
+    ) -> dict:
+        """Return a completed run's fitted results in full, on request only.
+
+        Results normally omit large values, such as per-shot arrays. Without
+        fields, lists the available fields with their sizes in bytes; with
+        fields, returns those values. Request only what a decision needs.
+        """
+        results = {
+            field_name(key): value
+            for key, value in (run_metadata(ctx, run_id)["results"] or {}).items()
+        }
+        if fields is None:
+            return {"run_id": run_id, "fields": {
+                name: len(json.dumps(value)) for name, value in results.items()
+            }}
+        unknown = sorted(set(fields) - set(results))
+        if unknown:
+            raise ValueError(f"Unknown result fields: {unknown}; available: {sorted(results)}")
+        return {"run_id": run_id, "results": {name: results[name] for name in fields}}
+
+    @mcp.tool(name=FIGURE_TOOL, app=APP_ONLY)
+    async def get_run_figures(run_id: str, ctx: Context) -> dict:
+        """Interactive figures of a run, for the plot view; not for the model."""
+        return load_figures(run_metadata(ctx, run_id).get("plots", []))
 
     @mcp.tool
     async def update_platform(run_id: str, ctx: Context) -> dict:

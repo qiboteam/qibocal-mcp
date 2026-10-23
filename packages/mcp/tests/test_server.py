@@ -7,13 +7,15 @@ import threading
 import unittest
 from dataclasses import dataclass
 from pathlib import Path
-from unittest.mock import patch
+from unittest.mock import Mock, patch
 
 import numpy as np
 import plotly
 import plotly.graph_objects as go
 from fastmcp import Client
 from fastmcp.exceptions import ToolError
+from fastmcp.tools import ToolResult
+from mcp.types import TextContent
 from qibocal.auto.operation import Data, Parameters, Protocol, Results
 from qibocal.auto.output import Output
 from qibocal.auto.task import Action
@@ -24,8 +26,8 @@ from qibocal.protocols.utils import PowerLevel
 from qibocal.update import drive_frequency
 from qibolab import create_platform
 
-from qibocal_mcp.calibration import PROMPT, instructions_for, show_images
-from qibocal_mcp.plots import FIGURES, VIEW
+from qibocal_mcp.calibration import PROMPT, instructions_for
+from qibocal_mcp.plots import FIGURE_TOOL, REMINDER, VIEW, ShowPlots, reminder
 from qibocal_mcp.runtime import create_server
 from qibocal_mcp.server import create_server as create_frontend
 from qibocal_mcp.targets import Overrides, Targets
@@ -86,6 +88,27 @@ def twice_acquire(pars: Inputs, targets) -> Samples:
     return acquire(pars, targets)
 
 
+@dataclass
+class Shots(Results):
+    frequency: dict
+    shots: dict
+
+
+def fit_shots(data: Samples) -> Shots:
+    """A fit carrying a large per-shot array, as classification does."""
+    return Shots(
+        {q: float(data[q][0]) for q in data.qubits},
+        {q: list(range(5000)) for q in data.qubits},
+    )
+
+
+def heavy_report(data, target, fit):
+    """A light figure and one too heavy to send interactively."""
+    light, _ = report(data, target, fit)
+    heavy = go.Figure(go.Scatter(y=np.random.default_rng(0).random(30_000)))
+    return [*light, heavy], "Heavy"
+
+
 def fit(data: Samples) -> Fit:
     return Fit({q: float(data[q][0]) for q in data.qubits})
 
@@ -140,13 +163,21 @@ class ServerTests(unittest.IsolatedAsyncioTestCase):
                         "protocol": "synthetic", "parameters": {"value": 5e9}, "targets": [0],
                     })
                     self.assertTrue(any(item.type == "image" for item in result.content))
-                    # The result ends asking the model to show the images to the user.
-                    self.assertEqual(result.content[-1].text, show_images(1))
-                    # Interactive figures travel beside the images, for MCP Apps.
-                    plotted = result.meta[FIGURES]
-                    self.assertEqual(plotted["plotly"], plotly.offline.get_plotlyjs_version())
-                    self.assertEqual(plotted["figures"][0]["target"], "0")
-                    self.assertEqual(plotted["figures"][0]["data"][0]["type"], "scatter")
+                    # The result opens asking to embed the images: this client has no MCP Apps.
+                    plots = result.structured_content["plots"]
+                    self.assertEqual(result.content[0].text, reminder(plots, False))
+                    self.assertEqual(
+                        sum(block.text == result.content[0].text for block in result.content
+                            if block.type == "text"), 1,
+                    )
+                    self.assertEqual((plots[0]["target"], plots[0]["interactive"]), ("0", True))
+                    # Interactive figures are only sent on request, for the plot view.
+                    self.assertIsNone(result.meta)
+                    figures = (await client.call_tool(
+                        FIGURE_TOOL, {"run_id": result.structured_content["run_id"]},
+                    )).structured_content
+                    self.assertEqual(figures["plotly"], plotly.offline.get_plotlyjs_version())
+                    self.assertEqual(figures["figures"]["0"]["data"][0]["type"], "scatter")
                     execute = next(
                         tool for tool in await client.list_tools()
                         if tool.name == "execute_protocol"
@@ -155,7 +186,7 @@ class ServerTests(unittest.IsolatedAsyncioTestCase):
                     view = (await client.read_resource(VIEW))[0]
                     self.assertEqual(view.mimeType, "text/html;profile=mcp-app")
                     self.assertIn("ui/notifications/tool-result", view.text)
-                    self.assertIn(FIGURES, view.text)
+                    self.assertIn(FIGURE_TOOL, view.text)
                     run_id = result.structured_content["run_id"]
                     applied = await client.call_tool("update_platform", {"run_id": run_id})
                     self.assertTrue(applied.structured_content["updated"])
@@ -202,7 +233,9 @@ class ServerTests(unittest.IsolatedAsyncioTestCase):
                 RELEASE.set()
                 result = await client.call_tool("get_run", {"run_id": run_id, "wait": 10})
                 self.assertEqual(result.structured_content["run_id"], run_id)
-                self.assertEqual(result.content[-1].text, show_images(1))
+                self.assertEqual(
+                    result.content[0].text, reminder(result.structured_content["plots"], False),
+                )
                 await client.call_tool("update_platform", {"run_id": run_id})
                 self.assertEqual(platform.calibration.single_qubits[0].qubit.frequency_01, 5e9)
                 with self.assertRaisesRegex(ToolError, "Unknown run_id"):
@@ -245,6 +278,72 @@ class ServerTests(unittest.IsolatedAsyncioTestCase):
                 result = await client.call_tool("execute_protocol", arguments)
                 self.assertEqual(result.structured_content["protocol"], "synthetic")
                 self.assertEqual(len(list(Path(directory).rglob("data.npz"))), 1)
+
+    async def test_large_values_and_heavy_figures_are_only_sent_on_request(self):
+        platform = CalibrationPlatform(
+            **vars(create_platform("dummy")),
+            calibration=Calibration(single_qubits={0: QubitCalibration()}),
+        )
+        with (
+            tempfile.TemporaryDirectory() as directory,
+            patch("qibocal_mcp.runtime.create_calibration_platform", return_value=platform),
+            patch("qibocal_mcp.runtime.PROTOCOLS", {
+                "synthetic": Protocol(acquire, fit_shots, heavy_report, update),
+            }),
+            patch.object(go.Figure, "write_image", lambda figure, file, **kwargs: Path(file).write_bytes(PNG)),
+        ):
+            async with Client(create_server("synthetic", output=Path(directory))) as client:
+                result = await client.call_tool("execute_protocol", {
+                    "protocol": "synthetic", "parameters": {"value": 5e9}, "targets": [0],
+                })
+                run_id = result.structured_content["run_id"]
+                results = result.structured_content["results"]
+                self.assertEqual(results['"frequency"'], {"0": 5e9})
+                self.assertIn("fields=['shots']", results['"shots"'])
+                self.assertLess(len(result.content[1].text), 5_000)
+                # The full values stay on disk, and are sent on request.
+                saved = json.loads((Path(result.structured_content["folder"]) / "run.json").read_text())
+                self.assertEqual(len(saved["results"]['"shots"']["0"]), 5000)
+                listing = (await client.call_tool(
+                    "get_run_results", {"run_id": run_id},
+                )).structured_content["fields"]
+                self.assertGreater(listing["shots"], 20_000)
+                shots = (await client.call_tool(
+                    "get_run_results", {"run_id": run_id, "fields": ["shots"]},
+                )).structured_content["results"]["shots"]
+                self.assertEqual(len(shots["0"]), 5000)
+                with self.assertRaisesRegex(ToolError, "Unknown result fields"):
+                    await client.call_tool("get_run_results", {"run_id": run_id, "fields": ["x"]})
+                # The heavy figure is only shown as its image.
+                plots = result.structured_content["plots"]
+                self.assertEqual([plot["interactive"] for plot in plots], [True, False])
+                self.assertEqual(sum(block.type == "image" for block in result.content), 2)
+                figures = (await client.call_tool(FIGURE_TOOL, {"run_id": run_id})).structured_content
+                self.assertEqual(list(figures["figures"]), ["0"])
+
+    async def test_plot_reminder_follows_the_client_and_replaces_inner_ones(self):
+        plots = [{"target": "0", "image": "/runs/report-0-0.png", "interactive": True}]
+        inner = TextContent(type="text", text="inner", _meta={REMINDER: True})
+        result = ToolResult(
+            content=[inner, TextContent(type="text", text="{}")],
+            structured_content={"run_id": "r", "plots": plots},
+        )
+
+        async def call_next(context):
+            return result
+
+        for displayed in (False, True):
+            with self.subTest(displayed=displayed):
+                context = Mock()
+                context.message.name = "get_run"
+                context.fastmcp_context.client_supports_extension.return_value = displayed
+                rewritten = await ShowPlots().on_call_tool(context, call_next)
+                self.assertEqual(
+                    [block.text for block in rewritten.content],
+                    [reminder(plots, displayed), "{}"],
+                )
+        self.assertIn("/runs/report-0-0.png", reminder(plots, False))
+        self.assertIn("do not embed them again", reminder(plots, True))
 
     async def test_targets_match_qibocal_and_tolerate_text(self):
         from pydantic import TypeAdapter, ValidationError
@@ -330,7 +429,8 @@ class ServerTests(unittest.IsolatedAsyncioTestCase):
                     {t.name for t in await client.list_tools()},
                     {PROMPT, "get_calibration_context", "execute_protocol", "update_platform",
                      "start_session", "get_platform_state", "patch_platform",
-                     "append_note", "get_notes", "get_run", "cancel_run"},
+                     "append_note", "get_notes", "get_run", "cancel_run",
+                     "get_run_results", "get_run_figures"},
                 )
                 context_text = (
                     await client.read_resource("qibocal://context")

@@ -12,7 +12,7 @@ from fastmcp.tools import ToolResult
 from mcp.types import CallToolResult, TextContent
 
 from .calibration import register_calibration_prompt
-from .plots import APP, register_plot_view
+from .plots import APP, APP_ONLY, FIGURE_TOOL, register_plot_view
 from .progress import parse
 from .runs import WAIT, Run, Runs
 from .sessions import SessionSource
@@ -122,6 +122,7 @@ class SlurmJobs:
                 operation == "update_platform"
                 or (operation == "start_session" and arguments.get("source") == "run")
                 or (operation in {"append_note", "get_notes"} and arguments.get("run_id") is not None)
+                or operation in {"get_run_results", FIGURE_TOOL}
             ) and arguments.get("run_id") not in self.runs:
                 raise ValueError("Unknown run_id in this gateway session")
             command = list(self.command)
@@ -413,8 +414,8 @@ def create_slurm_server(
         state, even on failure. Hardware effects are not rolled back.
         Waits up to wait seconds, queue included: a longer run returns its
         run_id and progress and continues; get_run waits for its result.
-        After each result, before another tool call, show the user the returned
-        images, unless the interface already displays them, and your fit reading.
+        After each result with plots, before another tool call, message the user
+        your fit reading, showing the plots as the result's opening note says.
         """
 
         async def work(run: Run) -> ToolResult:
@@ -432,7 +433,7 @@ def create_slurm_server(
         run.queue = lambda: jobs.queue(run_id)
         return await runs.wait(run_id, wait, ctx)
 
-    @mcp.tool
+    @mcp.tool(app=APP)
     async def get_run(run_id: str, ctx: Context, wait: float = WAIT) -> ToolResult:
         """Wait for a run started by execute_protocol, and return its result.
 
@@ -453,6 +454,27 @@ def create_slurm_server(
         """
         runs.cancel(run_id)
         return await runs.wait(run_id, wait, ctx)
+
+    @mcp.tool
+    async def get_run_results(run_id: str, fields: list[str] | None = None) -> dict:
+        """Return a completed run's fitted results in full, on request only.
+
+        Results normally omit large values, such as per-shot arrays. Without
+        fields, lists the available fields with their sizes in bytes; with
+        fields, returns those values. Request only what a decision needs.
+        """
+        result = await jobs.call("get_run_results", {"run_id": run_id, "fields": fields})
+        if result.structuredContent is None:
+            raise ValueError("Worker response has no results")
+        return result.structuredContent
+
+    @mcp.tool(name=FIGURE_TOOL, app=APP_ONLY)
+    async def get_run_figures(run_id: str) -> dict:
+        """Interactive figures of a run, for the plot view; not for the model."""
+        result = await jobs.call(FIGURE_TOOL, {"run_id": run_id})
+        if result.structuredContent is None:
+            raise ValueError("Worker response has no figures")
+        return result.structuredContent
 
     @mcp.tool
     async def update_platform(run_id: str) -> ToolResult:

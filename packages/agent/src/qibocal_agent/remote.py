@@ -16,6 +16,7 @@ registration serves them all, and nothing happens until it is used.
 """
 
 import asyncio
+import importlib
 import sys
 from contextlib import AsyncExitStack, asynccontextmanager
 from pathlib import Path
@@ -72,20 +73,44 @@ class Inactive(Middleware):
         raise ResourceError(INACTIVE)
 
 
-def server_definitions() -> FastMCP:
-    """The server's frontend, for its tool definitions; nothing is started.
+def server_package(name: str):
+    """A module of the server's frontend, which imports no Qibocal or hardware code.
 
     Its source is the one deployment ships: installed, in the checkout, or
-    fetched from the commit qibocal-agent was installed from. The frontend
-    imports neither Qibocal nor hardware code.
+    fetched from the commit qibocal-agent was installed from.
     """
     module = server_module()
     try:
-        from qibocal_mcp.server import create_server
+        return importlib.import_module(f"qibocal_mcp.{name}")
     except ImportError:
         sys.path.insert(0, str(module.parent))
-        from qibocal_mcp.server import create_server
-    return create_server("inactive")
+        return importlib.import_module(f"qibocal_mcp.{name}")
+
+
+def server_definitions() -> FastMCP:
+    """The server's frontend, for its tool definitions; nothing is started."""
+    return server_package("server").create_server("inactive")
+
+
+class ShowPlots(Middleware):
+    """Word the plot reminder for the user's client, as the servers do for theirs.
+
+    The proxy faces the user's interface, so its version is the one that counts.
+    The server's middleware is loaded on first use; without it, the reminder
+    from the server stays.
+    """
+
+    def __init__(self):
+        self.delegate: Middleware | None = None
+
+    async def on_call_tool(self, context, call_next):
+        if self.delegate is None:
+            try:
+                self.delegate = server_package("plots").ShowPlots()
+            except Exception as error:
+                print(f"Plot reminders are left to the server: {error}", file=sys.stderr)
+                self.delegate = Middleware()
+        return await self.delegate.on_call_tool(context, call_next)
 
 
 async def placeholder() -> FastMCP:
@@ -243,6 +268,7 @@ def create_proxy(
             await upstream.close()
 
     mcp = FastMCP("Qibocal", instructions=INSTRUCTIONS, lifespan=lifespan)
+    mcp.add_middleware(ShowPlots())
     mcp.add_provider(ProxyProvider(upstream.current, cache_ttl=0))
 
     @mcp.tool
