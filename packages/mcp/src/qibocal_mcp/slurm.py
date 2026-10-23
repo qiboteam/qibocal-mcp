@@ -18,6 +18,50 @@ from .runs import WAIT, Run, Runs
 from .sessions import SessionSource
 from .targets import Overrides, Targets
 
+# squeue fields, in order; the job name identifies our job among the others.
+QUEUE_FIELDS = ("job_id", "state", "user", "name", "elapsed", "time_limit", "reason", "priority")
+# Running jobs are listed individually only up to this many.
+LISTED = 5
+
+
+def job_name(run_id: str) -> str:
+    return f"qibocal-mcp-{run_id}"
+
+
+def queue_summary(text: str, name: str) -> dict:
+    """Our job's state, and how busy its partition is, from squeue output."""
+    jobs = [
+        dict(zip(QUEUE_FIELDS, map(str.strip, fields), strict=True))
+        for line in text.splitlines()
+        if len(fields := line.strip().split("|")) == len(QUEUE_FIELDS)
+    ]
+    ours = next((job for job in jobs if job["name"] == name), None)
+    running = [job for job in jobs if job["state"] == "RUNNING"]
+    pending = [job for job in jobs if job["state"] == "PENDING" and job is not ours]
+    summary = {
+        "job": None if ours is None else {
+            key: ours[key] for key in ("job_id", "state", "reason")
+        },
+        "running": len(running),
+        "pending": len(pending),
+    }
+
+    def rank(job):
+        # Higher priority first, then submission order.
+        try:
+            return (-int(job["priority"]), int(job["job_id"].split("_")[0]))
+        except ValueError:
+            return (0, 0)
+
+    if ours is not None and ours["state"] == "PENDING":
+        summary["pending_ahead"] = sum(rank(job) < rank(ours) for job in pending)
+    if len(running) <= LISTED:
+        summary["running_jobs"] = [
+            {key: job[key] for key in ("job_id", "user", "name", "elapsed", "time_limit")}
+            for job in running
+        ]
+    return summary
+
 
 class SlurmJobs:
     """Run each operation in a fresh worker, carrying only accepted state.
@@ -40,6 +84,7 @@ class SlurmJobs:
         self.session_id = uuid4().hex
         self.output = output.resolve() / "sessions" / self.session_id
         self.workdir = workdir.resolve()
+        self.partition = partition
         self.srun = [
             "srun",
             *slurm_args,
@@ -84,7 +129,12 @@ class SlurmJobs:
                 command += ["--snapshot", str(self.snapshot)]
             if run is None:
                 return self.finish(operation, await self.spawn(command, request, None))
-            command = [*self.srun, *command, "--run-id", run.run_id]
+            # Named after the run, so that squeue finds it; after the extra
+            # SLURM arguments, so that a job name there does not hide it.
+            command = [
+                *self.srun, f"--job-name={job_name(run.run_id)}",
+                *command, "--run-id", run.run_id,
+            ]
         stdout = await self.spawn(command, request, run)
         async with self.lock:
             return self.finish(operation, stdout)
@@ -132,6 +182,24 @@ class SlurmJobs:
                 f"Worker exited with status {process.returncode}: {stderr}"
             )
         return stdout
+
+    async def queue(self, run_id: str) -> dict:
+        """The partition's queue while a run waits; best effort, never fatal."""
+        try:
+            process = await asyncio.create_subprocess_exec(
+                "squeue", "--noheader", f"--partition={self.partition}",
+                "--format=" + "|".join(
+                    ("%i", "%T", "%u", "%j", "%M", "%l", "%r", "%Q")
+                ),
+                stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE,
+            )
+            stdout, stderr = await asyncio.wait_for(process.communicate(), timeout=10)
+        except Exception as error:
+            return {"error": f"Could not read the queue: {error}"}
+        if process.returncode != 0:
+            return {"error": stderr.decode(errors="replace").strip()
+                    or f"squeue exited with status {process.returncode}"}
+        return queue_summary(stdout.decode(errors="replace"), job_name(run_id))
 
     def finish(self, operation: str, stdout: bytes) -> CallToolResult:
         """Validate a worker response and carry the accepted state forward."""
@@ -360,7 +428,8 @@ def create_slurm_server(
             )
 
         run_id = uuid4().hex
-        runs.start(run_id, protocol, targets, work, queued=True)
+        run = runs.start(run_id, protocol, targets, work, queued=True)
+        run.queue = lambda: jobs.queue(run_id)
         return await runs.wait(run_id, wait, ctx)
 
     @mcp.tool

@@ -23,7 +23,13 @@ from test_server import acquire, fit, report, update
 from qibocal_mcp.calibration import PROMPT, instructions_for, show_images
 from qibocal_mcp.plots import FIGURES, VIEW
 from qibocal_mcp.progress import MARKER
-from qibocal_mcp.slurm import SlurmJobs, create_slurm_server
+from qibocal_mcp.slurm import (
+    LISTED,
+    SlurmJobs,
+    create_slurm_server,
+    job_name,
+    queue_summary,
+)
 from qibocal_mcp.worker import run
 
 
@@ -365,6 +371,17 @@ class SlurmTests(unittest.IsolatedAsyncioTestCase):
         metadata = {"run_id": "abc", "report_folder": "/runs/sessions/s"}
 
         def start(*command, **kwargs):
+            if command[0] == "squeue":
+                name = job_name(commands[0][commands[0].index("--run-id") + 1])
+                listing = (
+                    "7|RUNNING|alice|calibrate|1:02:03|2:00:00|None|900\n"
+                    f"8|PENDING|bob|{name}|0:00|1:00:00|Resources|500\n"
+                    "9|PENDING|carol|sweep|0:00|1:00:00|Priority|800\n"
+                    "10|PENDING|dave|late|0:00|1:00:00|Priority|500\n"
+                )
+                return SimpleNamespace(
+                    returncode=0, communicate=AsyncMock(return_value=(listing.encode(), b"")),
+                )
             commands.append(command)
             process = SimpleNamespace(returncode=0)
 
@@ -396,6 +413,14 @@ class SlurmTests(unittest.IsolatedAsyncioTestCase):
                     "wait": 0.1,
                 })).structured_content
                 self.assertEqual(queued["status"], "queued")
+                self.assertEqual(queued["queue"], {
+                    "job": {"job_id": "8", "state": "PENDING", "reason": "Resources"},
+                    "running": 1, "pending": 2, "pending_ahead": 1,
+                    "running_jobs": [{
+                        "job_id": "7", "user": "alice", "name": "calibrate",
+                        "elapsed": "1:02:03", "time_limit": "2:00:00",
+                    }],
+                })
                 run_id = queued["run_id"]
                 self.assertEqual(commands[0][commands[0].index("--run-id") + 1], run_id)
                 await client.call_tool("append_note", {"content": "Queued, waiting"})
@@ -405,6 +430,7 @@ class SlurmTests(unittest.IsolatedAsyncioTestCase):
                     "get_run", {"run_id": run_id, "wait": 0.2},
                 )).structured_content
                 self.assertEqual(running["status"], "running")
+                self.assertNotIn("queue", running)
                 self.assertEqual((running["executions"], running["estimated_s"]), (3, 120.0))
                 with self.assertRaisesRegex(ToolError, "in progress"):
                     await client.call_tool("update_platform", {"run_id": "abc"})
@@ -413,12 +439,35 @@ class SlurmTests(unittest.IsolatedAsyncioTestCase):
                 self.assertEqual(done.structured_content, metadata)
         self.assertEqual([command[0] == "srun" for command in commands], [True, False])
 
+    def test_queue_summary_lists_few_running_jobs_and_tolerates_noise(self):
+        running = "".join(f"{i}|RUNNING|u|j|0:01|1:00|None|1\n" for i in range(LISTED + 1))
+        summary = queue_summary("garbage\n" + running, job_name("x"))
+        self.assertEqual((summary["job"], summary["running"]), (None, LISTED + 1))
+        self.assertNotIn("running_jobs", summary)
+        self.assertEqual(queue_summary("", "x"), {
+            "job": None, "running": 0, "pending": 0, "running_jobs": [],
+        })
+
+    async def test_queue_failures_do_not_fail_the_status(self):
+        jobs = self.jobs()
+        failing = SimpleNamespace(returncode=1, communicate=AsyncMock(
+            return_value=(b"", b"squeue: error: Invalid partition"),
+        ))
+        with patch("asyncio.create_subprocess_exec", return_value=failing):
+            self.assertEqual(await jobs.queue("x"), {"error": "squeue: error: Invalid partition"})
+        with patch("asyncio.create_subprocess_exec", side_effect=FileNotFoundError("squeue")):
+            self.assertIn("Could not read the queue", (await jobs.queue("x"))["error"])
+
     async def test_cancelled_jobs_are_terminated(self):
         async def communicate(request):
             await asyncio.Event().wait()
 
         process = piped(SimpleNamespace(returncode=0, communicate=communicate))
-        with patch("asyncio.create_subprocess_exec", return_value=process):
+        queue = SimpleNamespace(returncode=0, communicate=AsyncMock(return_value=(b"", b"")))
+        with patch(
+            "asyncio.create_subprocess_exec",
+            side_effect=lambda *command, **kwargs: queue if command[0] == "squeue" else process,
+        ):
             gateway = create_slurm_server(
                 "synthetic", partition="qpu", output=Path("runs"),
                 python=sys.executable, workdir=Path.cwd(), slurm_args=[],

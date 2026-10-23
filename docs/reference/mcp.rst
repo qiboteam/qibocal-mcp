@@ -209,7 +209,12 @@ A run outlasting ``wait`` returns its status instead: ``run_id``, ``status``
 (``queued`` while a SLURM job waits for its allocation, then ``running``),
 ``protocol``, ``targets``, ``elapsed_s``, and ``executions`` and ``estimated_s``,
 the platform executions so far and the sum of Qibolab's duration estimates for
-them. Clients asking for progress also receive it as MCP progress
+them. While queued, ``queue`` describes the partition from ``squeue``: the job's
+``job_id``, SLURM ``state`` and pending ``reason``; the numbers of ``running``
+and other ``pending`` jobs, and ``pending_ahead``, those with higher priority or
+submitted earlier; and, when at most five jobs run, ``running_jobs`` with their
+ID, user, name, elapsed time and time limit. If ``squeue`` fails, ``queue``
+holds its ``error`` instead. Clients asking for progress also receive it as MCP progress
 notifications. While the run is in progress, another acquisition, an update, an
 edit or a session switch is refused.
 

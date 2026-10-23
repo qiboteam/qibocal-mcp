@@ -102,7 +102,8 @@ a local worker on the access node, without waiting for an allocation:
 2. Each ``execute_protocol`` job restores the latest accepted snapshot if one
    exists, connects, acquires/fits/reports, disconnects and exits. It runs in
    the background, as in direct mode; its status is ``queued`` until the job
-   starts, and its progress comes from the worker's stderr.
+   starts, with the partition's queue from ``squeue``, and its progress comes
+   from the worker's stderr. The job is named ``qibocal-mcp-<run_id>``.
 3. ``update_platform`` restores the saved execution for that run, applies the
    update and writes a snapshot.
 4. ``patch_platform`` applies explicit edits, while ``get_platform_state``

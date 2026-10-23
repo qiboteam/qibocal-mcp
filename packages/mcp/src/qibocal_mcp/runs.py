@@ -35,6 +35,8 @@ class Run:
     # A SLURM job waits for its allocation before its first progress line.
     queued: bool = False
     cancel: threading.Event = field(default_factory=threading.Event)
+    # Describes the SLURM queue while the run waits for its allocation.
+    queue: Callable[[], Awaitable[dict]] | None = None
 
     def status(self) -> dict:
         if self.cancel.is_set():
@@ -56,7 +58,9 @@ class Run:
             "targets": self.targets,
             **self.progress.summary(),
             "message": (
-                "The run continues in the background: wait for its result with "
+                ("Waiting for a SLURM allocation: tell the user the queue state. "
+                 if self.queued else "")
+                + "The run continues in the background: wait for its result with "
                 "get_run. Do not submit it again."
             ),
         }
@@ -143,6 +147,8 @@ class Runs:
             return run.task.result()
         else:
             status = run.status()
+            if run.queued and run.queue is not None:
+                status["queue"] = await run.queue()
         return ToolResult(
             content=[TextContent(type="text", text=json.dumps(status))],
             structured_content=status,

@@ -41,7 +41,7 @@ result. The rules below are not optional.
   models are isolated, but hardware effects are not rolled back. Never edit
   state through the filesystem; source files are never overwritten.
 - Queue waits and long runs are normal. When execute_protocol returns a queued
-  or running status, tell the user its progress and estimate, then wait with
+  or running status, tell the user its queue state or progress, then wait with
   get_run: never submit the run again. Use cancel_run only when the user asks,
   or when a run exceeds approved limits or budget. Never blindly retry a failed
   acquisition or update: it may already have affected hardware.
