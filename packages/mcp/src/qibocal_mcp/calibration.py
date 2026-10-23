@@ -15,7 +15,7 @@ CONTEXT_TOOL = "get_calibration_context"
 PROMPT = "calibrate"
 TOOLS = (
     PROMPT,
-    CONTEXT_TOOL, "execute_protocol", "get_run", "cancel_run", "update_platform", "start_session",
+    CONTEXT_TOOL, "execute_protocol", "get_run", "cancel_run", "get_run_results", "get_run_figures", "update_platform", "start_session",
     "get_platform_state", "patch_platform",
     "append_note", "get_notes",
 )
@@ -28,8 +28,10 @@ result. The rules below are not optional.
 - Choose protocols, parameters, units and qubit IDs from the Qibocal context.
   Run one protocol at a time.
 - Inspect every report image and fitting table: signal quality, model
-  agreement, uncertainty, bad fits. Never invent results, and never treat
-  synthetic data from a mock platform as calibration evidence.
+  agreement, uncertainty, bad fits. Results leave out large values, such as
+  per-shot arrays; fetch them with get_run_results only when a decision needs
+  them. Never invent results, and never treat synthetic data from a mock
+  platform as calibration evidence.
 - Call update_platform only when inspected evidence justifies it; otherwise
   leave the platform unchanged and adjust the next experiment. Updates affect
   later acquisitions, so older runs may be stale.
@@ -52,11 +54,10 @@ result. The rules below are not optional.
 The user sees your messages, not necessarily tool calls or their results.
 - Before the first experiment, call open_reports, if available, and give the
   user its dashboard link.
-- After each execute_protocol call, before any other tool call, message the
-  user with that run's report images, your reading of the fit and your update
-  decision. Show each plot once: skip images the interface already displays to
-  the user, e.g. in its interactive plot view. If you cannot embed images, give
-  their report paths.
+- After each result with plots, before any other tool call, message the user
+  with your reading of each fit and your update decision, showing the plots as
+  the note opening the result says: it knows whether the interface already
+  displays them.
 - Never chain two execute_protocol or update_platform calls without a message
   to the user in between. If a call fails or times out, tell the user at once.
 - End with a summary: runs, applied updates, artifact locations and remaining
@@ -87,16 +88,6 @@ update_platform. Afterwards old run handles expire, and earlier session IDs,
 paths and plans may be stale: call get_calibration_context again and write a
 new session plan.
 """
-
-
-def show_images(count: int) -> str:
-    """The reminder closing every execute_protocol result with images."""
-    return (
-        f"Before calling any other tool, show the user these {count} report images, "
-        "with your reading of each fit and your update decision: tool results may "
-        "not reach the user. Skip images the interface already displays to them; "
-        "if you cannot embed images, give their report paths."
-    )
 
 
 def instructions_for(context: str | None = None) -> str:

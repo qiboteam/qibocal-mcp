@@ -15,7 +15,7 @@ from fastmcp.tools import ToolResult
 from mcp.types import TextResourceContents
 
 from .calibration import register_calibration_prompt
-from .plots import APP, register_plot_view
+from .plots import APP, APP_ONLY, FIGURE_TOOL, register_plot_view
 from .runs import WAIT
 from .sessions import SessionSource
 from .targets import Overrides, Targets
@@ -255,15 +255,15 @@ def create_server(
         state, even on failure. Hardware effects are not rolled back.
         Waits up to wait seconds: a longer run returns its run_id and progress
         and continues in the background; get_run waits for its result.
-        After each result, before another tool call, show the user the returned
-        images, unless the interface already displays them, and your fit reading.
+        After each result with plots, before another tool call, message the user
+        your fit reading, showing the plots as the result's opening note says.
         """
         return await forward("execute_protocol", {
             "protocol": protocol, "parameters": parameters, "targets": targets,
             "platform_overrides": platform_overrides, "wait": wait,
         }, ctx)
 
-    @mcp.tool
+    @mcp.tool(app=APP)
     async def get_run(run_id: str, ctx: Context, wait: float = WAIT) -> ToolResult:
         """Wait for a run started by execute_protocol, and return its result.
 
@@ -283,6 +283,24 @@ def create_server(
         A cancelled run saves no results, and hardware effects are not undone.
         """
         return await forward("cancel_run", {"run_id": run_id, "wait": wait}, ctx)
+
+    @mcp.tool
+    async def get_run_results(
+        run_id: str, ctx: Context, fields: list[str] | None = None,
+    ) -> dict:
+        """Return a completed run's fitted results in full, on request only.
+
+        Results normally omit large values, such as per-shot arrays. Without
+        fields, lists the available fields with their sizes in bytes; with
+        fields, returns those values. Request only what a decision needs.
+        """
+        result = await forward("get_run_results", {"run_id": run_id, "fields": fields}, ctx)
+        return result.structured_content
+
+    @mcp.tool(name=FIGURE_TOOL, app=APP_ONLY)
+    async def get_run_figures(run_id: str, ctx: Context) -> dict:
+        """Interactive figures of a run, for the plot view; not for the model."""
+        return (await forward(FIGURE_TOOL, {"run_id": run_id}, ctx)).structured_content
 
     @mcp.tool
     async def update_platform(run_id: str, ctx: Context) -> dict:
