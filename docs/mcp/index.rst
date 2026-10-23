@@ -15,10 +15,12 @@ One command serves two modes over stdio:
   a SLURM access node: a hardware-free gateway runs each acquisition as its
   own ``srun`` job, so no allocation is held while results are inspected.
 
-Both modes expose the same interface: thirteen tools —
-``calibrate``, ``get_calibration_context``, ``execute_protocol``, ``get_run``,
+Both modes expose the same interface: fifteen tools —
+``calibrate``, ``get_calibration_context``, ``get_protocol``,
+``execute_protocol``, ``get_run``,
 ``cancel_run``,
 ``update_platform``, ``start_session``, ``get_platform_state``,
+``search_platform_state``,
 ``patch_platform``, ``append_note``, ``get_notes``, ``get_run_results`` and
 ``get_run_figures`` (for the plot view only) — plus the
 ``qibocal://context`` resource and the ``calibrate`` MCP prompt.

@@ -15,6 +15,7 @@ import sys
 from concurrent.futures import ThreadPoolExecutor
 from contextlib import asynccontextmanager, redirect_stdout
 from copy import copy
+from dataclasses import fields
 from pathlib import Path
 from uuid import UUID, uuid4
 
@@ -33,7 +34,13 @@ with redirect_stdout(sys.stderr):
     from .artifacts import SessionReport
     from .notes import append_note as persist_note
     from .notes import read_notes
-from .calibration import register_calibration_prompt
+from .calibration import (
+    COMMON_PARAMETERS,
+    PROTOCOL_DESCRIPTION,
+    PROTOCOL_TOOL,
+    RANGES,
+    register_calibration_prompt,
+)
 from .plots import (
     APP,
     APP_ONLY,
@@ -45,13 +52,45 @@ from .plots import (
 from .progress import Capture
 from .runs import WAIT, Run, Runs
 from .sessions import (
+    STATE_DESCRIPTIONS,
     PlatformState,
     SessionSource,
+    outline,
     pointer_tokens,
     pointer_value,
     repository_state,
+    search,
 )
 from .targets import Overrides, Targets
+
+
+def overview(protocol: Protocol) -> dict:
+    """What choosing a protocol needs; get_protocol has its definitions.
+
+    Flags are only listed when set, as most protocols have neither.
+    """
+    entry = {}
+    doc = inspect.getdoc(protocol.acquisition) or ""
+    lines = []
+    # The opening prose, before any heading such as "Args:".
+    for line in doc.split("\n\n")[0].splitlines():
+        if line.rstrip().endswith(":"):
+            break
+        lines.append(line.strip())
+    first = " ".join(lines)
+    if first:
+        # The first sentence, without the boilerplate most of them share.
+        sentence = first.split(". ")[0].rstrip(".")
+        for prefix in ("Data acquisition for ", "Data acquisition of "):
+            sentence = sentence.removeprefix(prefix)
+        entry["summary"] = sentence[:120]
+    entry["parameters"] = [field.name for field in fields(protocol.parameters_type)]
+    if protocol.two_qubit_gates:
+        entry["two_qubit_gates"] = True
+    if protocol.update is not None:
+        entry["supports_update"] = True
+    return entry
+
 
 # Larger result values, typically per-shot or per-point arrays, are only sent
 # on request: they stay in run.json and results.json.
@@ -177,19 +216,17 @@ def create_server(
                 "report_folder": str(report_folder),
                 "qubits": list(executor.platform.qubits),
                 "protocols": {
-                    name: {
-                        "parameters": inspect.getsource(protocol.parameters_type),
-                        "two_qubit_gates": protocol.two_qubit_gates,
-                        "supports_update": protocol.update is not None,
-                    }
-                    for name, protocol in protocols.items()
+                    name: overview(protocol) for name, protocol in protocols.items()
                 },
-                "common_parameters": (
-                    "nshots (integer) and relaxation_time (ns) may be supplied "
-                    "with any protocol. Omit them to use platform defaults."
+                "details": (
+                    f"Read a protocol's parameter definitions, with types and "
+                    f"units, with {PROTOCOL_TOOL}(name)."
                 ),
+                "common_parameters": COMMON_PARAMETERS,
+                "ranges": RANGES,
             },
-            indent=2,
+            # Compact: this is read by models, and sent with every discovery.
+            separators=(",", ":"),
         )
 
     @mcp.resource("qibocal://context")
@@ -202,13 +239,23 @@ def create_server(
         """Return the same JSON text as qibocal://context for calibration discovery."""
         return await calibration_context(ctx)
 
-    @mcp.tool
-    async def get_platform_state(ctx: Context, path: str = "") -> dict:
-        """Inspect current Parameters and Calibration without executing a protocol.
+    @mcp.tool(name=PROTOCOL_TOOL, description=PROTOCOL_DESCRIPTION)
+    async def get_protocol(name: str) -> dict:
+        if name not in protocols:
+            raise ValueError(f"Unknown protocol: {name}")
+        protocol = protocols[name]
+        return {
+            "name": name,
+            "parameters": inspect.getsource(protocol.parameters_type),
+            "two_qubit_gates": protocol.two_qubit_gates,
+            "supports_update": protocol.update is not None,
+            "common_parameters": COMMON_PARAMETERS,
+        }
 
-        path is an RFC 6901 JSON pointer; empty returns both complete models.
-        Mapping keys are JSON strings. Returns path, value and session metadata.
-        """
+    @mcp.tool(description=STATE_DESCRIPTIONS["get_platform_state"])
+    async def get_platform_state(
+        ctx: Context, path: str = "", depth: int | None = None,
+    ) -> dict:
         async with lock:
             platform = ctx.lifespan_context["executor"].platform
             value = pointer_value(
@@ -216,7 +263,19 @@ def create_server(
             )
             return {
                 "session_id": session_id, "report_folder": str(report_folder),
-                "path": path, "value": value,
+                "path": path, "value": value if depth is None else outline(value, depth),
+            }
+
+    @mcp.tool(description=STATE_DESCRIPTIONS["search_platform_state"])
+    async def search_platform_state(ctx: Context, query: str, path: str = "") -> dict:
+        async with lock:
+            platform = ctx.lifespan_context["executor"].platform
+            value = pointer_value(
+                PlatformState.capture(platform).document(), pointer_tokens(path),
+            )
+            return {
+                "session_id": session_id, "report_folder": str(report_folder),
+                **search(value, query, path),
             }
 
     @mcp.tool

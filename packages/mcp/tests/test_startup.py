@@ -1,6 +1,7 @@
 """Cold-process startup and stdio discovery must not wait for Qibocal."""
 
 import asyncio
+import json
 import os
 import subprocess
 import sys
@@ -41,7 +42,7 @@ class StartupTests(unittest.IsolatedAsyncioTestCase):
         with patch("qibocal_mcp.server.StdioTransport", return_value=backend) as transport:
             async with Client(create_server("synthetic")) as client:
                 await asyncio.wait_for(started.wait(), timeout=2)
-                self.assertEqual(len(await client.list_tools()), 13)
+                self.assertEqual(len(await client.list_tools()), 15)
                 self.assertEqual(len(await client.list_resources()), 2)
                 pending = asyncio.create_task(client.call_tool("get_calibration_context", {}))
                 await asyncio.sleep(0.05)
@@ -69,7 +70,7 @@ class StartupTests(unittest.IsolatedAsyncioTestCase):
             self.assertLogs("qibocal_mcp.server", level="ERROR") as logs,
         ):
             async with Client(create_server("synthetic")) as client:
-                self.assertEqual(len(await client.list_tools()), 13)
+                self.assertEqual(len(await client.list_tools()), 15)
                 for _ in range(2):
                     with self.assertRaisesRegex(ToolError, "Instrument unavailable"):
                         await client.call_tool("get_calibration_context", {})
@@ -210,7 +211,7 @@ server.main(["--platform", "dummy", "--output", sys.argv[3]])
                     try:
                         self.assertEqual(len(await asyncio.wait_for(
                             client.list_tools(), timeout=2,
-                        )), 13)
+                        )), 15)
                         self.assertEqual(len(await client.list_resources()), 2)
                         async with asyncio.timeout(5):
                             while not started.exists():
@@ -225,7 +226,7 @@ server.main(["--platform", "dummy", "--output", sys.argv[3]])
                         diagnostics.seek(0)
                         error.add_note(diagnostics.read())
                         raise
-                    self.assertIn('"platform": "dummy"', result.content[0].text)
+                    self.assertEqual(json.loads(result.content[0].text)["platform"], "dummy")
             finally:
                 release.touch()
             diagnostics.seek(0)

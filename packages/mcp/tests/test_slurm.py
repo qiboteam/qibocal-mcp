@@ -177,7 +177,8 @@ class SlurmTests(unittest.IsolatedAsyncioTestCase):
                     {PROMPT, "get_calibration_context", "execute_protocol", "update_platform",
                      "start_session", "get_platform_state", "patch_platform",
                      "append_note", "get_notes", "get_run", "cancel_run",
-                     "get_run_results", "get_run_figures"},
+                     "get_run_results", "get_run_figures",
+                     "get_protocol", "search_platform_state"},
                 )
                 context_text = (
                     await client.read_resource("qibocal://context")

@@ -11,11 +11,15 @@ from fastmcp import Context, FastMCP
 from fastmcp.tools import ToolResult
 from mcp.types import CallToolResult, TextContent
 
-from .calibration import register_calibration_prompt
+from .calibration import (
+    PROTOCOL_DESCRIPTION,
+    PROTOCOL_TOOL,
+    register_calibration_prompt,
+)
 from .plots import APP, APP_ONLY, FIGURE_TOOL, register_plot_view
 from .progress import parse
 from .runs import WAIT, Run, Runs
-from .sessions import SessionSource
+from .sessions import STATE_DESCRIPTIONS, SessionSource
 from .targets import Overrides, Targets
 
 # squeue fields, in order; the job name identifies our job among the others.
@@ -303,17 +307,23 @@ def create_slurm_server(
         """Return qibocal://context JSON text through a compute-node discovery job."""
         return await calibration_context()
 
-    @mcp.tool
-    async def get_platform_state(path: str = "") -> dict:
-        """Inspect current Parameters and Calibration without executing a protocol.
-
-        path is an RFC 6901 JSON pointer; empty returns both complete models.
-        Mapping keys are JSON strings. Returns path, value and session metadata.
-        """
-        result = await jobs.call("get_platform_state", {"path": path})
+    async def state(name: str, arguments: dict) -> dict:
+        result = await jobs.call(name, arguments)
         if result.structuredContent is None:
-            raise ValueError("Worker response has no platform state")
+            raise ValueError(f"Worker response has no {name} result")
         return result.structuredContent
+
+    @mcp.tool(name=PROTOCOL_TOOL, description=PROTOCOL_DESCRIPTION)
+    async def get_protocol(name: str) -> dict:
+        return await state(PROTOCOL_TOOL, {"name": name})
+
+    @mcp.tool(description=STATE_DESCRIPTIONS["get_platform_state"])
+    async def get_platform_state(path: str = "", depth: int | None = None) -> dict:
+        return await state("get_platform_state", {"path": path, "depth": depth})
+
+    @mcp.tool(description=STATE_DESCRIPTIONS["search_platform_state"])
+    async def search_platform_state(query: str, path: str = "") -> dict:
+        return await state("search_platform_state", {"query": query, "path": path})
 
     @mcp.tool
     async def patch_platform(changes: dict) -> dict:

@@ -22,7 +22,7 @@ instructions, manage their MCP subprocess, and leave strategy to the model:
 there is no prescribed calibration sequence, fit acceptance threshold or
 workflow engine.
 
-``qibocal-mcp`` exposes thirteen tools, two resources (the context and the plot
+``qibocal-mcp`` exposes fifteen tools, two resources (the context and the plot
 view) and one prompt.
 ``get_calibration_context`` aliases ``qibocal://context`` for clients without
 resource support; discovery through either interface has the same execution

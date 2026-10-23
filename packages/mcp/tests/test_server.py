@@ -430,7 +430,8 @@ class ServerTests(unittest.IsolatedAsyncioTestCase):
                     {PROMPT, "get_calibration_context", "execute_protocol", "update_platform",
                      "start_session", "get_platform_state", "patch_platform",
                      "append_note", "get_notes", "get_run", "cancel_run",
-                     "get_run_results", "get_run_figures"},
+                     "get_run_results", "get_run_figures",
+                     "get_protocol", "search_platform_state"},
                 )
                 context_text = (
                     await client.read_resource("qibocal://context")
@@ -440,9 +441,29 @@ class ServerTests(unittest.IsolatedAsyncioTestCase):
                 self.assertEqual(discovery.content[0].text, context_text)
                 context = json.loads(context_text)
                 self.assertEqual(context["qubits"], list(platform.qubits))
+                # The context only names parameters; get_protocol defines them.
+                self.assertEqual(context["protocols"]["synthetic"]["parameters"], ["value"])
+                self.assertIn("lincenter", context["ranges"])
+                definitions = (await client.call_tool(
+                    "get_protocol", {"name": "synthetic"},
+                )).structured_content
+                self.assertIn("value: float", definitions["parameters"])
+                with self.assertRaisesRegex(ToolError, "Unknown protocol"):
+                    await client.call_tool("get_protocol", {"name": "missing"})
+                # The platform state can be outlined and searched.
+                outlined = (await client.call_tool(
+                    "get_platform_state", {"depth": 1},
+                )).structured_content["value"]
+                self.assertTrue(outlined["calibration"].startswith("<object"))
+                found = (await client.call_tool(
+                    "search_platform_state", {"query": "FREQUENCY_01", "path": "/calibration"},
+                )).structured_content
                 self.assertIn(
-                    "value: float", context["protocols"]["synthetic"]["parameters"]
+                    "/calibration/single_qubits/0/qubit/frequency_01",
+                    [match["path"] for match in found["matches"]],
                 )
+                with self.assertRaisesRegex(ToolError, "must not be empty"):
+                    await client.call_tool("search_platform_state", {"query": " "})
                 result = await client.call_tool(
                     "execute_protocol",
                     {

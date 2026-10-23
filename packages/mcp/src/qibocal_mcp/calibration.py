@@ -12,11 +12,29 @@ NAME = "qibocal-calibration"
 DESCRIPTION = "Plan, execute and inspect bounded Qibocal calibrations."
 CONTEXT_RESOURCE = "qibocal://context"
 CONTEXT_TOOL = "get_calibration_context"
+PROTOCOL_TOOL = "get_protocol"
+PROTOCOL_DESCRIPTION = """Return one protocol's parameter definitions, with types and units.
+
+The source of its parameters class: read it for the protocol you chose,
+before choosing its values. qibocal://context lists the protocols."""
+COMMON_PARAMETERS = (
+    "nshots (integer) and relaxation_time (ns) may be supplied with any protocol. "
+    "Omit them to use platform defaults."
+)
+# Qibocal's RangeLike, summarized: a plain triple is easily misread.
+RANGES = (
+    "Sweep ranges (parameters typed RangeLike) take several forms. A plain "
+    "[start, stop, step] is absolute. Labelled forms: [\"window\", center, width, "
+    "step]; [\"center\", width, step] around the protocol's default center, "
+    "e.g. the current frequency; [\"asym\", [left, right], step] around it, "
+    "asymmetrically. A lin prefix (linspace, linwindow, lincenter, linasym) "
+    "replaces step with the number of points, e.g. [\"linspace\", start, stop, n]."
+)
 PROMPT = "calibrate"
 TOOLS = (
     PROMPT,
-    CONTEXT_TOOL, "execute_protocol", "get_run", "cancel_run", "get_run_results", "get_run_figures", "update_platform", "start_session",
-    "get_platform_state", "patch_platform",
+    CONTEXT_TOOL, PROTOCOL_TOOL, "execute_protocol", "get_run", "cancel_run", "get_run_results", "get_run_figures", "update_platform", "start_session",
+    "get_platform_state", "search_platform_state", "patch_platform",
     "append_note", "get_notes",
 )
 
@@ -25,8 +43,9 @@ plan it from the user's objective and constraints, and adapt it after each
 result. The rules below are not optional.
 
 ## Experiments and updates
-- Choose protocols, parameters, units and qubit IDs from the Qibocal context.
-  Run one protocol at a time.
+- Choose protocols and qubit IDs from the Qibocal context, then read the chosen
+  protocol's parameters and units with get_protocol. Mind the sweep range
+  forms the context describes. Run one protocol at a time.
 - Inspect every report image and fitting table: signal quality, model
   agreement, uncertainty, bad fits. Results leave out large values, such as
   per-shot arrays; fetch them with get_run_results only when a decision needs
