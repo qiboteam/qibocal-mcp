@@ -21,7 +21,7 @@ Both modes expose the same interface: nineteen tools —
 ``cancel_run``,
 ``update_platform``, ``start_session``, ``get_platform_state``,
 ``search_platform_state``,
-``patch_platform``, ``append_note``, ``get_notes``, ``get_run_results`` and
+``patch_platform``, ``append_note``, ``get_notes``, ``get_run_results``,
 ``get_run_figures`` (for the plot view only), ``list_versions``,
 ``diff_platform``, ``save_platform`` and ``checkout_platform`` — plus the
 ``qibocal://context`` resource and the ``calibrate`` MCP prompt.
