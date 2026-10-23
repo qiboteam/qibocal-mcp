@@ -17,6 +17,7 @@ from .progress import parse
 from .runs import WAIT, Run, Runs
 from .sessions import SessionSource
 from .targets import Overrides, Targets
+from .versions import DESCRIPTIONS
 
 # squeue fields, in order; the job name identifies our job among the others.
 QUEUE_FIELDS = ("job_id", "state", "user", "name", "elapsed", "time_limit", "reason", "priority")
@@ -218,9 +219,10 @@ class SlurmJobs:
             if result.structuredContent is None:
                 raise ValueError("Worker response has no platform snapshot")
             self.snapshot = Path(result.structuredContent["snapshot"])
-        elif operation == "append_note":
+        elif operation in {"append_note", "save_platform"}:
+            # Both create the report, pinning its baseline for later workers.
             if result.structuredContent is None:
-                raise ValueError("Worker response has no notes history")
+                raise ValueError(f"Worker response has no {operation} result")
             if self.snapshot is None:
                 self.snapshot = Path(result.structuredContent["report_folder"]) / "platform"
         elif operation == "start_session":
@@ -399,6 +401,39 @@ def create_slurm_server(
             raise ValueError("Worker response has no session metadata")
         runs.clear()
         return result.structuredContent
+
+    async def local(operation: str, arguments: dict) -> dict:
+        result = await jobs.call(operation, arguments)
+        if result.structuredContent is None:
+            raise ValueError(f"Worker response has no {operation} result")
+        return result.structuredContent
+
+    @mcp.tool(description=DESCRIPTIONS["list_versions"])
+    async def list_versions(
+        ref: str | None = None, limit: int = 20, fetch: bool = False,
+        remote: str = "origin",
+    ) -> dict:
+        return await local("list_versions", {
+            "ref": ref, "limit": limit, "fetch": fetch, "remote": remote,
+        })
+
+    @mcp.tool(description=DESCRIPTIONS["diff_platform"])
+    async def diff_platform(against: str = "source") -> dict:
+        return await local("diff_platform", {"against": against})
+
+    @mcp.tool(description=DESCRIPTIONS["save_platform"])
+    async def save_platform(
+        message: str, branch: str, confirm: str | None = None,
+        push: bool = False, remote: str | None = None,
+    ) -> dict:
+        return await local("save_platform", {
+            "message": message, "branch": branch, "confirm": confirm,
+            "push": push, "remote": remote,
+        })
+
+    @mcp.tool(description=DESCRIPTIONS["checkout_platform"])
+    async def checkout_platform(ref: str) -> dict:
+        return await local("checkout_platform", {"ref": ref})
 
     @mcp.tool(app=APP)
     async def execute_protocol(

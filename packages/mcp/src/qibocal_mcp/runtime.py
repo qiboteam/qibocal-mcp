@@ -12,6 +12,7 @@ import inspect
 import json
 import os
 import sys
+import tempfile
 from concurrent.futures import ThreadPoolExecutor
 from contextlib import asynccontextmanager, redirect_stdout
 from copy import copy
@@ -33,6 +34,7 @@ with redirect_stdout(sys.stderr):
     from .artifacts import SessionReport
     from .notes import append_note as persist_note
     from .notes import read_notes
+from . import versions
 from .calibration import register_calibration_prompt
 from .plots import (
     APP,
@@ -113,18 +115,40 @@ def create_server(
     session_report: SessionReport | None = None
     accepted_state: PlatformState | None = None
     initial_state: PlatformState | None = None
+    # The saved version the platform files matched at startup, if any.
+    startup_version: dict | None = None
+
+    def platform_repository() -> versions.Repository:
+        from qibocal.calibration.platform import locate_platform
+
+        return versions.Repository.of(locate_platform(platform_name))
+
+    def base_version() -> dict | None:
+        """The saved version this session's state derives from, if any."""
+        path = report_folder / "version.json"
+        if path.exists():
+            return json.loads(path.read_text(encoding="utf-8"))
+        return startup_version
+
+    def record_version(version: dict | None, folder: Path) -> None:
+        if version is not None:
+            (folder / "version.json").write_text(json.dumps(version), encoding="utf-8")
 
     def report_for(executor: Executor) -> SessionReport:
         nonlocal session_report
         if session_report is None:
+            fresh = not (report_folder / "meta.json").exists()
             session_report = SessionReport(
                 report_folder, platform_name, executor.platform, protocols
             )
+            if fresh:
+                # Later workers of this session read it, not their own startup.
+                record_version(startup_version, report_folder)
         return session_report
 
     @asynccontextmanager
     async def lifespan(server):
-        nonlocal accepted_state, initial_state
+        nonlocal accepted_state, initial_state, startup_version
         # Hardware drivers and Qibocal may print; stdout belongs to MCP.
         with redirect_stdout(sys.stderr):
             platform = create_calibration_platform(platform_name)
@@ -136,6 +160,14 @@ def create_server(
                 if (report_folder / "platform").exists() else accepted_state
             )
             executor = Executor(platform, update=False)
+        if snapshot is None:
+            try:
+                checkout = platform_repository().checkout()
+            except Exception:
+                # No platform repository: versions are unavailable.
+                checkout = {"clean": False}
+            if checkout["clean"]:
+                startup_version = {"commit": checkout["commit"], "branch": checkout["branch"]}
         try:
             yield {"executor": executor}
         finally:
@@ -368,6 +400,8 @@ def create_server(
             runs.ensure_idle()
             executor = ctx.lifespan_context["executor"]
             provenance = {"source": source, "parent_session_id": session_id}
+            # A session from the current or initial state, or a run, keeps its base.
+            version = None if source == "snapshot" else base_version()
             candidate = copy(executor.platform)
             if source == "current":
                 state = accepted_state
@@ -388,6 +422,14 @@ def create_server(
                     repository_state, path, ref, fetch=fetch, remote=remote,
                 )
                 provenance.update(revision)
+                repository = versions.Repository.of(path)
+                if ref is None:
+                    branch = repository.checkout()["branch"]
+                elif not fetch and repository.commit(f"refs/heads/{ref}") == revision["commit"]:
+                    branch = ref
+                else:
+                    branch = None
+                version = {"commit": revision["commit"], "branch": branch}
             else:
                 completed = find_run(executor, run_id)
                 metadata = json.loads(
@@ -414,6 +456,7 @@ def create_server(
                 (new_folder / "session.json").write_text(
                     json.dumps(provenance, indent=2), encoding="utf-8"
                 )
+                record_version(version, new_folder)
             state.apply(executor.platform)
             session_id, report_folder, session_report = new_id, new_folder, new_report
             accepted_state = initial_state = state
@@ -424,6 +467,104 @@ def create_server(
                 "session_id": session_id, "report_folder": str(report_folder),
                 "snapshot": str(report_folder / "platform"), **provenance,
             }
+
+    def normalized(state: PlatformState, platform) -> PlatformState:
+        """Serialize as the live models do, so that only values are compared."""
+        return PlatformState(
+            type(platform.parameters).model_validate_json(state.parameters).model_dump_json(),
+            type(platform.calibration).model_validate_json(state.calibration).model_dump_json(),
+        )
+
+    @mcp.tool(description=versions.DESCRIPTIONS["list_versions"])
+    async def list_versions(
+        ref: str | None = None, limit: int = 20, fetch: bool = False,
+        remote: str = "origin",
+    ) -> dict:
+
+        def read():
+            repository = platform_repository()
+            if fetch:
+                repository.fetch(remote)
+            return versions.history(repository, ref, limit)
+
+        return {"session_base": base_version(), **await asyncio.to_thread(read)}
+
+    @mcp.tool(description=versions.DESCRIPTIONS["diff_platform"])
+    async def diff_platform(ctx: Context, against: str = "source") -> dict:
+        platform = ctx.lifespan_context["executor"].platform
+
+        def read():
+            repository = platform_repository()
+            if against == "source":
+                old = PlatformState.load(repository.root / repository.prefix)
+            else:
+                commit = repository.commit(against)
+                if commit is None:
+                    raise ValueError(f"Unknown version: {against}")
+                old = repository.state(commit)
+            return old
+
+        old = normalized(await asyncio.to_thread(read), platform)
+        return {
+            "against": against, "session_base": base_version(),
+            **versions.differences(old, PlatformState.capture(platform)),
+        }
+
+    @mcp.tool(description=versions.DESCRIPTIONS["save_platform"])
+    async def save_platform(
+        message: str, branch: str, ctx: Context, confirm: str | None = None,
+        push: bool = False, remote: str | None = None,
+    ) -> dict:
+        executor = ctx.lifespan_context["executor"]
+        async with lock:
+            with redirect_stdout(sys.stderr):
+                report_for(executor)
+            state = PlatformState.capture(executor.platform)
+            with tempfile.TemporaryDirectory() as directory:
+                executor.platform.dump(Path(directory))
+                files = {
+                    name: (Path(directory) / name).read_text(encoding="utf-8")
+                    for name in versions.FILES
+                }
+            repository = await asyncio.to_thread(platform_repository)
+            start, exists = await asyncio.to_thread(
+                versions.parent, repository, branch, base_version(),
+            )
+            old = normalized(await asyncio.to_thread(repository.state, start), executor.platform)
+            changes = versions.differences(old, state)
+            if changes["count"] == 0:
+                raise ValueError(f"Nothing to save: the state matches {branch if exists else start[:12]}")
+            proposal = versions.token(branch, start, state)
+            session = {"session_id": session_id, "report_folder": str(report_folder)}
+            if confirm is None:
+                return {
+                    **session, "branch": branch, "new_branch": not exists, "extends": start,
+                    **changes, "confirm": proposal,
+                    "message": (
+                        "Nothing was saved. Show these changes to the user, and call "
+                        "save_platform again with this confirm token only after their "
+                        "explicit approval."
+                    ),
+                }
+            if confirm != proposal:
+                raise ValueError(
+                    "The state or the branch changed since these changes were shown: "
+                    "call save_platform without confirm again"
+                )
+            text = (
+                f"{message.strip()}\n\nQibocal-Session: {session_id}\n"
+                f"Qibocal-Platform: {platform_name}\n"
+            )
+            commit = await asyncio.to_thread(versions.save, repository, branch, start, files, text)
+            record_version({"commit": commit, "branch": branch}, report_folder)
+            saved = {**session, "branch": branch, "version": commit, "extends": start, **changes}
+            if push:
+                saved["published"] = await asyncio.to_thread(versions.push, repository, branch, remote)
+            return saved
+
+    @mcp.tool(description=versions.DESCRIPTIONS["checkout_platform"])
+    async def checkout_platform(ref: str) -> dict:
+        return await asyncio.to_thread(lambda: versions.switch(platform_repository(), ref))
 
     def acquire(
         run: Run, executor: Executor, report: SessionReport, protocol: str,

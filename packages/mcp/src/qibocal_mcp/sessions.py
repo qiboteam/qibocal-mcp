@@ -100,12 +100,16 @@ def pointer_value(document, tokens: list[str]):
     return document
 
 
-def git(repository: Path, *arguments: str) -> str:
+def git(
+    repository: Path, *arguments: str, input: str | None = None,
+    env: dict[str, str] | None = None,
+) -> str:
     """Keep Git noninteractive and its output outside the MCP stream."""
     result = subprocess.run(
         ["git", "--no-pager", "-C", str(repository), *arguments],
-        capture_output=True, text=True, stdin=subprocess.DEVNULL,
-        env={**os.environ, "GIT_TERMINAL_PROMPT": "0"},
+        capture_output=True, text=True,
+        **({"input": input} if input is not None else {"stdin": subprocess.DEVNULL}),
+        env={**os.environ, "GIT_TERMINAL_PROMPT": "0", **(env or {})},
     )
     if result.returncode != 0:
         raise ValueError(f"Could not access platform repository: {result.stderr.strip()}")

@@ -15,7 +15,8 @@ CONTEXT_TOOL = "get_calibration_context"
 PROMPT = "calibrate"
 TOOLS = (
     PROMPT,
-    CONTEXT_TOOL, "execute_protocol", "get_run", "cancel_run", "get_run_results", "get_run_figures", "update_platform", "start_session",
+    CONTEXT_TOOL, "execute_protocol", "get_run", "cancel_run", "get_run_results", "get_run_figures",
+    "list_versions", "diff_platform", "save_platform", "checkout_platform", "update_platform", "start_session",
     "get_platform_state", "patch_platform",
     "append_note", "get_notes",
 )
@@ -80,6 +81,18 @@ between paragraphs, headings or bold labels for sections, bullet or numbered
 lists instead of inline enumerations such as "(1) ... (2) ...", and tables for
 per-qubit values and before/after comparisons, with units. How much structure
 a short message needs is up to you.
+
+## Versions
+Accepted updates live in the session until saved as a platform version.
+- Use list_versions to choose a version, start_session(source="repository",
+  ref=...) to load one, and diff_platform to tell the user what is not saved.
+- Save with save_platform only when the user asks or approves: show the
+  changes it proposes, and confirm only after their explicit approval. Keep one
+  branch per calibration procedure (e.g. calibration/<topic>), extended across
+  sessions, so that it can be reviewed as a pull request; never save to the
+  main branch unless asked.
+- Push, and check out another version with checkout_platform, only on the
+  user's request.
 
 ## Sessions
 For a fresh calibration, use start_session in the same conversation; with

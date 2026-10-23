@@ -19,6 +19,7 @@ from .plots import APP, APP_ONLY, FIGURE_TOOL, register_plot_view
 from .runs import WAIT
 from .sessions import SessionSource
 from .targets import Overrides, Targets
+from .versions import DESCRIPTIONS
 
 logger = logging.getLogger(__name__)
 
@@ -235,6 +236,33 @@ def create_server(
             content=result.content, structured_content=result.structured_content,
             meta=result.meta, is_error=result.is_error,
         )
+
+    @mcp.tool(description=DESCRIPTIONS["list_versions"])
+    async def list_versions(
+        ctx: Context, ref: str | None = None, limit: int = 20, fetch: bool = False,
+        remote: str = "origin",
+    ) -> dict:
+        return (await forward("list_versions", {
+            "ref": ref, "limit": limit, "fetch": fetch, "remote": remote,
+        }, ctx)).structured_content
+
+    @mcp.tool(description=DESCRIPTIONS["diff_platform"])
+    async def diff_platform(ctx: Context, against: str = "source") -> dict:
+        return (await forward("diff_platform", {"against": against}, ctx)).structured_content
+
+    @mcp.tool(description=DESCRIPTIONS["save_platform"])
+    async def save_platform(
+        message: str, branch: str, ctx: Context, confirm: str | None = None,
+        push: bool = False, remote: str | None = None,
+    ) -> dict:
+        return (await forward("save_platform", {
+            "message": message, "branch": branch, "confirm": confirm,
+            "push": push, "remote": remote,
+        }, ctx)).structured_content
+
+    @mcp.tool(description=DESCRIPTIONS["checkout_platform"])
+    async def checkout_platform(ref: str, ctx: Context) -> dict:
+        return (await forward("checkout_platform", {"ref": ref}, ctx)).structured_content
 
     @mcp.tool(app=APP)
     async def execute_protocol(

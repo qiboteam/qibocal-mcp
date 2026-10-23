@@ -40,6 +40,7 @@ async def run(
                 "execute_protocol", "update_platform", "start_session",
                 "get_platform_state", "patch_platform",
                 "append_note", "get_notes", "get_run_results", "get_run_figures",
+                "list_versions", "diff_platform", "save_platform", "checkout_platform",
             }:
                 raise ValueError(f"Unknown worker operation: {request['operation']}")
             result = await client.call_tool(
