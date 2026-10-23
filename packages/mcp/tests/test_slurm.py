@@ -20,7 +20,7 @@ from qibocal.calibration.calibration import Calibration, QubitCalibration
 from qibolab import create_platform
 from test_server import acquire, fit, report, update
 
-from qibocal_mcp.calibration import PROMPT, instructions_for
+from qibocal_mcp.calibration import PROMPT, instructions_for, show_images
 from qibocal_mcp.plots import FIGURES, VIEW
 from qibocal_mcp.slurm import SlurmJobs, create_slurm_server
 from qibocal_mcp.worker import run
@@ -132,6 +132,7 @@ class SlurmTests(unittest.IsolatedAsyncioTestCase):
                     {"protocol": "synthetic", "parameters": {"value": 5e9}, "targets": [0]},
                 )
                 self.assertTrue(any(c.type == "image" for c in result.content))
+                self.assertEqual(result.content[-1].text, show_images(1))
                 # The worker's JSON response keeps the interactive figures.
                 figures = result.meta[FIGURES]["figures"]
                 self.assertEqual(figures[0]["data"][0]["type"], "scatter")

@@ -195,7 +195,9 @@ The response contains structured metadata plus text/image content:
 * Serialized fitted ``results`` when present, ``supports_update``, and
   initial ``updated``/``update_started`` flags.
 * Text containing metadata and per-target report tables.
-* PNG reports as MCP image content, not only file paths.
+* PNG reports as MCP image content, not only file paths, followed by a closing
+  text asking the model to show them to the user before its next tool call,
+  unless the interface already displays them.
 * The same figures as Plotly JSON, in the result ``_meta`` under
   ``qibocal/figures``, with the plotly.js version that should draw them.
   The model does not see this metadata; it feeds the interactive view below.

@@ -235,6 +235,8 @@ def create_server(
         platform_overrides maps existing JSON pointers to scalar trial values.
         Trials use isolated validated models and never change accepted session
         state, even on failure. Hardware effects are not rolled back.
+        After each call, before another tool call, show the user the returned
+        images, unless the interface already displays them, and your fit reading.
         """
         client = await asyncio.shield(ctx.lifespan_context["ready"])
         result = await client.call_tool("execute_protocol", {

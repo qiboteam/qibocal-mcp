@@ -22,7 +22,7 @@ from qibocal.protocols.utils import PowerLevel
 from qibocal.update import drive_frequency
 from qibolab import create_platform
 
-from qibocal_mcp.calibration import PROMPT, instructions_for
+from qibocal_mcp.calibration import PROMPT, instructions_for, show_images
 from qibocal_mcp.plots import FIGURES, VIEW
 from qibocal_mcp.runtime import create_server
 from qibocal_mcp.server import create_server as create_frontend
@@ -111,6 +111,8 @@ class ServerTests(unittest.IsolatedAsyncioTestCase):
                         "protocol": "synthetic", "parameters": {"value": 5e9}, "targets": [0],
                     })
                     self.assertTrue(any(item.type == "image" for item in result.content))
+                    # The result ends asking the model to show the images to the user.
+                    self.assertEqual(result.content[-1].text, show_images(1))
                     # Interactive figures travel beside the images, for MCP Apps.
                     plotted = result.meta[FIGURES]
                     self.assertEqual(plotted["plotly"], plotly.offline.get_plotlyjs_version())
@@ -324,6 +326,11 @@ class ServerTests(unittest.IsolatedAsyncioTestCase):
                     reports.append(Path(result.structured_content["report_folder"]))
                     self.assertEqual(result.structured_content["session_id"], context["session_id"])
                     self.assertIsNone(result.structured_content["results"])
+                    # Without images, there is nothing to show.
+                    self.assertFalse(any(
+                        "cannot see tool results" in getattr(item, "text", "")
+                        for item in result.content
+                    ))
                     self.assertFalse((folder / "results.json").exists())
                     self.assertEqual(Action.load(folder).targets, [0])
                     if len(reports) == 1:
