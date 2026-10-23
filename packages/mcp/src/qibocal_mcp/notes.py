@@ -19,7 +19,7 @@ def append_note(directory: Path, note: Note) -> list[Note]:
     lock = directory / ".notes.lock"
     if lock.is_symlink():
         raise ValueError("Notes locks must not be symbolic links")
-    # Use the same lock as qibocal-report, and read again while holding it.
+    # Use the same lock as qibocamp, and read again while holding it.
     with locked(lock):
         notes = [*read_notes(directory), note]
         with TemporaryDirectory(prefix=".notes-", dir=directory) as temporary:

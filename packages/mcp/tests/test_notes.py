@@ -40,7 +40,7 @@ class PersistenceTests(unittest.TestCase):
             def write(index):
                 note = Note(content=f"Finding {index}")
                 if index % 2:
-                    # Simulate qibocal-report's independent load/append/replace.
+                    # Simulate Qibocamp's independent load/append/replace.
                     with locked(folder / ".notes.lock"):
                         notes = [*load_notes(folder), note]
                         with tempfile.TemporaryDirectory(dir=folder) as temporary:

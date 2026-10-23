@@ -231,7 +231,7 @@ def mcp(ctx: click.Context, name: str | None, **_) -> None:
 @click.option(
     "--venv",
     help="Environment for the report server on the report host "
-    "(default: qibocal-report).",
+    "(default: qibocamp).",
 )
 @click.option(
     "--port", type=int, help="Local port of the printed address (default: 8000)."
@@ -244,9 +244,9 @@ def mcp(ctx: click.Context, name: str | None, **_) -> None:
 def report(ctx: click.Context, name: str | None, **_) -> None:
     """Serve the calibration reports of configuration NAME.
 
-    Starts a Qibocal Report backend where the reports are, through a private
+    Starts a Qibocamp backend where the reports are, through a private
     SSH tunnel when they are remote, and prints the address to register in
-    the Qibocal Report interface. Stop it with Ctrl+C.
+    the Qibocamp interface. Stop it with Ctrl+C.
     """
     values = settings(
         ctx, "report", name,

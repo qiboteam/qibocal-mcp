@@ -21,9 +21,9 @@ is selected in this order:
    ``$XDG_CONFIG_HOME/qibocal/agents.json``.
 3. Otherwise: ``~/.config/qibocal/agents.json``.
 
-Empty environment values fall through, as in qibocal-report. This reuses the
-configuration folder, but never accesses Qibocal Report's ``servers.json`` or
-authentication files. ``qibocal-agent config`` prints the selected location
+Empty environment values fall through, as in Qibocamp. The folder is
+qibocal-agent's own; Qibocamp keeps its files in ``~/.config/qibocamp`` and
+writes ``agents.json`` here only for the configurations it manages. ``qibocal-agent config`` prints the selected location
 and the file's content.
 
 Two options of ``qibocal-agent``, written before the subcommand, change the
@@ -178,7 +178,7 @@ Report server settings
 > built-in default**. From the configuration itself it only inherits
 ``output``, ``ssh`` and ``workdir``, so that it serves the reports where the
 server writes them. It never uses the calibration environment: the report
-server always has its own, ``qibocal-report`` unless ``NAME.report.venv`` says
+server always has its own, ``qibocamp`` unless ``NAME.report.venv`` says
 otherwise. A platform or model is not required. Overrides passed to an earlier
 command are not persisted: give the same location overrides to ``report``.
 
@@ -202,7 +202,7 @@ The ``report`` object accepts only:
      - The configuration's ``workdir``. Working directory on the report host.
    * - ``venv``
      - Nonempty string
-     - ``qibocal-report``. Managed environment on the report host.
+     - ``qibocamp``. Managed environment on the report host.
    * - ``port``
      - JSON integer, 1 through 65535
      - ``8000``. Local port used in the frontend registration URL.
@@ -218,7 +218,7 @@ The URL is printed after the health endpoint responds; installation and server
 logs go to stderr. The server and tunnel remain attached until Ctrl+C.
 With SLURM, serve the shared output directory on the access node, not a
 compute-node job. The bootstrap uses resolved settings, not the remote host's
-``agents.json``. Upstream Qibocal Report maintains its own server registry.
+``agents.json``. Upstream Qibocamp maintains its own server registry.
 
 The latest report ``main`` commit is resolved over HTTPS on each launch,
 installed if needed, and its provenance and dependencies checked before launch.

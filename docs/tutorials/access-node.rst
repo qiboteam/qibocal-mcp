@@ -196,7 +196,7 @@ so expect queue waits.
 ---------------------
 
 Reports are in ``~/.local/share/qibocal/agents/runs/default/sessions/`` on the
-cluster. To browse them with Qibocal Report, start the report server on the
+cluster. To browse them with Qibocamp, start the report server on the
 access node:
 
 .. code-block:: sh

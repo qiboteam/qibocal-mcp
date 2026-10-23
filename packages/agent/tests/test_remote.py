@@ -228,7 +228,7 @@ class RemoteTests(unittest.IsolatedAsyncioTestCase):
                 self.assertEqual(opened["server"], "http://127.0.0.1:8123")
                 self.assertEqual(
                     opened["dashboard"],
-                    "https://qibo.science/qibocal-report/"
+                    "https://qibo.science/qibocamp/"
                     "#/connect?server=http%3A%2F%2F127.0.0.1%3A8123",
                 )
                 self.assertEqual(opened["report_id"], "sessions/abc")

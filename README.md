@@ -82,7 +82,7 @@ qibocal-agent report            # serves ~/.local/share/qibocal/agents/runs/defa
 qibocal-agent report --ssh ACCESS_NODE --output /shared/calibration/runs
 ```
 
-Starts a [Qibocal Report](https://github.com/qiboteam/qibocal-report) backend
+Starts a [Qibocamp](https://github.com/qiboteam/qibocamp) backend
 at the output location (through a private SSH tunnel when remote) and prints
 the URL to register in your local frontend. Both execution modes collect a
 standard Qibocal report per session under `OUTPUT/sessions/<session_id>/`.

@@ -130,8 +130,8 @@ hover, toggle traces — there are two ways, depending on the interface:
   such as Copilot CLI and Claude Code, do not display them.
 * **In the browser**, in any interface: ask the assistant to *open the
   reports*. Through ``qibocal-agent mcp``, its ``open_reports`` tool starts a
-  Qibocal Report server where the active configuration writes, through an SSH
-  tunnel when that is remote, and returns a link to the hosted Qibocal Report
+  Qibocamp server where the active configuration writes, through an SSH
+  tunnel when that is remote, and returns a link to the hosted Qibocamp
   dashboard, already connected to it. The server stays up until the
   configuration changes or the assistant exits. Its port, 8000 by default, and
   environment follow the ``NAME.report`` settings of ``qibocal-agent report``.

@@ -1,4 +1,4 @@
-"""Advisory file locking shared with qibocal-report's note writers."""
+"""Advisory file locking shared with Qibocamp's note writers."""
 
 import contextlib
 import os

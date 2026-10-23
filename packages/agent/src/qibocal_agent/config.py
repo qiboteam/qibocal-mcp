@@ -1,4 +1,4 @@
-"""Persistent agent configurations, kept separate from Qibocal Report's files.
+"""Persistent agent configurations, kept separate from Qibocamp's files.
 
 The file holds named configurations under ``agents``; ``default`` is the one
 used when no name is given. Settings are addressed as ``NAME.setting`` or
@@ -43,7 +43,7 @@ REPORT_FIELDS = {
     "port": int,
     "remote_port": int,
 }
-REPORT_ENVIRONMENT = "qibocal-report"
+REPORT_ENVIRONMENT = "qibocamp"
 
 
 class ConfigError(ValueError):
