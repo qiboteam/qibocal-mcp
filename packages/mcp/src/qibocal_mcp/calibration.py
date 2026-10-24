@@ -28,7 +28,8 @@ RANGES = (
     "step]; [\"center\", width, step] around the protocol's default center, "
     "e.g. the current frequency; [\"asym\", [left, right], step] around it, "
     "asymmetrically. A lin prefix (linspace, linwindow, lincenter, linasym) "
-    "replaces step with the number of points, e.g. [\"linspace\", start, stop, n]."
+    "replaces step with the number of points, e.g. [\"linspace\", start, stop, n]. "
+    "Other list parameters, such as RB's depths, take explicit values."
 )
 PROMPT = "calibrate"
 TOOLS = (

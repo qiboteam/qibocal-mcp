@@ -2,6 +2,7 @@
 
 import json
 import logging
+import os
 import tempfile
 import threading
 import unittest
@@ -344,6 +345,32 @@ class ServerTests(unittest.IsolatedAsyncioTestCase):
                 )
         self.assertIn("/runs/report-0-0.png", reminder(plots, False))
         self.assertIn("do not embed them again", reminder(plots, True))
+
+    async def test_circuit_protocols_ignore_a_hardware_global_backend(self):
+        """RB's circuit algebra must not load a second platform (#54)."""
+        from qibo.backends import _Global
+        from qibocal.protocols import standard_rb
+
+        platform = CalibrationPlatform(
+            **vars(create_platform("dummy")),
+            calibration=Calibration(single_qubits={0: QubitCalibration()}),
+        )
+        self.addCleanup(setattr, _Global, "_backend", _Global._backend)
+        _Global._backend = None
+        with (
+            tempfile.TemporaryDirectory() as directory,
+            patch.dict(os.environ, {"QIBO_BACKEND": "qibolab", "QIBO_PLATFORM": "dummy"}),
+            patch("qibocal_mcp.runtime.create_calibration_platform", return_value=platform),
+            patch("qibocal_mcp.runtime.PROTOCOLS", {"standard_rb": standard_rb}),
+            patch.object(go.Figure, "write_image", lambda figure, file, **kwargs: Path(file).write_bytes(PNG)),
+        ):
+            async with Client(create_server("synthetic", output=Path(directory))) as client:
+                result = await client.call_tool("execute_protocol", {
+                    "protocol": "standard_rb",
+                    "parameters": {"depths": [1, 2], "niter": 2, "nshots": 20},
+                    "targets": [0], "wait": 120,
+                })
+        self.assertEqual(result.structured_content["protocol"], "standard_rb")
 
     async def test_targets_match_qibocal_and_tolerate_text(self):
         from pydantic import TypeAdapter, ValidationError
