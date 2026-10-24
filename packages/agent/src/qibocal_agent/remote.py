@@ -33,6 +33,7 @@ from mcp.types import (
     ToolListChangedNotification,
 )
 
+from . import scratch
 from .config import DEFAULT, REPORT_ENVIRONMENT, ConfigError, configured_names, resolve
 from .deployment import DeploymentSettings, launch_for
 from .environment import DeploymentError, server_module
@@ -52,6 +53,7 @@ INACTIVE = (
     "No Qibocal configuration is active: list them with list_configurations "
     "and select one with switch_configuration, then retry."
 )
+SCRATCH_TOOLS = {"execute_protocol", "get_protocol"}
 # Served even without a server: it only returns the calibration instructions.
 STATIC_TOOL = "calibrate"
 # The hosted Qibocamp interface, opening the server given as a query.
@@ -142,12 +144,49 @@ async def placeholder() -> FastMCP:
     return server
 
 
+class ScratchCommits(Middleware):
+    """Run scratch protocols at the client repository's committed HEAD.
+
+    Refuses uncommitted changes, pushes the commit next to a remote server,
+    and passes it on as scratch_commit.
+    """
+
+    def __init__(self, upstream: "Upstream"):
+        self.upstream = upstream
+
+    async def on_call_tool(self, context, call_next):
+        arguments = dict(context.message.arguments or {})
+        settings = self.upstream.settings
+        if (
+            context.message.name not in SCRATCH_TOOLS
+            or arguments.get("source") != "scratch"
+            or settings is None or not settings.scratch
+        ):
+            return await call_next(context)
+
+        def prepare() -> str:
+            path = Path(settings.scratch_path)
+            commit = scratch.head(path)
+            if settings.ssh:
+                scratch.push(path, settings.ssh, settings.scratch_remote, commit)
+            return commit
+
+        try:
+            arguments["scratch_commit"] = await asyncio.to_thread(prepare)
+        except scratch.ScratchError as error:
+            raise ToolError(str(error)) from error
+        message = context.message.model_copy(update={"arguments": arguments})
+        return await call_next(context.copy(message=message))
+
+
 def summary(settings: DeploymentSettings) -> dict:
     return {
         "platform": settings.platform,
         "ssh": settings.ssh,
         "partition": settings.partition,
         "output": settings.output,
+        # Where agents write scratch protocols, on this machine.
+        "scratch": settings.scratch_path if settings.scratch else None,
     }
 
 
@@ -269,6 +308,7 @@ def create_proxy(
 
     mcp = FastMCP("Qibocal", instructions=INSTRUCTIONS, lifespan=lifespan)
     mcp.add_middleware(ShowPlots())
+    mcp.add_middleware(ScratchCommits(upstream))
     mcp.add_provider(ProxyProvider(upstream.current, cache_ttl=0))
 
     @mcp.tool

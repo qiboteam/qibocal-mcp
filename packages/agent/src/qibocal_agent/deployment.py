@@ -28,6 +28,9 @@ class DeploymentSettings:
     ssh: str | None = None
     server_python: str | None = None
     timeout: float = 3600
+    scratch: bool = False
+    scratch_path: str | None = None
+    scratch_remote: str | None = None
     directories: dict[str, str] = field(default_factory=dict)
 
     def __post_init__(self) -> None:
@@ -43,6 +46,8 @@ class DeploymentSettings:
             raise ConfigError("--slurm-arg requires --partition")
         if self.venv is not None and self.server_python is not None:
             raise ConfigError("--venv cannot be combined with --server-python")
+        if self.scratch and (self.scratch_path is None or (self.ssh and self.scratch_remote is None)):
+            raise ConfigError("Scratch protocols need scratch_path, and scratch_remote with ssh")
 
     @classmethod
     def from_values(cls, values: Mapping[str, object]) -> "DeploymentSettings":
@@ -64,6 +69,11 @@ class ServerLaunch:
     cwd: str | None = None
 
 
+def scratch_checkout(remote: str) -> str:
+    """The working directory next to a remote bare scratch repository."""
+    return remote.removesuffix(".git") if remote.endswith(".git") else remote + ".checkout"
+
+
 def launch_for(settings: DeploymentSettings) -> ServerLaunch:
     """Use stdio locally or carry it over SSH to an access-node gateway."""
     python = settings.server_python or ("python3" if settings.ssh else sys.executable)
@@ -76,6 +86,15 @@ def launch_for(settings: DeploymentSettings) -> ServerLaunch:
     if settings.partition is not None:
         command += ["--partition", settings.partition]
     command += [f"--slurm-arg={arg}" for arg in settings.slurm_arg]
+    if settings.scratch:
+        if settings.ssh:
+            # The client pushes to a bare repository there, checked out alongside.
+            command += [
+                "--scratch", scratch_checkout(settings.scratch_remote),
+                "--scratch-git-dir", settings.scratch_remote,
+            ]
+        else:
+            command += ["--scratch", settings.scratch_path]
     venv = settings.venv
     if settings.ssh and settings.server_python is None and venv is None:
         venv = DEFAULT
