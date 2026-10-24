@@ -6,7 +6,7 @@ text is parsed as well.
 """
 
 import json
-from typing import Annotated, Any
+from typing import Annotated, Any, Literal
 
 from pydantic import AfterValidator, BeforeValidator, Field, WithJsonSchema
 
@@ -48,3 +48,6 @@ Overrides = Annotated[
     BeforeValidator(parse_json),
     WithJsonSchema({"type": "object", "additionalProperties": True}),
 ]
+
+# Where a protocol comes from: Qibocal's library, or the scratch repository.
+Source = Literal["qibocal", "scratch"]

@@ -20,7 +20,7 @@ from .plots import APP, APP_ONLY, FIGURE_TOOL, register_plot_view
 from .progress import parse
 from .runs import WAIT, Run, Runs
 from .sessions import STATE_DESCRIPTIONS, SessionSource
-from .targets import Overrides, Targets
+from .targets import Overrides, Source, Targets
 from .versions import DESCRIPTIONS
 
 # squeue fields, in order; the job name identifies our job among the others.
@@ -249,6 +249,8 @@ def create_slurm_server(
     python: str,
     workdir: Path,
     slurm_args: list[str],
+    scratch: Path | None = None,
+    scratch_git_dir: Path | None = None,
 ) -> FastMCP:
     """Expose the same calibration tools without hardware on the access node."""
     jobs = SlurmJobs(
@@ -259,6 +261,11 @@ def create_slurm_server(
         workdir=workdir,
         slurm_args=slurm_args,
     )
+    if scratch is not None:
+        # Workers import scratch protocols from shared storage.
+        jobs.command += ["--scratch", str(scratch.expanduser().resolve())]
+        if scratch_git_dir is not None:
+            jobs.command += ["--scratch-git-dir", str(scratch_git_dir.expanduser().resolve())]
     runs = Runs(interrupt=True)
 
     @asynccontextmanager
@@ -316,8 +323,12 @@ def create_slurm_server(
         return result.structuredContent
 
     @mcp.tool(name=PROTOCOL_TOOL, description=PROTOCOL_DESCRIPTION)
-    async def get_protocol(name: str) -> dict:
-        return await state(PROTOCOL_TOOL, {"name": name})
+    async def get_protocol(
+        name: str, source: Source = "qibocal", scratch_commit: str | None = None,
+    ) -> dict:
+        return await state(PROTOCOL_TOOL, {
+            "name": name, "source": source, "scratch_commit": scratch_commit,
+        })
 
     @mcp.tool(description=STATE_DESCRIPTIONS["get_platform_state"])
     async def get_platform_state(path: str = "", depth: int | None = None) -> dict:
@@ -449,6 +460,7 @@ def create_slurm_server(
     async def execute_protocol(
         protocol: str, parameters: dict, targets: Targets, ctx: Context,
         platform_overrides: Overrides = None, wait: float = WAIT,
+        source: Source = "qibocal", scratch_commit: str | None = None,
     ) -> ToolResult:
         """Run one protocol in a new SLURM job, without fitted platform updates.
 
@@ -459,6 +471,9 @@ def create_slurm_server(
         state, even on failure. Hardware effects are not rolled back.
         Waits up to wait seconds, queue included: a longer run returns its
         run_id and progress and continues; get_run waits for its result.
+        source="scratch", when enabled, runs <module>.<name> from the scratch
+        repository at a recorded commit; scratch_commit is filled in by
+        qibocal-agent.
         After each result with plots, before another tool call, message the user
         your fit reading, showing the plots as the result's opening note says.
         """
@@ -467,6 +482,7 @@ def create_slurm_server(
             result = await jobs.call("execute_protocol", {
                 "protocol": protocol, "parameters": parameters, "targets": targets,
                 "platform_overrides": platform_overrides,
+                "source": source, "scratch_commit": scratch_commit,
             }, run)
             return ToolResult(
                 content=result.content, structured_content=result.structuredContent,

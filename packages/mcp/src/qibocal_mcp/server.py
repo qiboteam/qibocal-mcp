@@ -22,7 +22,7 @@ from .calibration import (
 from .plots import APP, APP_ONLY, FIGURE_TOOL, register_plot_view
 from .runs import WAIT
 from .sessions import STATE_DESCRIPTIONS, SessionSource
-from .targets import Overrides, Targets
+from .targets import Overrides, Source, Targets
 from .versions import DESCRIPTIONS
 
 logger = logging.getLogger(__name__)
@@ -35,6 +35,8 @@ def create_server(
     snapshot: Path | None = None,
     restore_runs: bool = False,
     session_id: str | None = None,
+    scratch: Path | None = None,
+    scratch_git_dir: Path | None = None,
 ) -> FastMCP:
     """Advertise tools immediately and own one main-thread hardware subprocess."""
     session_id = uuid4().hex if session_id is None else UUID(session_id).hex
@@ -48,6 +50,10 @@ def create_server(
         arguments += ["--snapshot", str(snapshot.resolve())]
     if restore_runs:
         arguments.append("--restore-runs")
+    if scratch is not None:
+        arguments += ["--scratch", str(scratch.expanduser().resolve())]
+        if scratch_git_dir is not None:
+            arguments += ["--scratch-git-dir", str(scratch_git_dir.expanduser().resolve())]
 
     @asynccontextmanager
     async def lifespan(server):
@@ -135,8 +141,13 @@ def create_server(
         return result.structured_content
 
     @mcp.tool(name=PROTOCOL_TOOL, description=PROTOCOL_DESCRIPTION)
-    async def get_protocol(name: str, ctx: Context) -> dict:
-        return await state(PROTOCOL_TOOL, {"name": name}, ctx)
+    async def get_protocol(
+        name: str, ctx: Context, source: Source = "qibocal",
+        scratch_commit: str | None = None,
+    ) -> dict:
+        return await state(PROTOCOL_TOOL, {
+            "name": name, "source": source, "scratch_commit": scratch_commit,
+        }, ctx)
 
     @mcp.tool(description=STATE_DESCRIPTIONS["get_platform_state"])
     async def get_platform_state(
@@ -284,6 +295,8 @@ def create_server(
         ctx: Context,
         platform_overrides: Overrides = None,
         wait: float = WAIT,
+        source: Source = "qibocal",
+        scratch_commit: str | None = None,
     ) -> ToolResult:
         """Acquire, fit and report, without applying fitted platform updates.
 
@@ -295,12 +308,16 @@ def create_server(
         state, even on failure. Hardware effects are not rolled back.
         Waits up to wait seconds: a longer run returns its run_id and progress
         and continues in the background; get_run waits for its result.
+        source="scratch", when enabled, runs <module>.<name> from the scratch
+        repository at a recorded commit; scratch_commit is filled in by
+        qibocal-agent.
         After each result with plots, before another tool call, message the user
         your fit reading, showing the plots as the result's opening note says.
         """
         return await forward("execute_protocol", {
             "protocol": protocol, "parameters": parameters, "targets": targets,
             "platform_overrides": platform_overrides, "wait": wait,
+            "source": source, "scratch_commit": scratch_commit,
         }, ctx)
 
     @mcp.tool(app=APP)
@@ -392,9 +409,19 @@ Examples:
     help="Working directory of the SLURM jobs.",
 )
 @click.option("--slurm-arg", multiple=True, help="Extra srun option (repeatable).")
+@click.option(
+    "--scratch", type=click.Path(path_type=Path, file_okay=False),
+    help="Git repository of scratch protocols, written by agents; its HEAD runs, "
+    "without uncommitted changes. ~ is expanded.",
+)
+@click.option(
+    "--scratch-git-dir", type=click.Path(path_type=Path, file_okay=False), hidden=True,
+    help="Bare repository receiving scratch commits; --scratch is then its checkout.",
+)
 def main(
     platform: str, output: str, platforms_dir: str | None, partition: str | None,
     worker_python: str, workdir: str, slurm_arg: tuple[str, ...],
+    scratch: Path | None, scratch_git_dir: Path | None,
 ) -> None:
     """Serve Qibocal calibration tools over MCP, on stdio.
 
@@ -404,6 +431,8 @@ def main(
     """
     if slurm_arg and partition is None:
         raise click.UsageError("--slurm-arg requires --partition")
+    if scratch_git_dir is not None and scratch is None:
+        raise click.UsageError("--scratch-git-dir requires --scratch")
     if platforms_dir is not None:
         # Remote launches pass "~" through unexpanded: resolve it on this host.
         os.environ["QIBOLAB_PLATFORMS"] = os.pathsep.join(
@@ -411,7 +440,10 @@ def main(
         )
     with redirect_stdout(sys.stderr):
         if partition is None:
-            server = create_server(platform, output=Path(output))
+            server = create_server(
+                platform, output=Path(output),
+                scratch=scratch, scratch_git_dir=scratch_git_dir,
+            )
         else:
             from .slurm import create_slurm_server
 
@@ -422,6 +454,8 @@ def main(
                 python=worker_python,
                 workdir=Path(workdir),
                 slurm_args=list(slurm_arg),
+                scratch=scratch,
+                scratch_git_dir=scratch_git_dir,
             )
     server.run(transport="stdio", show_banner=False)
 

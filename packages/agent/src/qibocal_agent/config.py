@@ -33,6 +33,9 @@ AGENT_FIELDS = {
     "ssh": str,
     "server_python": str,
     "timeout": float,
+    "scratch": bool,
+    "scratch_path": str,
+    "scratch_remote": str,
 }
 ENTRY_FIELDS = {**AGENT_FIELDS, "objective": str}
 REPORT_FIELDS = {
@@ -94,6 +97,10 @@ def setting_parts(key: str) -> list[str]:
 
 def check_setting(label: str, kind: type, value: object) -> None:
     """Validate stored types without coercing strings, booleans or nulls."""
+    if kind is bool:
+        if not isinstance(value, bool):
+            raise ConfigError(f"{label} must be true or false")
+        return
     if kind is str:
         if not isinstance(value, str) or not value.strip():
             raise ConfigError(f"{label} must be a nonempty string")
@@ -258,11 +265,20 @@ def resolve(
             "slurm_arg": [], "platform_repo": [], "dependency": [],
             "model": None, "model_base_url": None, "ssh": None,
             "server_python": None, "timeout": 3600, "objective": None,
+            "scratch": False, "scratch_path": None, "scratch_remote": None,
             "output": name, "workdir": name,
             # A configuration owns its environment, unless it brings its own.
             "venv": None if explicit_interpreter else name,
         }
         values = defaults | stored | dict(cli)
+        if values["scratch"]:
+            # Managed locations: enabling the toggle is enough.
+            from .environment import data_home
+
+            if values["scratch_path"] is None:
+                values["scratch_path"] = str(data_home() / "scratch" / name)
+            if values["scratch_remote"] is None and values["ssh"] is not None:
+                values["scratch_remote"] = f"~/.local/share/qibocal/agents/scratch/{name}.git"
         fields = ENTRY_FIELDS
     elif section == "report":
         defaults = {

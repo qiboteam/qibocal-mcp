@@ -94,10 +94,26 @@ DEPLOYMENT_OPTIONS = (
         "--timeout", type=float,
         help="Seconds per operation, including queue waits (default: 3600).",
     ),
+    click.option(
+        "--scratch/--no-scratch", default=None,
+        help="Let agents run protocols they write in a scratch Git repository, "
+        "at its committed HEAD (default: off).",
+    ),
+    click.option(
+        "--scratch-path",
+        help="Scratch repository on this machine "
+        "(default: ~/.local/share/qibocal/agents/scratch/NAME).",
+    ),
+    click.option(
+        "--scratch-remote",
+        help="Bare repository on the SSH host receiving scratch commits "
+        "(default: ~/.local/share/qibocal/agents/scratch/NAME.git).",
+    ),
 )
 DEPLOYMENT_NAMES = (
     "platform", "platforms_dir", "ssh", "partition", "output", "workdir", "venv",
     "server_python", "dependency", "platform_repo", "slurm_arg", "timeout",
+    "scratch", "scratch_path", "scratch_remote",
 )
 
 

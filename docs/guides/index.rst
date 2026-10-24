@@ -14,3 +14,4 @@ These pages explain execution, persistent settings and operational boundaries.
    safety
    artifacts
    versions
+   scratch
