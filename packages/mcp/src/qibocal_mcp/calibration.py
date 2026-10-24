@@ -16,7 +16,9 @@ PROTOCOL_TOOL = "get_protocol"
 PROTOCOL_DESCRIPTION = """Return one protocol's parameter definitions, with types and units.
 
 The source of its parameters class: read it for the protocol you chose,
-before choosing its values. qibocal://context lists the protocols."""
+before choosing its values. qibocal://context lists the protocols.
+With source="scratch", when enabled, name is <module>.<name> in the scratch
+repository; scratch_commit is filled in by qibocal-agent."""
 COMMON_PARAMETERS = (
     "nshots (integer) and relaxation_time (ns) may be supplied with any protocol. "
     "Omit them to use platform defaults."
@@ -115,6 +117,17 @@ Accepted updates live in the session until saved as a platform version.
   main branch unless asked.
 - Push, and check out another version with checkout_platform, only on the
   user's request.
+
+## Scratch protocols
+Only when the context says they are enabled, and no built-in protocol fits.
+- Write them in the scratch repository (its path is in the context, or in
+  list_configurations): a package with a top-level __init__.py, one module per
+  protocol, e.g. adapting a built-in one. Run them with source="scratch" and
+  protocol="<module>.<name>".
+- Commit before running: uncommitted changes are refused. Before the first run
+  of each new commit, give the user the protocol's path in the repository and
+  the commit hash, and wait for their approval.
+- The same hardware limits apply. Report the commit each run executed.
 
 ## Sessions
 For a fresh calibration, use start_session in the same conversation; with

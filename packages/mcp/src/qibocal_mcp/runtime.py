@@ -16,7 +16,7 @@ import tempfile
 from concurrent.futures import ThreadPoolExecutor
 from contextlib import asynccontextmanager, redirect_stdout
 from copy import copy
-from dataclasses import fields
+from dataclasses import fields, replace
 from pathlib import Path
 from uuid import UUID, uuid4
 
@@ -29,12 +29,13 @@ with redirect_stdout(sys.stderr):
     from qibocal import Executor, Note, create_calibration_platform
     from qibocal.auto.operation import Protocol
     from qibocal.auto.serialize import serialize
-    from qibocal.auto.task import Completed
+    from qibocal.auto.task import Completed, Task
     from qibocal.protocols import PROTOCOLS
 
     from .artifacts import SessionReport
     from .notes import append_note as persist_note
     from .notes import read_notes
+    from .scratch import PREFIX, Registry, Scratch
 from . import versions
 from .calibration import (
     COMMON_PARAMETERS,
@@ -63,7 +64,7 @@ from .sessions import (
     repository_state,
     search,
 )
-from .targets import Overrides, Targets
+from .targets import Overrides, Source, Targets
 
 
 def simulation_backend() -> None:
@@ -147,6 +148,7 @@ def create_server(
     restore_runs: bool = False,
     session_id: str | None = None,
     next_run_id: str | None = None,
+    scratch: "Scratch | None" = None,
 ) -> FastMCP:
     """Create one server; execution handles live only for its lifetime.
 
@@ -154,11 +156,24 @@ def create_server(
     hands the run_id out before the job starts.
     """
     # Qibocal's registry also contains exported parameter/data classes.
-    protocols = {
+    protocols = Registry({
         name: protocol
         for name, protocol in PROTOCOLS.items()
         if isinstance(protocol, Protocol)
-    }
+    })
+
+    def resolve(
+        name: str, source: str, commit: str | None,
+    ) -> tuple[Protocol, str, dict | None]:
+        """A protocol, its operation name in reports, and its recorded source."""
+        if source == "qibocal":
+            if name not in protocols:
+                raise ValueError(f"Unknown protocol: {name}")
+            return protocols[name], name, None
+        if scratch is None:
+            raise ValueError("Scratch protocols are not enabled for this connection")
+        protocol, origin = scratch.load(name, commit)
+        return protocol, PREFIX + name, origin
     completed_runs: dict[str, Completed] = {}
     updated_runs: set[str] = set()
     lock = asyncio.Lock()
@@ -273,6 +288,7 @@ def create_server(
                 ),
                 "common_parameters": COMMON_PARAMETERS,
                 "ranges": RANGES,
+                **({"scratch": scratch.describe()} if scratch is not None else {}),
             },
             # Compact: this is read by models, and sent with every discovery.
             separators=(",", ":"),
@@ -289,12 +305,13 @@ def create_server(
         return await calibration_context(ctx)
 
     @mcp.tool(name=PROTOCOL_TOOL, description=PROTOCOL_DESCRIPTION)
-    async def get_protocol(name: str) -> dict:
-        if name not in protocols:
-            raise ValueError(f"Unknown protocol: {name}")
-        protocol = protocols[name]
+    async def get_protocol(
+        name: str, source: Source = "qibocal", scratch_commit: str | None = None,
+    ) -> dict:
+        protocol, _, origin = await asyncio.to_thread(resolve, name, source, scratch_commit)
         return {
             "name": name,
+            **({"scratch": origin} if origin is not None else {}),
             "parameters": inspect.getsource(protocol.parameters_type),
             "two_qubit_gates": protocol.two_qubit_gates,
             "supports_update": protocol.update is not None,
@@ -376,6 +393,13 @@ def create_server(
             )
             if metadata["platform"] != platform_name:
                 raise ValueError("Run belongs to a different platform")
+            origin = metadata.get("scratch")
+            if origin is not None:
+                # Reports only hold a stand-in: load the commit the run executed.
+                protocol, _, _ = resolve(origin["protocol"], "scratch", origin["commit"])
+                completed = replace(
+                    completed, task=Task(completed.task.action, protocol), bound=None,
+                )
             completed_runs[run_id] = completed
             if metadata["update_started"]:
                 updated_runs.add(run_id)
@@ -644,6 +668,7 @@ def create_server(
 
     def acquire(
         run: Run, executor: Executor, report: SessionReport, protocol: str,
+        resolved: tuple[Protocol, str, dict | None],
         parameters: dict, selected: list, platform_overrides: dict | None,
     ) -> ToolResult:
         """Connect if needed, acquire, fit and report: on the hardware thread."""
@@ -655,10 +680,11 @@ def create_server(
                 state = PlatformState.capture(executor.platform).patched(platform_overrides)
                 state.apply(candidate)
                 execution = Executor(candidate, update=False)
-            bound = protocols[protocol](**parameters)
+            definition, operation, origin = resolved
+            bound = definition(**parameters)
             completed = execution(bound, targets=selected)
             run_id = run.run_id
-            completed = report.add(completed, protocol, parameters, selected)
+            completed = report.add(completed, operation, parameters, selected)
             folder = completed.path
             execution_snapshot = folder / "execution_platform"
             execution_snapshot.mkdir()
@@ -672,6 +698,7 @@ def create_server(
                 "protocol": protocol,
                 "parameters": parameters,
                 "platform_overrides": platform_overrides,
+                **({"scratch": origin} if origin is not None else {}),
                 "targets": selected,
                 "folder": str(folder),
                 "results": (
@@ -679,7 +706,7 @@ def create_server(
                     if completed.results is not None
                     else None
                 ),
-                "supports_update": protocols[protocol].update is not None,
+                "supports_update": definition.update is not None,
                 "updated": False,
                 "update_started": False,
             }
@@ -717,6 +744,8 @@ def create_server(
         ctx: Context,
         platform_overrides: Overrides = None,
         wait: float = WAIT,
+        source: Source = "qibocal",
+        scratch_commit: str | None = None,
     ) -> ToolResult:
         """Acquire, fit and report, without applying fitted platform updates.
 
@@ -728,18 +757,20 @@ def create_server(
         state, even on failure. Hardware effects are not rolled back.
         Waits up to wait seconds: a longer run returns its run_id and progress
         and continues in the background; get_run waits for its result.
+        source="scratch", when enabled, runs <module>.<name> from the scratch
+        repository at a recorded commit; scratch_commit is filled in by
+        qibocal-agent.
         After each result with plots, before another tool call, message the user
         your fit reading, showing the plots as the result's opening note says.
         """
         nonlocal next_run_id
-        if protocol not in protocols:
-            raise ValueError(f"Unknown protocol: {protocol}")
         if not targets:
             raise ValueError("Supply at least one target")
         # JSON arrays represent Qibocal's tuple-valued multi-qubit targets.
         selected = [tuple(t) if isinstance(t, list) else t for t in targets]
         async with lock:
             runs.ensure_idle()
+            resolved = await asyncio.to_thread(resolve, protocol, source, scratch_commit)
             executor = ctx.lifespan_context["executor"]
             with redirect_stdout(sys.stderr):
                 report = report_for(executor)
@@ -747,8 +778,8 @@ def create_server(
 
             async def work(run: Run) -> ToolResult:
                 return await asyncio.get_running_loop().run_in_executor(
-                    hardware, acquire, run, executor, report, protocol, parameters,
-                    selected, platform_overrides,
+                    hardware, acquire, run, executor, report, protocol, resolved,
+                    parameters, selected, platform_overrides,
                 )
 
             runs.start(run_id, protocol, targets, work)
@@ -858,9 +889,14 @@ def main():
     parser.add_argument("--snapshot", type=Path)
     parser.add_argument("--restore-runs", action="store_true")
     parser.add_argument("--session-id", required=True)
-    args = parser.parse_args()
+    parser.add_argument("--scratch", type=Path)
+    parser.add_argument("--scratch-git-dir", type=Path)
+    args = vars(parser.parse_args())
+    path, git_dir = args.pop("scratch"), args.pop("scratch_git_dir")
     with redirect_stdout(sys.stderr):
-        server = create_server(**vars(args))
+        if path is not None:
+            args["scratch"] = Scratch(path, git_dir)
+        server = create_server(**args)
     server.run(transport="stdio", show_banner=False)
 
 
