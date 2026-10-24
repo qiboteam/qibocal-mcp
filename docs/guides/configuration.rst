@@ -162,6 +162,19 @@ supplied by the configuration or the CLI; ``qibocal-agent run`` also requires
      - ``3600`` seconds per operation, including queue waiting. Used by
        ``qibocal-agent run`` and ``qibocal-agent mcp``; interactive clients
        also configure their own.
+   * - ``scratch``
+     - JSON boolean
+     - ``false``. Lets agents run protocols they write in a scratch Git
+       repository; see :doc:`scratch`.
+   * - ``scratch_path``
+     - Nonempty string
+     - ``$XDG_DATA_HOME/qibocal/agents/scratch/NAME``, created on first use.
+       The scratch repository on this machine.
+   * - ``scratch_remote``
+     - Nonempty string
+     - With ``ssh``: ``~/.local/share/qibocal/agents/scratch/NAME.git``,
+       created on first push. Bare repository on the SSH host receiving
+       scratch commits; its checkout is the same path without ``.git``.
 
 String values are not coerced from other types. ``null`` and booleans are not
 valid settings; a timeout must be numeric, not a quoted string, and cannot

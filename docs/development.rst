@@ -42,6 +42,10 @@ every MCP server and nothing else:
   repository: history, differences, saves with branch consistency (plumbing
   commits off the checkout), pushes and checkouts. The tools only speak of
   versions, so that a database can replace it.
+* ``scratch.py``: scratch protocols on the execution side: the committed
+  ``HEAD`` of a local repository, or a pushed commit checked out in one
+  working directory next to a bare repository; stand-ins keep report
+  histories loadable until a scratch run is needed.
 * ``locking.py``: the shared advisory file lock.
 * ``targets.py``: Qibocal-compatible wire types without importing the
   calibration stack.
@@ -82,6 +86,9 @@ its base dependencies are click and FastMCP, without Qibocal, and the
 * ``config.py``: the validated configuration file, ``agents.json``, holding
   named configurations (``default`` when no name is given), and ``resolve``,
   which merges built-ins, a stored configuration and explicit CLI values.
+* ``scratch.py``: the client side of scratch protocols: the managed
+  repository, the committed ``HEAD`` check, and the push of the commit to a
+  single ref next to a remote server.
 * ``report.py``: the managed ``qibocal-agent report`` launcher and tunnel;
   ``ReportServer`` starts and stops it, for the command and ``open_reports``.
 

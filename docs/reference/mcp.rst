@@ -49,6 +49,8 @@ Its text content is a JSON object containing:
 * ``details``: how to read a protocol's definitions, with ``get_protocol``.
 * ``common_parameters``: explanatory text for ``nshots`` (integer) and
   ``relaxation_time`` (ns). Omit either to use platform defaults.
+* ``scratch``: present when scratch protocols are enabled, describing how to
+  run them.
 * ``ranges``: the forms of sweep ranges: a plain ``[start, stop, step]`` is
   absolute, while labelled forms such as ``["center", width, step]`` are
   relative to the protocol's default center.
@@ -74,7 +76,9 @@ get_protocol(name)
 
 Return one protocol's ``parameters`` definitions, the source of its parameters
 class with types, defaults and units, together with ``two_qubit_gates``,
-``supports_update`` and ``common_parameters``. Unknown names are errors.
+``supports_update`` and ``common_parameters``. Unknown names are errors. With
+``source="scratch"``, it reads ``<module>.<name>`` from the scratch repository
+at the commit that would run, recorded under ``scratch``.
 
 get_platform_state(path="", depth=None)
 ---------------------------------------
@@ -177,6 +181,15 @@ execute_protocol(protocol, parameters, targets, platform_overrides=None)
      - Object or null
      - Optional scalar platform edits for this execution only, using the same
        pointer/value format and validation as ``patch_platform``.
+   * - ``source``
+     - String
+     - ``"qibocal"`` (default) for built-in protocols, or ``"scratch"`` for
+       ``<module>.<name>`` in the scratch repository, when enabled; see
+       :doc:`../guides/scratch`.
+   * - ``scratch_commit``
+     - String or null
+     - The scratch commit to run; filled in by ``qibocal-agent``, or the
+       repository's ``HEAD`` locally.
    * - ``wait``
      - Number
      - Seconds to wait for the result (default 45). A longer run continues in
@@ -224,7 +237,8 @@ contains, in order:
   execution-host ``folder``, ``session_id`` and ``report_folder``,
   ``supports_update``, initial ``updated``/``update_started`` flags, and
   ``plots``: per figure, its ``target``, ``image`` path and whether it is
-  ``interactive``.
+  ``interactive``; for scratch protocols, ``scratch``: the ``protocol``, its
+  ``commit`` and ``path`` in the repository.
 * The serialized fitted ``results``, where values larger than 2 kB, typically
   per-shot or per-point arrays, are replaced by a note: request them with
   ``get_run_results``. ``run.json`` and ``results.json`` keep them in full.
