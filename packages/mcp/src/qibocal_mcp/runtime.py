@@ -63,7 +63,7 @@ from .sessions import (
     repository_state,
     search,
 )
-from .targets import Overrides, Targets
+from .targets import ImageStyle, ImageWidth, Overrides, Targets
 
 
 def simulation_backend() -> None:
@@ -645,6 +645,7 @@ def create_server(
     def acquire(
         run: Run, executor: Executor, report: SessionReport, protocol: str,
         parameters: dict, selected: list, platform_overrides: dict | None,
+        image_style: str, image_width: int | None,
     ) -> ToolResult:
         """Connect if needed, acquire, fit and report: on the hardware thread."""
         with redirect_stdout(sys.stderr), Capture(run.progress, run.cancel):
@@ -691,7 +692,8 @@ def create_server(
                 else [("all", reports)]
             )
             metadata["plots"] = save_plots(
-                folder, [(target, figures) for target, (figures, _) in entries]
+                folder, [(target, figures) for target, (figures, _) in entries],
+                image_style, image_width,
             )
             (folder / "run.json").write_text(
                 json.dumps(metadata, indent=2), encoding="utf-8"
@@ -705,7 +707,10 @@ def create_server(
             for target, (figures, table) in entries:
                 content.append(TextContent(type="text", text=f"Target {target}: {table}"))
                 for _ in figures:
-                    content.append(Image(path=next(images)["image"]).to_image_content())
+                    plot = next(images)
+                    if "description" in plot:
+                        content.append(TextContent(type="text", text=plot["description"]))
+                    content.append(Image(path=plot["image"]).to_image_content())
             completed_runs[run_id] = completed
             return ToolResult(content=content, structured_content=summary)
 
@@ -717,6 +722,8 @@ def create_server(
         ctx: Context,
         platform_overrides: Overrides = None,
         wait: float = WAIT,
+        image_style: ImageStyle = "data",
+        image_width: ImageWidth = None,
     ) -> ToolResult:
         """Acquire, fit and report, without applying fitted platform updates.
 
@@ -728,6 +735,9 @@ def create_server(
         state, even on failure. Hardware effects are not rolled back.
         Waits up to wait seconds: a longer run returns its run_id and progress
         and continues in the background; get_run waits for its result.
+        Images show the data alone, each preceded by a text giving its axes,
+        ranges and traces; image_style="full" renders the decorated figures,
+        e.g. for debugging, and image_width (256-1600) enlarges dense plots.
         After each result with plots, before another tool call, message the user
         your fit reading, showing the plots as the result's opening note says.
         """
@@ -748,7 +758,7 @@ def create_server(
             async def work(run: Run) -> ToolResult:
                 return await asyncio.get_running_loop().run_in_executor(
                     hardware, acquire, run, executor, report, protocol, parameters,
-                    selected, platform_overrides,
+                    selected, platform_overrides, image_style, image_width,
                 )
 
             runs.start(run_id, protocol, targets, work)

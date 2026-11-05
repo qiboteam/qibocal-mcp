@@ -62,6 +62,12 @@ def acquire_with_defaults(pars: DefaultInputs, targets) -> Samples:
     return acquire(pars, targets)
 
 
+def fake_render(figures, paths, width, height):
+    """Stands in for Kaleido: a valid PNG per figure."""
+    for path in paths:
+        Path(path).write_bytes(PNG)
+
+
 RELEASE = threading.Event()
 # A valid 1x1 PNG; the full image renderer is exercised separately.
 PNG = bytes.fromhex(
@@ -131,19 +137,13 @@ class ServerTests(unittest.IsolatedAsyncioTestCase):
             **vars(create_platform("dummy")),
             calibration=Calibration(single_qubits={0: QubitCalibration()}),
         )
-        png = bytes.fromhex(
-            "89504e470d0a1a0a0000000d49484452000000010000000108060000001f15c489"
-            "0000000b49444154789c636000020000050001a5f645400000000049454e44ae426082"
-        )
 
-        def write_image(figure, file, **kwargs):
-            Path(file).write_bytes(png)
 
         with (
             tempfile.TemporaryDirectory() as directory,
             patch("qibocal_mcp.runtime.create_calibration_platform", return_value=platform),
             patch("qibocal_mcp.runtime.PROTOCOLS", {"synthetic": Protocol(acquire, fit, report, update)}),
-            patch.object(go.Figure, "write_image", write_image),
+            patch("qibocal_mcp.images.render", fake_render),
         ):
             backend = create_server("synthetic", output=Path(directory))
             with patch("qibocal_mcp.server.StdioTransport", return_value=backend):
@@ -208,7 +208,7 @@ class ServerTests(unittest.IsolatedAsyncioTestCase):
             tempfile.TemporaryDirectory() as directory,
             patch("qibocal_mcp.runtime.create_calibration_platform", return_value=platform),
             patch("qibocal_mcp.runtime.PROTOCOLS", {"synthetic": protocol}),
-            patch.object(go.Figure, "write_image", lambda figure, file, **kwargs: Path(file).write_bytes(PNG)),
+            patch("qibocal_mcp.images.render", fake_render),
         ):
             async with Client(create_server("synthetic", output=Path(directory))) as client:
                 started = (await client.call_tool("execute_protocol", {
@@ -255,7 +255,7 @@ class ServerTests(unittest.IsolatedAsyncioTestCase):
             patch("qibocal_mcp.runtime.PROTOCOLS", {
                 "synthetic": Protocol(twice_acquire, fit, report, update),
             }),
-            patch.object(go.Figure, "write_image", lambda figure, file, **kwargs: Path(file).write_bytes(PNG)),
+            patch("qibocal_mcp.images.render", fake_render),
         ):
             async with Client(create_server("synthetic", output=Path(directory))) as client:
                 arguments = {"protocol": "synthetic", "parameters": {"value": 5e9}, "targets": [0]}
@@ -291,7 +291,7 @@ class ServerTests(unittest.IsolatedAsyncioTestCase):
             patch("qibocal_mcp.runtime.PROTOCOLS", {
                 "synthetic": Protocol(acquire, fit_shots, heavy_report, update),
             }),
-            patch.object(go.Figure, "write_image", lambda figure, file, **kwargs: Path(file).write_bytes(PNG)),
+            patch("qibocal_mcp.images.render", fake_render),
         ):
             async with Client(create_server("synthetic", output=Path(directory))) as client:
                 result = await client.call_tool("execute_protocol", {
@@ -362,7 +362,7 @@ class ServerTests(unittest.IsolatedAsyncioTestCase):
             patch.dict(os.environ, {"QIBO_BACKEND": "qibolab", "QIBO_PLATFORM": "dummy"}),
             patch("qibocal_mcp.runtime.create_calibration_platform", return_value=platform),
             patch("qibocal_mcp.runtime.PROTOCOLS", {"standard_rb": standard_rb}),
-            patch.object(go.Figure, "write_image", lambda figure, file, **kwargs: Path(file).write_bytes(PNG)),
+            patch("qibocal_mcp.images.render", fake_render),
         ):
             async with Client(create_server("synthetic", output=Path(directory))) as client:
                 result = await client.call_tool("execute_protocol", {
@@ -371,6 +371,39 @@ class ServerTests(unittest.IsolatedAsyncioTestCase):
                     "targets": [0], "wait": 120,
                 })
         self.assertEqual(result.structured_content["protocol"], "standard_rb")
+
+    async def test_images_show_the_data_with_a_description_unless_full(self):
+        platform = CalibrationPlatform(
+            **vars(create_platform("dummy")),
+            calibration=Calibration(single_qubits={0: QubitCalibration()}),
+        )
+        sizes = []
+
+        def render(figures, paths, width, height):
+            sizes.append((len(figures), width, height))
+            fake_render(figures, paths, width, height)
+
+        with (
+            tempfile.TemporaryDirectory() as directory,
+            patch("qibocal_mcp.runtime.create_calibration_platform", return_value=platform),
+            patch("qibocal_mcp.runtime.PROTOCOLS", {"synthetic": Protocol(acquire, fit, report, update)}),
+            patch("qibocal_mcp.images.render", render),
+        ):
+            async with Client(create_server("synthetic", output=Path(directory))) as client:
+                arguments = {"protocol": "synthetic", "parameters": {"value": 5e9}, "targets": [0]}
+                result = await client.call_tool("execute_protocol", arguments)
+                index = next(i for i, block in enumerate(result.content) if block.type == "image")
+                described = result.content[index - 1].text
+                self.assertEqual(described, "x x, -1 to 1; y y, 4.75e+09 to 5.25e+09. data (blue lines and markers).")
+                self.assertEqual(result.structured_content["plots"][0]["description"], described)
+                full = await client.call_tool("execute_protocol", {
+                    **arguments, "image_style": "full", "image_width": 900,
+                })
+                self.assertNotIn("description", full.structured_content["plots"][0])
+                with self.assertRaises(ToolError):
+                    await client.call_tool("execute_protocol", {**arguments, "image_width": 50})
+        # All of a run's images are rendered at once.
+        self.assertEqual(sizes, [(1, 512, 301), (1, 900, 528)])
 
     async def test_targets_match_qibocal_and_tolerate_text(self):
         from pydantic import TypeAdapter, ValidationError
@@ -435,20 +468,13 @@ class ServerTests(unittest.IsolatedAsyncioTestCase):
             calibration=Calibration(single_qubits={0: QubitCalibration()}),
         )
         protocol = Protocol(acquire, fit, report, update)
-        # A valid tiny PNG; the full image renderer is exercised separately.
-        png = bytes.fromhex(
-            "89504e470d0a1a0a0000000d49484452000000010000000108060000001f15c489"
-            "0000000b49444154789c636000020000050001a5f645400000000049454e44ae426082"
-        )
 
-        def write_image(figure, file, **kwargs):
-            Path(file).write_bytes(png)
 
         with (
             tempfile.TemporaryDirectory() as directory,
             patch("qibocal_mcp.runtime.create_calibration_platform", return_value=platform),
             patch("qibocal_mcp.runtime.PROTOCOLS", {"synthetic": protocol}),
-            patch.object(go.Figure, "write_image", write_image),
+            patch("qibocal_mcp.images.render", fake_render),
         ):
             server = create_server("synthetic", output=Path(directory))
             async with Client(server) as client:

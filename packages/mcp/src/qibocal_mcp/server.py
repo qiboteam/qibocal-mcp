@@ -22,7 +22,7 @@ from .calibration import (
 from .plots import APP, APP_ONLY, FIGURE_TOOL, register_plot_view
 from .runs import WAIT
 from .sessions import STATE_DESCRIPTIONS, SessionSource
-from .targets import Overrides, Targets
+from .targets import ImageStyle, ImageWidth, Overrides, Targets
 from .versions import DESCRIPTIONS
 
 logger = logging.getLogger(__name__)
@@ -284,6 +284,8 @@ def create_server(
         ctx: Context,
         platform_overrides: Overrides = None,
         wait: float = WAIT,
+        image_style: ImageStyle = "data",
+        image_width: ImageWidth = None,
     ) -> ToolResult:
         """Acquire, fit and report, without applying fitted platform updates.
 
@@ -295,12 +297,16 @@ def create_server(
         state, even on failure. Hardware effects are not rolled back.
         Waits up to wait seconds: a longer run returns its run_id and progress
         and continues in the background; get_run waits for its result.
+        Images show the data alone, each preceded by a text giving its axes,
+        ranges and traces; image_style="full" renders the decorated figures,
+        e.g. for debugging, and image_width (256-1600) enlarges dense plots.
         After each result with plots, before another tool call, message the user
         your fit reading, showing the plots as the result's opening note says.
         """
         return await forward("execute_protocol", {
             "protocol": protocol, "parameters": parameters, "targets": targets,
             "platform_overrides": platform_overrides, "wait": wait,
+            "image_style": image_style, "image_width": image_width,
         }, ctx)
 
     @mcp.tool(app=APP)

@@ -6,7 +6,7 @@ text is parsed as well.
 """
 
 import json
-from typing import Annotated, Any
+from typing import Annotated, Any, Literal
 
 from pydantic import AfterValidator, BeforeValidator, Field, WithJsonSchema
 
@@ -48,3 +48,7 @@ Overrides = Annotated[
     BeforeValidator(parse_json),
     WithJsonSchema({"type": "object", "additionalProperties": True}),
 ]
+
+# Report images: the data alone, described in text, or the decorated figures.
+ImageStyle = Literal["data", "full"]
+ImageWidth = Annotated[int, Field(ge=256, le=1600)] | None

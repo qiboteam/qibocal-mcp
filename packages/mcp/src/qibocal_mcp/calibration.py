@@ -51,7 +51,9 @@ result. The rules below are not optional.
   protocol's parameters and units with get_protocol. Mind the sweep range
   forms the context describes. Run one protocol at a time.
 - Inspect every report image and fitting table: signal quality, model
-  agreement, uncertainty, bad fits. Results leave out large values, such as
+  agreement, uncertainty, bad fits. Images show the data alone: the text
+  before each gives its axes, ranges and traces. Ask for image_style="full"
+  only to debug a plot, and a larger image_width only for dense ones. Results leave out large values, such as
   per-shot arrays; fetch them with get_run_results only when a decision needs
   them. Never invent results, and never treat synthetic data from a mock
   platform as calibration evidence.

@@ -9,7 +9,6 @@ from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, Mock, patch
 
-import plotly.graph_objects as go
 from fastmcp import Client
 from fastmcp.exceptions import ToolError
 from mcp.shared.exceptions import McpError
@@ -18,7 +17,7 @@ from qibocal.auto.operation import Protocol
 from qibocal.calibration import CalibrationPlatform
 from qibocal.calibration.calibration import Calibration, QubitCalibration
 from qibolab import create_platform
-from test_server import acquire, fit, report, update
+from test_server import acquire, fake_render, fit, report, update
 
 from qibocal_mcp.calibration import PROMPT, instructions_for
 from qibocal_mcp.plots import FIGURE_TOOL, VIEW, reminder
@@ -149,8 +148,6 @@ class SlurmTests(unittest.IsolatedAsyncioTestCase):
             process.communicate = communicate
             return piped(process)
 
-        def write_image(figure, path, **kwargs):
-            Path(path).write_bytes(b"synthetic image")
 
         with (
             tempfile.TemporaryDirectory() as directory,
@@ -159,7 +156,7 @@ class SlurmTests(unittest.IsolatedAsyncioTestCase):
                 "qibocal_mcp.runtime.PROTOCOLS",
                 {"synthetic": protocol},
             ),
-            patch.object(go.Figure, "write_image", write_image),
+            patch("qibocal_mcp.images.render", fake_render),
             patch("asyncio.create_subprocess_exec", side_effect=start),
         ):
             gateway = create_slurm_server(

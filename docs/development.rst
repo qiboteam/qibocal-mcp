@@ -25,6 +25,8 @@ every MCP server and nothing else:
   everything else) and accepted-state handoff.
 * ``worker.py``: one internal operation per allocation, with JSON on
   stdin/stdout. Workers do not read user configuration.
+* ``images.py``: data-only report images, their text descriptions, and the
+  batched Kaleido export.
 * ``plots.py``: report plots. It saves each figure (HTML, PNG, and Plotly
   JSON when light), serves the MCP Apps view and its on-demand figures, and
   holds the ``ShowPlots`` middleware, which words the note opening each result

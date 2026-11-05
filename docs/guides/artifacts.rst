@@ -81,8 +81,12 @@ serializer; they are not a single universal schema. Report indices enumerate
 targets and figures, not necessarily the target's literal qubit ID.
 The bridge consumes ``Protocol.report`` output through ``Executor.report``:
 Plotly figures and HTML tables, not a full Qibocal HTML report-page template.
-Saved HTML files are individual interactive Plotly figures. PNGs are exported at
-1200 by 700 pixels using Kaleido/Chrome on the execution host.
+Saved HTML files are individual interactive Plotly figures. PNGs are exported
+with Kaleido/Chrome on the execution host, all of a run's at once. By default
+they show the data alone, at 512 by 301 pixels: titles, labels, ticks, legends
+and grids are stripped, since they are fixed per protocol or follow from the
+parameters, and the response describes them in text instead. With
+``image_style="full"`` they are the decorated figures, at 1200 by 704 pixels.
 
 Run metadata
 ------------

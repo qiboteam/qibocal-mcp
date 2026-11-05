@@ -177,6 +177,15 @@ execute_protocol(protocol, parameters, targets, platform_overrides=None)
      - Object or null
      - Optional scalar platform edits for this execution only, using the same
        pointer/value format and validation as ``patch_platform``.
+   * - ``image_style``
+     - String
+     - ``"data"`` (default): images of the data alone, each preceded by a text
+       giving its axis titles and ranges, and its traces with their colours
+       and kinds. ``"full"``: the decorated figures, e.g. for debugging.
+   * - ``image_width``
+     - Integer or null
+     - Image width in pixels, 256 to 1600, keeping the aspect ratio (default
+       512, or 1200 with ``"full"``), for dense plots.
    * - ``wait``
      - Number
      - Seconds to wait for the result (default 45). A longer run continues in
@@ -228,7 +237,9 @@ contains, in order:
 * The serialized fitted ``results``, where values larger than 2 kB, typically
   per-shot or per-point arrays, are replaced by a note: request them with
   ``get_run_results``. ``run.json`` and ``results.json`` keep them in full.
-* Per target, its report table and PNG reports as MCP image content.
+* Per target, its report table and PNG reports as MCP image content, each
+  preceded by its description unless ``image_style="full"``. The description
+  is also in ``plots``.
 
 A run outlasting ``wait`` returns its status instead: ``run_id``, ``status``
 (``queued`` while a SLURM job waits for its allocation, then ``running``),

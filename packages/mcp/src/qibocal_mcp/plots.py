@@ -201,22 +201,37 @@ def register_plot_view(mcp: FastMCP) -> None:
     mcp.add_middleware(ShowPlots())
 
 
-def save_plots(folder: Path, entries: list[tuple[object, list]]) -> list[dict]:
-    """Write each target's figures as HTML, PNG and, when light, Plotly JSON."""
-    plots = []
+def save_plots(
+    folder: Path, entries: list[tuple[object, list]], style: str = "data",
+    width: int | None = None,
+) -> list[dict]:
+    """Write each target's figures as HTML, PNG and, when light, Plotly JSON.
+
+    PNGs show the data alone by default, with their decorations as a text
+    description; style="full" renders the decorated figures instead.
+    """
+    # Only the hardware process has Plotly.
+    from .images import render, size, strip
+
+    plots, images, paths = [], [], []
     for index, (target, figures) in enumerate(entries):
         for number, figure in enumerate(figures):
             stem = folder / f"report-{index}-{number}"
             figure.write_html(stem.with_suffix(".html"))
-            figure.write_image(stem.with_suffix(".png"), width=1200, height=700)
             data = figure.to_json()
             interactive = len(data) <= FIGURE_LIMIT
             if interactive:
                 stem.with_suffix(".json").write_text(data, encoding="utf-8")
-            plots.append({
+            plot = {
                 "target": str(target), "image": str(stem.with_suffix(".png")),
                 "interactive": interactive,
-            })
+            }
+            if style == "data":
+                figure, plot["description"] = strip(figure)
+            images.append(figure)
+            paths.append(stem.with_suffix(".png"))
+            plots.append(plot)
+    render(images, paths, *size(style, width))
     return plots
 
 
