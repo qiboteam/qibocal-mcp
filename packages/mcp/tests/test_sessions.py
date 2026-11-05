@@ -87,14 +87,14 @@ class SessionTests(unittest.IsolatedAsyncioTestCase):
         platform_folder.mkdir(parents=True)
         template = self.create("synthetic")
         template.dump(platform_folder)
-        repository_git(remote, "init", "--quiet", "--initial-branch=main")
+        repository_git(remote, "init", "--quiet", "--template=", "--initial-branch=main")
         repository_git(remote, "add", ".")
         repository_git(
             remote, "-c", "user.name=Tests", "-c", "user.email=tests@example.invalid",
             "commit", "--quiet", "-m", "baseline",
         )
         checkout = Path(self.directory.name) / "checkout"
-        repository_git(remote, "clone", "--quiet", str(remote), str(checkout))
+        repository_git(remote, "clone", "--quiet", "--template=", str(remote), str(checkout))
         baseline = repository_git(checkout, "rev-parse", "HEAD")
         update(fit(acquire(Inputs(value=5e9), [0])), template, 0)
         template.dump(platform_folder)
@@ -463,7 +463,7 @@ class SessionTests(unittest.IsolatedAsyncioTestCase):
                 check=True, capture_output=True, text=True,
             ).stdout.strip()
 
-        git("init", "--quiet")
+        git("init", "--quiet", "--template=")
         git("add", ".")
         git("-c", "user.name=Tests", "-c", "user.email=tests@example.invalid", "commit", "--quiet", "-m", "baseline")
         baseline_commit = git("rev-parse", "HEAD")

@@ -260,7 +260,7 @@ class EnvironmentTests(unittest.TestCase):
         (repository / "platforms/requirements.txt").write_text("platform-driver==1\n")
         (repository / "pyproject.toml").write_text('[project]\nname="platforms"\nversion="0.1"\n')
         for arguments in (
-            ["init", "--quiet"],
+            ["init", "--quiet", "--template="],
             ["add", "."],
             ["-c", "user.name=Fixture", "-c", "user.email=fixture@example.invalid",
              "-c", "commit.gpgsign=false", "commit", "--quiet", "-m", "Fixture"],
@@ -281,7 +281,7 @@ class EnvironmentTests(unittest.TestCase):
         (server / "README.md").write_text("server\n")
         (server / "src/qibocal_mcp/server.py").write_text(server_text)
         if not (repository / ".git").exists():
-            environment.command(["git", "init", "--quiet", str(repository)], capture=True)
+            environment.command(["git", "init", "--quiet", "--template=", str(repository)], capture=True)
         for arguments in (
             ["add", "."],
             ["-c", "user.name=Fixture", "-c", "user.email=fixture@example.invalid",
