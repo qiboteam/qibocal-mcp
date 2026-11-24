@@ -3,6 +3,7 @@ name = "qibocal-mcp"
 version = "0.1.0"
 description = "MCP servers exposing Qibocal calibration: direct hardware and SLURM gateway."
 readme = "README.md"
+license = "Apache-2.0"
 requires-python = ">=3.12,<3.14"
 dependencies = [
     "click>=8.1,<9",

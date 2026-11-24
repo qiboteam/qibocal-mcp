@@ -3,6 +3,7 @@ name = "qibocal-agent"
 version = "0.1.0"
 description = "Orchestration for Qibocal MCP servers: SSH and SLURM traversal, configuration, report serving and an autonomous agent."
 readme = "README.md"
+license = "Apache-2.0"
 requires-python = ">=3.12,<3.14"
 dependencies = ["click>=8.1,<9", "fastmcp>=3.0,<4"]
 
