@@ -1,0 +1,25 @@
+cff-version: 1.2.0
+message: "If you use this software, please cite it using these metadata."
+type: software
+title: "Qibocal MCP"
+abstract: >-
+  MCP servers exposing Qibocal quantum-hardware calibration to AI agents, and
+  the orchestration to reach them from anywhere: SSH and SLURM traversal,
+  configuration management, report serving and an autonomous calibration
+  agent.
+authors:
+  - given-names: Alessandro
+    family-names: Candido
+  - given-names: Roy
+    family-names: Stegeman
+  - given-names: Lorenzo
+    family-names: Ballerio
+license: Apache-2.0
+repository-code: "https://github.com/qiboteam/qibocal-mcp"
+keywords:
+  - quantum computing
+  - calibration
+  - qibocal
+  - model context protocol
+  - AI agents
+version: 0.1.0
